@@ -5,23 +5,23 @@ This workspace contains the React + TypeScript + Vite frontend and the new Javal
 ## Backend startup
 
 ### Local development (no Docker)
-- Backend URL: http://localhost:8080
+- Backend URL: http://localhost:8119
 - Start with:
   ```bash
   cd backend
-  mvn exec:java -Dexec.mainClass=br.com.tabula.App
+  BACKEND_PORT=8119 mvn exec:java -Dexec.mainClass=br.com.tabula.App
   ```
 
 ### Docker deployment
 - Backend URL: http://localhost:8119
-- Docker maps 127.0.0.1:8119 -> 8080 inside the container.
-- The backend service listens on port 8080 inside the container and is exposed on host port 8119.
+- Docker maps 127.0.0.1:8119 -> 8119 inside the container.
+- The backend service uses BACKEND_PORT=8119 at runtime, so the host and container port are aligned.
 
 ## Health check
 
 Public endpoint:
 ```bash
-curl http://localhost:8080/ping
+curl http://localhost:8119/ping
 ```
 
 Docker mapping check:

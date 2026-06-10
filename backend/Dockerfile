@@ -17,8 +17,8 @@ WORKDIR /app
 
 COPY --from=build /workspace/target/backend-1.0.0-SNAPSHOT.jar /app/app.jar
 
-EXPOSE 8080
+EXPOSE 8119
 
-ENV PORT=8080
+ENV BACKEND_PORT=8119
 
 CMD ["java", "-jar", "/app/app.jar"]
