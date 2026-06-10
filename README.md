@@ -1,3 +1,34 @@
+# Tabula
+
+This workspace contains the React + TypeScript + Vite frontend and the new Javalin backend foundation.
+
+## Backend startup
+
+### Local development (no Docker)
+- Backend URL: http://localhost:8080
+- Start with:
+  ```bash
+  cd backend
+  mvn exec:java -Dexec.mainClass=br.com.tabula.App
+  ```
+
+### Docker deployment
+- Backend URL: http://localhost:8119
+- Docker maps 127.0.0.1:8119 -> 8080 inside the container.
+- The backend service listens on port 8080 inside the container and is exposed on host port 8119.
+
+## Health check
+
+Public endpoint:
+```bash
+curl http://localhost:8080/ping
+```
+
+Docker mapping check:
+```bash
+curl http://localhost:8119/ping
+```
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

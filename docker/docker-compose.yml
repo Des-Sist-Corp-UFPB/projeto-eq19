@@ -1,14 +1,39 @@
 version: '3.8'
 
 services:
-  web:
-    image: ${APP_IMAGE:-ghcr.io/des-sist-corp-ufpb/projeto-eq19:latest}
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eq19
+      POSTGRES_USER: eq19
+      POSTGRES_PASSWORD: eq19
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
+  backend:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
-
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: eq19
+      DB_USER: eq19
+      DB_PASSWORD: eq19
+      FRONTEND_URL: http://localhost:5173
     ports:
       - "127.0.0.1:8119:8080"
-
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: always
+
+volumes:
+  postgres_data:

@@ -13,10 +13,10 @@ public class App {
     private static final Logger LOGGER = LoggerFactory.getLogger(App.class);
 
     public static void main(String[] args) {
-        String backendPort = System.getenv().getOrDefault("BACKEND_PORT", "8119");
+        int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
         String frontendUrl = System.getenv().getOrDefault("FRONTEND_URL", "http://localhost:5173");
 
-        LOGGER.info("Starting Tabula backend on port {}", backendPort);
+        LOGGER.info("Starting Tabula backend on port {}", port);
         LOGGER.info("Frontend origin configured as {}", frontendUrl);
         LOGGER.info("Database host configured as {}", System.getenv().getOrDefault("DB_HOST", "localhost"));
 
@@ -57,7 +57,7 @@ public class App {
                 ctx.status(500).json(Map.of("error", "Internal Server Error"));
             });
 
-            app.start(Integer.parseInt(backendPort));
+            app.start(port);
             LOGGER.info("Tabula backend is ready");
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
