@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Placeholder de mesa de jogos de tabuleiro">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#F6EFE8"/>
+      <stop offset="100%" stop-color="#E7DFD3"/>
+    </linearGradient>
+    <linearGradient id="table" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#9F825C"/>
+      <stop offset="100%" stop-color="#70563D"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <rect x="110" y="95" width="580" height="310" rx="28" fill="#FFFDFB" stroke="#D8CBBE" stroke-width="4"/>
+  <path d="M160 285 C 260 165, 540 165, 640 285" fill="none" stroke="url(#table)" stroke-width="24" stroke-linecap="round"/>
+  <rect x="210" y="220" width="380" height="110" rx="18" fill="url(#table)" opacity="0.92"/>
+  <circle cx="270" cy="275" r="28" fill="#FFF9F1" opacity="0.9"/>
+  <circle cx="530" cy="275" r="28" fill="#FFF9F1" opacity="0.9"/>
+  <path d="M330 205 L390 165 L450 205" fill="none" stroke="#F4E9D8" stroke-width="8" stroke-linecap="round"/>
+  <rect x="310" y="150" width="180" height="60" rx="18" fill="#F4E9D8" opacity="0.85"/>
+  <text x="400" y="188" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#6F5B41">Mesa de Jogos</text>
+</svg>

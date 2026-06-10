@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  web:
+    image: ${APP_IMAGE:-ghcr.io/des-sist-corp-ufpb/projeto-eq19:latest}
+
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+
+    ports:
+      - "127.0.0.1:8119:8080"
+
+    restart: always
