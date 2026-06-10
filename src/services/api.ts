@@ -4,6 +4,14 @@ export interface PingResponse {
   timestamp: string;
 }
 
+export interface RegisterResponse {
+  ok: boolean;
+  message: string;
+  userId: number;
+  email: string;
+  name: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8119';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -25,4 +33,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function pingBackend(): Promise<PingResponse> {
   return requestJson<PingResponse>('/ping');
+}
+
+export async function registerUserBackend(name: string, email: string, password: string): Promise<RegisterResponse> {
+  return requestJson<RegisterResponse>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name, email, password }),
+  });
 }

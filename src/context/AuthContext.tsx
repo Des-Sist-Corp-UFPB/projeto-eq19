@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import type { User } from '../types';
 import { hashPassword, verifyPassword, isStrongPassword } from '../auth/security';
+import { registerUserBackend } from '../services/api';
 import { useDatabase } from './DatabaseContext';
 import { useToast } from './ToastContext';
 
@@ -19,7 +20,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_KEY = 'tabula_auth_session';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { state, addUser, editUser } = useDatabase();
+  const { state, editUser } = useDatabase();
   const { showToast } = useToast();
   const [sessionUserId, setSessionUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -87,18 +88,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { ok: false, message };
     }
 
-    const passwordHash = await hashPassword(password);
-    const created = addUser({ name: name.trim(), email: normalizedEmail, passwordHash, role: 'student', course: 'Novo membro', avatar: undefined, bio: 'Conta criada no Tabula.' });
-
-    if (!created) {
-      const message = 'Não foi possível criar a conta no momento.';
+    try {
+      await registerUserBackend(name.trim(), normalizedEmail, password);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível criar a conta no momento.';
       showToast(message, 'error');
       return { ok: false, message };
     }
 
-    localStorage.setItem(SESSION_KEY, created.id);
-    setSessionUserId(created.id);
-    showToast('Conta criada com sucesso. Você entrou no sistema.', 'success');
+    showToast('Conta criada com sucesso no servidor.', 'success');
     return { ok: true, message: 'Conta criada com sucesso.' };
   };
 

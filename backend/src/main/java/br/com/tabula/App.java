@@ -1,6 +1,7 @@
 package br.com.tabula;
 
 import br.com.tabula.config.DatabaseConfig;
+import br.com.tabula.controller.AuthController;
 import br.com.tabula.controller.PingController;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
@@ -51,6 +52,7 @@ public class App {
             });
 
             PingController.register(app);
+            AuthController.register(app, dataSource);
 
             app.exception(Exception.class, (e, ctx) -> {
                 LOGGER.error("Unhandled backend error", e);
