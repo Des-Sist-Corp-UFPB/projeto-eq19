@@ -1,0 +1,3 @@
+br/com/tabula/App.class
+br/com/tabula/config/DatabaseConfig.class
+br/com/tabula/controller/PingController.class
