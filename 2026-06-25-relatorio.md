@@ -5,8 +5,8 @@
 | **Data** | 2026-06-25 |
 | **Repositório** | https://github.com/des-sist-corp-ufpb/projeto-eq19 |
 | **Aplicação** | https://eq19.dsc.rodrigor.com |
-| **Período de atividade** | 2026-06-10 → 2026-06-10 |
-| **Total de commits** (sem merges) | 1 |
+| **Período de atividade** | 2026-06-10 → 2026-06-25 |
+| **Total de commits** (sem merges, branch main) | 2 |
 | **Integrantes** | Caua Brito Borges (@CauaBt) |
 
 ---
@@ -65,9 +65,14 @@
 
 ### Resumo
 
-| Usuário | Commits | % commits | Linhas adicionadas | Linhas no código atual | % código atual |
-|---------|---------|-----------|-------------------|----------------------|----------------|
-| Caua Brito Borges (@CauaBt) | 1 | 100% | 12.701 | 9.301 | 100% |
+| Usuário | Commits (main) | Commits (GitHub API) | Linhas adicionadas | Linhas no código atual | % código atual |
+|---------|---------------|---------------------|-------------------|----------------------|----------------|
+| Caua Brito Borges (@CauaBt) | 1 | **6** ⚠️ | 12.701 | 9.301 | 100% |
+| *(sem login GitHub)* | 1 | 50% | — | — | — |
+
+> **⚠️ Divergência entre commits locais e GitHub API:**
+> - **@CauaBt**: 1 commit(s) na branch `main` vs **6** registrados na API GitHub (commits em branches não mergeadas ou absorvidos via squash-merge sem preservação de autoria).
+>
 
 ### Contribuição por Camada
 
