@@ -2,6 +2,18 @@ import type { User, BoardGame, Session, Event, ActivityLog } from '../types';
 
 export const INITIAL_USERS: User[] = [
   {
+    id: 'u_admin',
+    name: 'Administrador Tabula',
+    email: 'admin@tabula.com',
+    role: 'admin',
+    course: 'Administração do clube',
+    avatar: 'AD',
+    winCount: 0,
+    favoriteGames: [],
+    joinedAt: '2026-01-01T00:00:00Z',
+    bio: 'Conta administrativa oficial do Tabula.'
+  },
+  {
     id: 'u1',
     name: 'Cauã Botelho',
     email: 'caua.botelho@universidade.edu.br',

@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { DatabaseState, BoardGame, Session, Event, Comment, User, UserRole } from '../types';
-import { getInitialDatabaseState, saveDatabaseState, syncDatabaseCalculations, createLog, normalizeGameCoverUrl } from '../db/database';
+import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, createLog, normalizeGameCoverUrl } from '../db/database';
+import { getServerState, saveServerState } from '../services/api';
 import { useToast } from './ToastContext';
 
 const generateId = (prefix: string) => {
@@ -13,7 +14,7 @@ const generateId = (prefix: string) => {
 interface DatabaseContextType {
   state: DatabaseState;
   addGame: (game: Omit<BoardGame, 'id'>) => void;
-  addUser: (user: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { passwordHash: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => User | null;
+  addUser: (user: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { id?: string; passwordHash?: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => User | null;
   editGame: (game: BoardGame) => void;
   deleteGame: (gameId: string) => void;
   addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => void;
@@ -38,13 +39,64 @@ interface DatabaseContextType {
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
 
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<DatabaseState>(getInitialDatabaseState);
+  const [state, setState] = useState<DatabaseState>(getDefaultDatabaseState);
   const { showToast } = useToast();
+  const serverLoadedRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const lastSavedJsonRef = useRef<string | null>(null);
 
-  // Auto-save state to localStorage whenever it changes
   useEffect(() => {
-    saveDatabaseState(state);
-  }, [state]);
+    let cancelled = false;
+
+    const loadFromServer = async () => {
+      try {
+        const serverState = await getServerState();
+        const nextState = serverState ? sanitizeDatabaseState(serverState) : getDefaultDatabaseState();
+        if (cancelled) return;
+        setState(nextState);
+        if (!serverState) {
+          await saveServerState(nextState);
+        }
+        lastSavedJsonRef.current = JSON.stringify(nextState);
+        serverLoadedRef.current = true;
+      } catch (error) {
+        if (!cancelled) {
+          serverLoadedRef.current = true;
+          showToast('Não foi possível carregar os dados do servidor. Verifique a API e o banco de dados.', 'error');
+          console.error('Failed to load server state', error);
+        }
+      }
+    };
+
+    void loadFromServer();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showToast]);
+
+  useEffect(() => {
+    if (!serverLoadedRef.current) return;
+
+    const serializedState = JSON.stringify(state);
+    if (serializedState === lastSavedJsonRef.current) return;
+
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      void saveServerState(state)
+        .then(() => {
+          lastSavedJsonRef.current = serializedState;
+        })
+        .catch(error => {
+          showToast('Não foi possível salvar no servidor agora.', 'error');
+          console.error('Failed to save server state', error);
+        });
+    }, 350);
+
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [state, showToast]);
 
   // Game actions
   const addGame = (game: Omit<BoardGame, 'id'>) => {
@@ -372,7 +424,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   };
 
-  const addUser = (userData: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { passwordHash: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => {
+  const addUser = (userData: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { id?: string; passwordHash?: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => {
     const normalizedEmail = userData.email.trim().toLowerCase();
     if (state.users.some(u => u.email.toLowerCase() === normalizedEmail)) {
       return null;
@@ -386,10 +438,10 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .toUpperCase() || 'U';
 
     const newUser: User = {
-      id: generateId('u'),
+      id: userData.id || generateId('u'),
       name: userData.name.trim(),
       email: normalizedEmail,
-      passwordHash: userData.passwordHash,
+      ...(userData.passwordHash ? { passwordHash: userData.passwordHash } : {}),
       role: userData.role || 'student',
       course: userData.course || 'Sem curso informado',
       avatar: userData.avatar || initials,

@@ -1,22 +1,31 @@
-# Build da aplicação
-FROM node:22-alpine AS builder
+FROM node:22-alpine AS frontend-build
 
 WORKDIR /app
-
 COPY package*.json ./
 RUN npm ci
-
 COPY . .
 RUN npm run build
 
-# Servidor para os arquivos estáticos
-FROM nginx:alpine
+FROM maven:3.9.9-eclipse-temurin-17 AS backend-build
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+WORKDIR /workspace
+COPY backend/pom.xml ./
+RUN mvn -B -q -DskipTests dependency:go-offline
+COPY backend/src ./src
+RUN mvn -B -q -DskipTests package
 
-# Faz o nginx escutar na porta 8080
-RUN sed -i 's/listen       80;/listen       8080;/g' /etc/nginx/conf.d/default.conf
+FROM eclipse-temurin:17-jre-alpine
+
+RUN apk add --no-cache nginx curl
+WORKDIR /app
+
+COPY --from=backend-build /workspace/target/backend-1.0.0-SNAPSHOT.jar /app/backend.jar
+COPY --from=frontend-build /app/dist /usr/share/nginx/html
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/start.sh /app/start.sh
+
+ENV BACKEND_PORT=8119
 
 EXPOSE 8080
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "/app/start.sh"]

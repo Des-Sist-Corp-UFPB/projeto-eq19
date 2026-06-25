@@ -1,104 +1,67 @@
 # Tabula
 
-This workspace contains the React + TypeScript + Vite frontend and the new Javalin backend foundation.
+Tabula é uma aplicação real para comunidade de jogos de mesa. O projeto permite cadastrar usuários, autenticar login, manter acervo de jogos, marcar eventos, registrar partidas concluídas e acompanhar ranking de vitórias por jogo.
 
-## Backend startup
+## Produção
 
-### Local development (no Docker)
-- Backend URL: http://localhost:8119
-- Start with:
-  ```bash
-  cd backend
-  BACKEND_PORT=8119 mvn exec:java -Dexec.mainClass=br.com.tabula.App
-  ```
+A imagem de produção usa um único container com:
 
-### Docker deployment
-- Backend URL: http://localhost:8119
-- Docker maps 127.0.0.1:8119 -> 8119 inside the container.
-- The backend service uses BACKEND_PORT=8119 at runtime, so the host and container port are aligned.
+- React/Vite compilado para arquivos estáticos;
+- Nginx escutando na porta interna `8080`;
+- Backend Java/Javalin escutando internamente na porta `8119`;
+- Proxy `/api/*` do Nginx para o backend;
+- PostgreSQL externo fornecido pelo servidor/professor.
 
-## Health check
+O compose principal mantém o mapeamento exigido:
 
-Public endpoint:
+```yaml
+127.0.0.1:8119:8080
+```
+
+A aplicação espera as variáveis do servidor:
+
+```env
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=eq19
+DB_USER=eq19
+DB_PASSWORD=kzJrLMkJju9hQkt6MU3f
+FRONTEND_URL=https://eq19.dsc.rodrigor.com
+BACKEND_PORT=8119
+```
+
+## Endpoints principais
+
+- `GET /api/ping` — healthcheck, deve retornar HTTP 200.
+- `POST /api/auth/login` — login real no backend.
+- `POST /api/auth/register` — cadastro real no backend.
+- `GET /api/state` — carrega os dados persistidos no PostgreSQL.
+- `PUT /api/state` — salva o estado da aplicação no PostgreSQL, exigindo sessão autenticada após a inicialização.
+
+## Conta administrativa inicial
+
+- E-mail: `admin@tabula.com`
+- Senha: `Tabula@2026`
+
+Troque essa senha após o primeiro acesso em um ambiente real.
+
+## Teste local opcional
+
+Para testar localmente com PostgreSQL em container:
+
 ```bash
-curl http://localhost:8119/ping
+docker compose -f docker/docker-compose.local.yml up --build
 ```
 
-Docker mapping check:
-```bash
-curl http://localhost:8119/ping
+Acesse:
+
+```text
+http://localhost:8119
 ```
 
-# React + TypeScript + Vite
+## Observações importantes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- O front não salva mais os dados principais da aplicação no `localStorage`.
+- Os dados de jogos, eventos, partidas, participantes, ranking e usuários do painel são persistidos no PostgreSQL via backend.
+- O navegador guarda apenas o identificador/token de sessão para manter o usuário logado.
+- Não versionar `.env` real.

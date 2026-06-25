@@ -1,24 +1,34 @@
+import type { DatabaseState, User } from '../types';
+
+export const AUTH_TOKEN_KEY = 'tabula_auth_token';
+
 export interface PingResponse {
   status: string;
   service: string;
   timestamp: string;
 }
 
-export interface RegisterResponse {
+export interface AuthResponse {
   ok: boolean;
   message: string;
-  userId: number;
-  email: string;
-  name: string;
+  token: string;
+  user: User;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8119';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
+
+const getAuthToken = () => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY);
+};
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -28,16 +38,63 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`API request failed (${response.status}): ${message}`);
   }
 
-  return (await response.json()) as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export async function pingBackend(): Promise<PingResponse> {
   return requestJson<PingResponse>('/ping');
 }
 
-export async function registerUserBackend(name: string, email: string, password: string): Promise<RegisterResponse> {
-  return requestJson<RegisterResponse>('/auth/register', {
+export async function getServerState(): Promise<DatabaseState | null> {
+  const response = await fetch(`${API_BASE_URL}/state`, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const message = await response.text().catch(() => 'Request failed');
+    throw new Error(`API request failed (${response.status}): ${message}`);
+  }
+
+  return (await response.json()) as DatabaseState;
+}
+
+export async function saveServerState(state: DatabaseState): Promise<void> {
+  await requestJson<{ ok: boolean }>('/state', {
+    method: 'PUT',
+    body: JSON.stringify(state),
+  });
+}
+
+export async function loginBackend(email: string, password: string): Promise<AuthResponse> {
+  return requestJson<AuthResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function registerUserBackend(name: string, email: string, password: string): Promise<AuthResponse> {
+  return requestJson<AuthResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export async function resetPasswordBackend(email: string, newPassword: string): Promise<{ ok: boolean; message: string }> {
+  return requestJson<{ ok: boolean; message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, newPassword }),
+  });
+}
+
+export async function changePasswordBackend(
+  email: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: boolean; message: string }> {
+  return requestJson<{ ok: boolean; message: string }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, currentPassword, newPassword }),
   });
 }

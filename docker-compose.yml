@@ -1,10 +1,10 @@
 services:
   tabula:
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
     env_file:
-      - ../.env
+      - .env
     ports:
       - "127.0.0.1:8119:8080"
     restart: always
