@@ -17,6 +17,7 @@ import { Stats } from './pages/Stats';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
+import { ResendVerification } from './pages/ResendVerification';
 
 // Components
 import { Navbar } from './components/Navbar';
@@ -44,6 +45,7 @@ function App() {
                   <Route path="/login" element={<Login />} />
                   <Route path="/register" element={<Register />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/resend-verification" element={<ResendVerification />} />
                   <Route path="/events" element={<ProtectedRoute><Events /></ProtectedRoute>} />
                   <Route path="/players" element={<ProtectedRoute><Players /></ProtectedRoute>} />
                   <Route path="/players/:id" element={<ProtectedRoute><PlayerProfile /></ProtectedRoute>} />

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import type { User } from '../types';
 import { isStrongPassword } from '../auth/security';
-import { AUTH_TOKEN_KEY, changePasswordBackend, loginBackend, registerUserBackend, resetPasswordBackend } from '../services/api';
+import { AUTH_TOKEN_KEY, changePasswordBackend, loginBackend, registerUserBackend, resetPasswordBackend, resendVerificationBackend } from '../services/api';
 import { useDatabase } from './DatabaseContext';
 import { useToast } from './ToastContext';
 
@@ -13,6 +13,7 @@ interface AuthContextType {
   logout: () => void;
   resetPassword: (email: string, newPassword: string, confirmPassword: string) => Promise<{ ok: boolean; message: string }>;
   changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<{ ok: boolean; message: string }>;
+  resendVerification: (email: string) => Promise<{ ok: boolean; message: string }>;
   availableUsers: User[];
 }
 
@@ -75,8 +76,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       persistSession(userId, response.token, remember);
       showToast(`Bem-vindo, ${response.user.name.split(' ')[0]}!`, 'success');
       return { ok: true, message: response.message || 'Login realizado com sucesso.' };
-    } catch {
-      const message = 'Credenciais inválidas ou servidor indisponível.';
+    } catch (err) {
+      let message = 'Credenciais inválidas ou servidor indisponível.';
+      if (err instanceof Error) {
+        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
+        if (match) {
+          const body = match[2];
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.error) {
+              message = parsed.error;
+            }
+          } catch {
+            if (body && body.trim()) {
+              message = body;
+            }
+          }
+        }
+      }
       showToast(message, 'error');
       return { ok: false, message };
     }
@@ -110,12 +127,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const normalizedEmail = email.trim().toLowerCase();
     try {
       const response = await registerUserBackend(name.trim(), normalizedEmail, password);
-      const userId = mergeUserIntoState(response.user);
-      persistSession(userId, response.token, true);
-      showToast('Conta criada com sucesso no servidor.', 'success');
+      if (response.token && response.user) {
+        const userId = mergeUserIntoState(response.user);
+        persistSession(userId, response.token, true);
+        showToast('Conta criada com sucesso no servidor.', 'success');
+      } else {
+        showToast(response.message || 'Conta criada. Verifique seu e-mail para ativar sua conta.', 'info');
+      }
       return { ok: true, message: response.message || 'Conta criada com sucesso.' };
-    } catch {
-      const message = 'Não foi possível criar a conta. Verifique se o e-mail já está cadastrado.';
+    } catch (err) {
+      let message = 'Não foi possível criar a conta. Verifique se o e-mail já está cadastrado.';
+      if (err instanceof Error) {
+        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
+        if (match) {
+          const body = match[2];
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.error) {
+              message = parsed.error;
+            }
+          } catch {
+            if (body && body.trim()) {
+              message = body;
+            }
+          }
+        }
+      }
+      showToast(message, 'error');
+      return { ok: false, message };
+    }
+  };
+
+  const resendVerification = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      const message = 'Informe o e-mail.';
+      showToast(message, 'error');
+      return { ok: false, message };
+    }
+
+    try {
+      const response = await resendVerificationBackend(normalizedEmail);
+      showToast(response.message || 'E-mail de verificação reenviado.', 'success');
+      return { ok: true, message: response.message || 'E-mail reenviado com sucesso.' };
+    } catch (err) {
+      let message = 'Não foi possível reenviar o e-mail de verificação.';
+      if (err instanceof Error) {
+        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
+        if (match) {
+          const body = match[2];
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.error) {
+              message = parsed.error;
+            }
+          } catch {
+            if (body && body.trim()) {
+              message = body;
+            }
+          }
+        }
+      }
       showToast(message, 'error');
       return { ok: false, message };
     }
@@ -199,6 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     resetPassword,
     changePassword,
+    resendVerification,
     availableUsers: state.users
   };
 

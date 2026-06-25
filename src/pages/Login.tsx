@@ -35,6 +35,9 @@ export const Login: React.FC = () => {
           <Link to="/forgot-password">Esqueci a senha</Link>
           <Link to="/register">Criar conta</Link>
         </div>
+        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.9rem' }}>
+          <Link to="/resend-verification">Reenviar e-mail de verificação</Link>
+        </div>
       </div>
     </div>
   );

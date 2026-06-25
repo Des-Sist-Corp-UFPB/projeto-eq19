@@ -29,7 +29,7 @@ public class UserRepository {
 
     public Optional<UserAccount> findByEmail(String email) throws SQLException {
         String sql = """
-                SELECT id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role
+                SELECT id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role, email_verificado
                 FROM usuarios
                 WHERE lower(email) = lower(?)
                 """;
@@ -44,10 +44,14 @@ public class UserRepository {
     }
 
     public UserAccount createUser(String externalId, String name, String email, String passwordHash, String role) throws SQLException {
+        return createUser(externalId, name, email, passwordHash, role, false);
+    }
+
+    public UserAccount createUser(String externalId, String name, String email, String passwordHash, String role, boolean emailVerificado) throws SQLException {
         String sql = """
                 INSERT INTO usuarios (external_id, nome, email, senha_hash, role, email_verificado)
-                VALUES (?, ?, ?, ?, ?, TRUE)
-                RETURNING id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role
+                VALUES (?, ?, ?, ?, ?, ?)
+                RETURNING id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role, email_verificado
                 """;
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -56,6 +60,7 @@ public class UserRepository {
             statement.setString(3, email);
             statement.setString(4, passwordHash);
             statement.setString(5, role);
+            statement.setBoolean(6, emailVerificado);
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (resultSet.next()) return mapUser(resultSet);
@@ -63,6 +68,15 @@ public class UserRepository {
         }
 
         throw new SQLException("Failed to create user in database");
+    }
+
+    public void verifyEmail(long userId) throws SQLException {
+        String sql = "UPDATE usuarios SET email_verificado = TRUE WHERE id = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, userId);
+            statement.executeUpdate();
+        }
     }
 
 
@@ -99,7 +113,8 @@ public class UserRepository {
                 resultSet.getString("nome"),
                 resultSet.getString("email"),
                 resultSet.getString("senha_hash"),
-                resultSet.getString("role")
+                resultSet.getString("role"),
+                resultSet.getBoolean("email_verificado")
         );
     }
 }

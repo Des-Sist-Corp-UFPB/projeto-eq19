@@ -98,3 +98,11 @@ export async function changePasswordBackend(
     body: JSON.stringify({ email, currentPassword, newPassword }),
   });
 }
+
+export async function resendVerificationBackend(email: string): Promise<{ ok: boolean; message: string }> {
+  return requestJson<{ ok: boolean; message: string }>('/auth/resend-verification', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
