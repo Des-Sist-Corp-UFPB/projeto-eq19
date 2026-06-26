@@ -18,6 +18,7 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResendVerification } from './pages/ResendVerification';
+import { VerifyEmail } from './pages/VerifyEmail';
 
 // Components
 import { Navbar } from './components/Navbar';
@@ -46,6 +47,7 @@ function App() {
                   <Route path="/register" element={<Register />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
                   <Route path="/resend-verification" element={<ResendVerification />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/events" element={<ProtectedRoute><Events /></ProtectedRoute>} />
                   <Route path="/players" element={<ProtectedRoute><Players /></ProtectedRoute>} />
                   <Route path="/players/:id" element={<ProtectedRoute><PlayerProfile /></ProtectedRoute>} />

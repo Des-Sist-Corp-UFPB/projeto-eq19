@@ -5,6 +5,7 @@ import br.com.tabula.dto.LoginRequest;
 import br.com.tabula.dto.RegisterRequest;
 import br.com.tabula.dto.ResetPasswordRequest;
 import br.com.tabula.dto.ResendVerificationRequest;
+import br.com.tabula.dto.VerifyEmailCodeRequest;
 import br.com.tabula.model.UserAccount;
 import br.com.tabula.repository.UserRepository;
 import br.com.tabula.repository.VerificationTokenRepository;
@@ -17,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -26,6 +28,7 @@ import java.util.UUID;
 
 public class AuthController {
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private AuthController() {
     }
@@ -100,19 +103,19 @@ public class AuthController {
                 LOGGER.info("Registered user {} ({}) with id {}", name, email, account.getId());
 
                 // Generate secure random verification token (UUID)
-                String token = UUID.randomUUID().toString();
+                String code = generateVerificationCode();
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
-                tokenRepository.createToken(account.getId(), token, Instant.now().plus(24, ChronoUnit.HOURS));
+                // Delete previous verification codes first to guarantee only one exists at a time
+                tokenRepository.deleteTokensByUser(account.getId());
+                tokenRepository.createToken(account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES));
 
-                // Send email verification link
                 EmailService emailService = new EmailService();
-                String backendUrl = buildBackendUrl(ctx);
 
                 try {
-                    emailService.sendVerificationEmail(email, name, token, backendUrl);
+                    emailService.sendVerificationCode(email, name, code);
                     ctx.status(201).json(Map.of(
                             "ok", true,
-                            "message", "Conta criada com sucesso. Por favor, verifique seu e-mail para ativar sua conta."
+                            "message", "Conta criada com sucesso. Código de verificação enviado para seu e-mail."
                     ));
                 } catch (Exception ex) {
                     LOGGER.error("Failed to send verification email during registration for {}", email, ex);
@@ -131,47 +134,80 @@ public class AuthController {
             }
         });
 
-        io.javalin.http.Handler verifyEmailHandler = ctx -> {
-            String token = ctx.queryParam("token");
+        io.javalin.http.Handler legacyVerifyEmailHandler = ctx -> {
             String frontendUrl = System.getenv("FRONTEND_URL");
             if (frontendUrl == null || frontendUrl.isBlank()) {
                 frontendUrl = buildBackendUrl(ctx);
             }
+            ctx.status(400).html(renderErrorPage("Links de verificação não são mais suportados. Por favor, solicite um novo código de verificação.", frontendUrl));
+        };
+        app.get("/auth/verify-email", legacyVerifyEmailHandler);
+        app.get("/api/auth/verify-email", legacyVerifyEmailHandler);
 
-            if (token == null || token.isBlank()) {
-                ctx.status(400).html(renderErrorPage("O token de verificação está ausente.", frontendUrl));
-                return;
-            }
-
+        app.post("/auth/verify-email", ctx -> {
             try {
+                VerifyEmailCodeRequest request = ctx.bodyAsClass(VerifyEmailCodeRequest.class);
+                String email = normalizeEmail(request.getEmail());
+                String code = request.getCode() == null ? "" : request.getCode().trim();
+
+                if (email.isEmpty()) {
+                    ctx.status(400).json(Map.of("error", "O e-mail é obrigatório."));
+                    return;
+                }
+                if (code.isEmpty()) {
+                    ctx.status(400).json(Map.of("error", "O código de verificação é obrigatório."));
+                    return;
+                }
+                if (!code.matches("\\d{6}")) {
+                    ctx.status(400).json(Map.of("error", "O código de verificação deve conter exatamente 6 dígitos."));
+                    return;
+                }
+
+                UserRepository userRepository = new UserRepository(dataSource);
+                Optional<UserAccount> accountOpt = userRepository.findByEmail(email);
+                if (accountOpt.isEmpty()) {
+                    ctx.status(404).json(Map.of("error", "Nenhuma conta encontrada com este e-mail."));
+                    return;
+                }
+
+                UserAccount account = accountOpt.get();
+                if (account.isEmailVerificado()) {
+                    ctx.status(400).json(Map.of("error", "Este e-mail já está verificado."));
+                    return;
+                }
+
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
-                Optional<VerificationTokenRepository.TokenInfo> tokenInfoOpt = tokenRepository.findToken(token);
+                Optional<VerificationTokenRepository.TokenInfo> tokenInfoOpt = tokenRepository.findCodeForEmail(email, code);
 
                 if (tokenInfoOpt.isEmpty()) {
-                    ctx.status(400).html(renderErrorPage("Código de verificação inválido ou já utilizado.", frontendUrl));
+                    ctx.status(400).json(Map.of("error", "Código de verificação inválido ou incorreto."));
                     return;
                 }
 
                 VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();
                 if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {
-                    ctx.status(400).html(renderErrorPage("Este link de verificação expirou (limite de 24 horas).", frontendUrl));
+                    ctx.status(400).json(Map.of("error", "Este código de verificação expirou. Por favor, solicite um novo."));
                     return;
                 }
 
-                // Activate user
+                // Mark user as verified
                 userRepository.verifyEmail(tokenInfo.getUserId());
 
-                // Invalidate/delete token
-                tokenRepository.deleteToken(token);
+                // Invalidate/delete all verification codes for this user
+                tokenRepository.deleteTokensByUser(tokenInfo.getUserId());
 
-                ctx.html(renderSuccessPage(frontendUrl));
+                ctx.json(Map.of(
+                        "ok", true,
+                        "message", "E-mail verificado com sucesso."
+                ));
             } catch (SQLException ex) {
-                LOGGER.error("Database error during email verification", ex);
-                ctx.status(500).html(renderErrorPage("Erro interno no servidor ao verificar o e-mail.", frontendUrl));
+                LOGGER.error("Failed to verify email code", ex);
+                ctx.status(500).json(Map.of("error", "Erro interno no servidor ao verificar o e-mail."));
+            } catch (Exception ex) {
+                LOGGER.error("Invalid verify-email payload", ex);
+                ctx.status(400).json(Map.of("error", "Dados inválidos para verificação."));
             }
-        };
-        app.get("/auth/verify-email", verifyEmailHandler);
-        app.get("/api/auth/verify-email", verifyEmailHandler);
+        });
 
         app.post("/auth/resend-verification", ctx -> {
             try {
@@ -195,26 +231,25 @@ public class AuthController {
                     return;
                 }
 
-                // Generate new secure random token
-                String token = UUID.randomUUID().toString();
+                // Generate a new 6-digit code
+                String code = generateVerificationCode();
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
 
                 // Clean up previous tokens
                 tokenRepository.deleteTokensByUser(account.getId());
 
-                // Store new token
-                tokenRepository.createToken(account.getId(), token, Instant.now().plus(24, ChronoUnit.HOURS));
+                // Store new code with 15-minute expiration
+                tokenRepository.createToken(account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES));
 
-                // Send email verification link
+                // Send new code via email
                 EmailService emailService = new EmailService();
-                String backendUrl = buildBackendUrl(ctx);
 
                 try {
-                    emailService.sendVerificationEmail(account.getEmail(), account.getName(), token, backendUrl);
-                    ctx.json(Map.of("ok", true, "message", "E-mail de verificação reenviado com sucesso."));
+                    emailService.sendVerificationCode(account.getEmail(), account.getName(), code);
+                    ctx.json(Map.of("ok", true, "message", "Código de verificação reenviado com sucesso."));
                 } catch (Exception ex) {
-                    LOGGER.error("Failed to send verification email during resend for {}", email, ex);
-                    ctx.status(500).json(Map.of("error", "Falha ao enviar o e-mail de verificação. Por favor, tente novamente."));
+                    LOGGER.error("Failed to send verification code during resend for {}", email, ex);
+                    ctx.status(500).json(Map.of("error", "Falha ao enviar o código de verificação. Por favor, tente novamente."));
                 }
             } catch (Exception ex) {
                 LOGGER.error("Invalid resend verification payload", ex);
@@ -275,6 +310,11 @@ public class AuthController {
 
     private static String normalizeEmail(String email) {
         return email == null ? "" : email.trim().toLowerCase();
+    }
+
+    private static String generateVerificationCode() {
+        int code = 100000 + SECURE_RANDOM.nextInt(900000);
+        return String.valueOf(code);
     }
 
     private static Map<String, Object> toFrontendUser(UserAccount account) {

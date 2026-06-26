@@ -16,7 +16,7 @@ export const Register: React.FC = () => {
     setLoading(true);
     const result = await register(name, email, password, confirmPassword);
     setLoading(false);
-    if (result.ok) navigate('/');
+    if (result.ok) navigate('/verify-email', { state: { email } });
   };
 
   return (

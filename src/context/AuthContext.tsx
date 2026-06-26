@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import type { User } from '../types';
 import { isStrongPassword } from '../auth/security';
-import { AUTH_TOKEN_KEY, changePasswordBackend, loginBackend, registerUserBackend, resetPasswordBackend, resendVerificationBackend } from '../services/api';
+import { AUTH_TOKEN_KEY, changePasswordBackend, loginBackend, registerUserBackend, resetPasswordBackend, resendVerificationBackend, verifyEmailCode as verifyEmailCodeBackend } from '../services/api';
 import { useDatabase } from './DatabaseContext';
 import { useToast } from './ToastContext';
 
@@ -14,6 +14,7 @@ interface AuthContextType {
   resetPassword: (email: string, newPassword: string, confirmPassword: string) => Promise<{ ok: boolean; message: string }>;
   changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<{ ok: boolean; message: string }>;
   resendVerification: (email: string) => Promise<{ ok: boolean; message: string }>;
+  verifyEmailCode: (email: string, code: string) => Promise<{ ok: boolean; message: string }>;
   availableUsers: User[];
 }
 
@@ -263,6 +264,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const verifyEmailCode = async (email: string, code: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const cleanCode = code.trim();
+    if (!normalizedEmail || !cleanCode) {
+      const message = 'Informe o e-mail e o código de verificação.';
+      showToast(message, 'error');
+      return { ok: false, message };
+    }
+    if (!/^\d{6}$/.test(cleanCode)) {
+      const message = 'O código de verificação deve conter exatamente 6 dígitos.';
+      showToast(message, 'error');
+      return { ok: false, message };
+    }
+
+    try {
+      const response = await verifyEmailCodeBackend(normalizedEmail, cleanCode);
+      showToast(response.message || 'E-mail verificado com sucesso.', 'success');
+      return { ok: true, message: response.message || 'E-mail verificado com sucesso.' };
+    } catch (err) {
+      let message = 'Não foi possível verificar o e-mail.';
+      if (err instanceof Error) {
+        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
+        if (match) {
+          const body = match[2];
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.error) {
+              message = parsed.error;
+            }
+          } catch {
+            if (body && body.trim()) {
+              message = body;
+            }
+          }
+        }
+      }
+      showToast(message, 'error');
+      return { ok: false, message };
+    }
+  };
+
   const contextValue: AuthContextType = {
     currentUser,
     isAdmin,
@@ -272,6 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     resetPassword,
     changePassword,
     resendVerification,
+    verifyEmailCode,
     availableUsers: state.users
   };
 

@@ -18,11 +18,11 @@ export const ResendVerification: React.FC = () => {
     <div className="container" style={{ maxWidth: '520px', paddingTop: '40px' }}>
       <div className="card" style={cardStyle}>
         <h1 style={titleStyle}>Reenviar Verificação</h1>
-        <p style={subtitleStyle}>Insira seu e-mail cadastrado para receber um novo link de ativação.</p>
+        <p style={subtitleStyle}>Insira seu e-mail cadastrado para receber um novo código de verificação.</p>
         <form onSubmit={handleSubmit} style={formStyle}>
           <label className="form-label">E-mail</label>
           <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required />
-          <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? 'Enviando...' : 'Reenviar Link'}</button>
+          <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? 'Enviando...' : 'Reenviar Código'}</button>
         </form>
         <p style={linksStyle}><Link to="/login">Voltar para login</Link></p>
       </div>

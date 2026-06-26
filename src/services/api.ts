@@ -106,3 +106,10 @@ export async function resendVerificationBackend(email: string): Promise<{ ok: bo
   });
 }
 
+export async function verifyEmailCode(email: string, code: string): Promise<{ ok: boolean; message: string }> {
+  return requestJson<{ ok: boolean; message: string }>('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  });
+}
+
