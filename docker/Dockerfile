@@ -28,4 +28,7 @@ ENV BACKEND_PORT=8119
 
 EXPOSE 8080
 
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+  CMD curl -f http://localhost:8080/ping || exit 1
+
 CMD ["sh", "/app/start.sh"]
