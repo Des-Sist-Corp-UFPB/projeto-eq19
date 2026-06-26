@@ -6,5 +6,5 @@ services:
     env_file:
       - .env
     ports:
-      - "127.0.0.1:8119:8119"
+      - "127.0.0.1:8119:8080"
     restart: always

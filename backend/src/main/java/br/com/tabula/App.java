@@ -9,7 +9,6 @@ import io.javalin.Javalin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.javalin.http.staticfiles.Location;
 import java.util.Map;
 
 public class App {
@@ -30,8 +29,6 @@ public class App {
             Javalin app = Javalin.create(config -> {
                 config.http.defaultContentType = "application/json";
                 config.showJavalinBanner = false;
-                config.staticFiles.add("/public", Location.CLASSPATH);
-                config.spaRoot.addFile("/", "/public/index.html");
             });
 
             app.before(ctx -> {
