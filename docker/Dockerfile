@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN VITE_API_BASE_URL=/api npm run build
 
 FROM maven:3.9.9-eclipse-temurin-17 AS backend-build
 
@@ -12,23 +12,21 @@ WORKDIR /workspace
 COPY backend/pom.xml ./
 RUN mvn -B -q -DskipTests dependency:go-offline
 COPY backend/src ./src
+COPY --from=frontend-build /app/dist ./src/main/resources/public
 RUN mvn -B -q -DskipTests package
 
 FROM eclipse-temurin:17-jre-alpine
 
-RUN apk add --no-cache nginx curl
+RUN apk add --no-cache curl
 WORKDIR /app
 
 COPY --from=backend-build /workspace/target/backend-1.0.0-SNAPSHOT.jar /app/backend.jar
-COPY --from=frontend-build /app/dist /usr/share/nginx/html
-COPY docker/nginx.conf /etc/nginx/http.d/default.conf
-COPY docker/start.sh /app/start.sh
 
 ENV BACKEND_PORT=8119
 
-EXPOSE 8080
+EXPOSE 8119
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
-  CMD curl -f http://localhost:8080/ping || exit 1
+  CMD curl -f http://localhost:8119/ping || exit 1
 
-CMD ["sh", "/app/start.sh"]
+CMD ["java", "-jar", "/app/backend.jar"]

@@ -14,13 +14,15 @@ public class PingController {
     }
 
     public static void register(Javalin app) {
-        app.get("/ping", ctx -> {
+        io.javalin.http.Handler pingHandler = ctx -> {
             LOGGER.info("GET /ping requested");
             ctx.status(200).json(Map.of(
                     "status", "ok",
                     "service", "eq19",
                     "timestamp", Instant.now().toString()
             ));
-        });
+        };
+        app.get("/ping", pingHandler);
+        app.get("/api/ping", pingHandler);
     }
 }

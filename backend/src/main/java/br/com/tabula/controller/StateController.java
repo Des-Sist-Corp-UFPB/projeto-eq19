@@ -19,7 +19,7 @@ public class StateController {
     }
 
     public static void register(Javalin app, HikariDataSource dataSource) {
-        app.get("/state", ctx -> {
+        app.get("/api/state", ctx -> {
             try {
                 String payload = readState(dataSource);
                 if (payload == null || payload.isBlank()) {
@@ -33,7 +33,7 @@ public class StateController {
             }
         });
 
-        app.put("/state", ctx -> {
+        app.put("/api/state", ctx -> {
             String payload = ctx.body();
             if (payload == null || payload.isBlank()) {
                 ctx.status(400).json(Map.of("error", "Payload vazio."));

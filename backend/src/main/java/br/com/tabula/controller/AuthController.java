@@ -36,7 +36,7 @@ public class AuthController {
     public static void register(Javalin app, HikariDataSource dataSource) {
         UserRepository userRepository = new UserRepository(dataSource);
 
-        app.post("/auth/login", ctx -> {
+        app.post("/api/auth/login", ctx -> {
             try {
                 LoginRequest request = ctx.bodyAsClass(LoginRequest.class);
                 String email = normalizeEmail(request.getEmail());
@@ -74,7 +74,7 @@ public class AuthController {
             }
         });
 
-        app.post("/auth/register", ctx -> {
+        app.post("/api/auth/register", ctx -> {
             try {
                 RegisterRequest request = ctx.bodyAsClass(RegisterRequest.class);
                 String name = request.getName() == null ? "" : request.getName().trim();
@@ -144,7 +144,7 @@ public class AuthController {
         app.get("/auth/verify-email", legacyVerifyEmailHandler);
         app.get("/api/auth/verify-email", legacyVerifyEmailHandler);
 
-        app.post("/auth/verify-email", ctx -> {
+        app.post("/api/auth/verify-email", ctx -> {
             try {
                 VerifyEmailCodeRequest request = ctx.bodyAsClass(VerifyEmailCodeRequest.class);
                 String email = normalizeEmail(request.getEmail());
@@ -163,7 +163,6 @@ public class AuthController {
                     return;
                 }
 
-                UserRepository userRepository = new UserRepository(dataSource);
                 Optional<UserAccount> accountOpt = userRepository.findByEmail(email);
                 if (accountOpt.isEmpty()) {
                     ctx.status(404).json(Map.of("error", "Nenhuma conta encontrada com este e-mail."));
@@ -209,7 +208,7 @@ public class AuthController {
             }
         });
 
-        app.post("/auth/resend-verification", ctx -> {
+        app.post("/api/auth/resend-verification", ctx -> {
             try {
                 ResendVerificationRequest request = ctx.bodyAsClass(ResendVerificationRequest.class);
                 String email = normalizeEmail(request.getEmail());
@@ -257,7 +256,7 @@ public class AuthController {
             }
         });
 
-        app.post("/auth/reset-password", ctx -> {
+        app.post("/api/auth/reset-password", ctx -> {
             try {
                 ResetPasswordRequest request = ctx.bodyAsClass(ResetPasswordRequest.class);
                 String email = normalizeEmail(request.getEmail());
@@ -281,7 +280,7 @@ public class AuthController {
             }
         });
 
-        app.post("/auth/change-password", ctx -> {
+        app.post("/api/auth/change-password", ctx -> {
             try {
                 ChangePasswordRequest request = ctx.bodyAsClass(ChangePasswordRequest.class);
                 String email = normalizeEmail(request.getEmail());
