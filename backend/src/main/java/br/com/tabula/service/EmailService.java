@@ -79,7 +79,7 @@ public class EmailService {
             ));
             message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail.trim(), false));
             message.setSubject("Código de verificação - Tabula", StandardCharsets.UTF_8.name());
-            message.setContent(code, "text/html; charset=UTF-8");
+            message.setContent(buildVerificationHtml(recipientName, code), "text/html; charset=UTF-8");
 
             LOGGER.info("[EmailService] Enviando código de verificação para {} via SMTP {}:{}...", recipientEmail, smtpHost, smtpPort);
             Transport.send(message);
@@ -90,6 +90,52 @@ public class EmailService {
         }
     }
 
+    private static String buildVerificationHtml(String recipientName, String code) {
+        String safeName = escapeHtml(isBlank(recipientName) ? "jogador" : recipientName.trim());
+        String safeCode = escapeHtml(code);
+
+        return """
+                <!DOCTYPE html>
+                <html>
+                <body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,sans-serif;">
+                <table width="100%%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+                    <tr>
+                    <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;padding:36px;box-shadow:0 4px 18px rgba(79,70,229,0.18);">
+                        <tr>
+                            <td align="center">
+                            <div style="font-size:42px;margin-bottom:10px;">🎲</div>
+                            <h1 style="margin:0;color:#4f46e5;font-size:28px;">Tabula</h1>
+                            <h2 style="margin:24px 0 8px;color:#111827;font-size:22px;">Confirme seu e-mail</h2>
+
+                            <p style="font-size:16px;color:#374151;line-height:1.6;margin:0 0 18px;">
+                                Olá, <strong>%s</strong>! Use o código abaixo para ativar sua conta.
+                            </p>
+
+                            <div style="margin:28px auto;background:#eef2ff;border:2px dashed #4f46e5;border-radius:14px;width:280px;padding:22px 16px;">
+                                <span style="font-size:40px;letter-spacing:10px;color:#4f46e5;font-weight:800;">%s</span>
+                            </div>
+
+                            <p style="font-size:14px;color:#6b7280;margin:0;">
+                                Este código expira em <strong>15 minutos</strong>.
+                            </p>
+
+                            <hr style="margin:30px 0;border:none;border-top:1px solid #e5e7eb;">
+
+                            <p style="font-size:13px;color:#9ca3af;line-height:1.5;margin:0;">
+                                Se você não criou uma conta no Tabula, pode ignorar este e-mail.
+                            </p>
+                            </td>
+                        </tr>
+                        </table>
+                    </td>
+                    </tr>
+                </table>
+                </body>
+                </html>
+                """.formatted(safeName, safeCode);
+    }
+    
     private static String getEnvOrDefault(String key, String defaultValue) {
         String value = System.getenv(key);
         return isBlank(value) ? defaultValue : value;
