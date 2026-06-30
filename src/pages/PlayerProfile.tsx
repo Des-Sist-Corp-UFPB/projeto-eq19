@@ -28,9 +28,13 @@ export const PlayerProfile: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
 
+  // Modal states
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync avatarUrl when user changes
+  // Sync avatarUrl state when user changes
   useEffect(() => {
     if (user) {
       setAvatarUrl(user.avatarUrl || '');
@@ -49,6 +53,7 @@ export const PlayerProfile: React.FC = () => {
   // Calculate stats for this player
   const playerSessions = state.sessions.filter(s => s.participantIds.includes(user.id));
   const canEditAvatar = currentUser?.id === user.id || isAdmin;
+  const isSelf = currentUser?.id === user.id;
   const playerWins = state.sessions.filter(s => s.winnerId === user.id).length;
   const winRate = playerSessions.length > 0 ? Math.round((playerWins / playerSessions.length) * 100) : 0;
 
@@ -59,14 +64,26 @@ export const PlayerProfile: React.FC = () => {
 
   const handleAvatarClick = () => {
     if (canEditAvatar) {
-      fileInputRef.current?.click();
+      setIsAvatarModalOpen(true);
     }
   };
 
-  const handleAvatarSave = (e: React.FormEvent) => {
+  const handleAlterarFotoClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleRemoverFotoClick = () => {
+    editUser(user.id, { avatarUrl: "" });
+    setAvatarUrl("");
+    showToast('Foto de perfil removida com sucesso.', 'success');
+    setIsAvatarModalOpen(false);
+  };
+
+  const handleUrlSave = (e: React.FormEvent) => {
     e.preventDefault();
-    editUser(user.id, { avatarUrl: avatarUrl.trim() || undefined });
+    editUser(user.id, { avatarUrl: avatarUrl.trim() });
     showToast('Foto de perfil atualizada com sucesso.', 'success');
+    setIsAvatarModalOpen(false);
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,6 +98,12 @@ export const PlayerProfile: React.FC = () => {
       editUser(user.id, { avatarUrl: result });
       showToast('Foto de perfil atualizada com sucesso.', 'success');
       setUploading(false);
+      setIsAvatarModalOpen(false); // Close modal on success
+
+      // Reset file input value so selection of same file works next time
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     };
     reader.onerror = () => {
       showToast('Não foi possível ler a imagem.', 'error');
@@ -98,6 +121,7 @@ export const PlayerProfile: React.FC = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setIsPasswordModalOpen(false); // Only close modal on success
     }
   };
 
@@ -106,9 +130,6 @@ export const PlayerProfile: React.FC = () => {
     if (user.role === 'admin') return 'Organização / Admin';
     return 'Estudante / Membro';
   };
-
-  const showSettings = canEditAvatar;
-  const isSelf = currentUser?.id === user.id;
 
   return (
     <div className="container" style={{ paddingTop: '24px' }}>
@@ -123,7 +144,7 @@ export const PlayerProfile: React.FC = () => {
         <div style={profileHeaderBannerStyle}></div>
         <div style={profileHeaderContentStyle}>
           <div style={profileHeaderMainInfoStyle}>
-            {/* Avatar edit trigger wrapper */}
+            {/* Avatar container wrapper */}
             <div 
               className={`avatar-edit-container ${canEditAvatar ? 'editable' : ''}`}
               onClick={handleAvatarClick}
@@ -180,346 +201,266 @@ export const PlayerProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Grid Section */}
+      {/* Main Responsive Grid Layout */}
       <div className="profile-grid-responsive" style={{ marginTop: '24px' }}>
         
-        {showSettings ? (
-          <>
-            {/* Left Column: Settings and Security */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {/* Profile Photo Settings Card */}
-              <div className="card">
-                <h3 style={settingsSectionTitleStyle}>Configurações de Foto</h3>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div className="styled-upload-area" onClick={handleAvatarClick}>
-                    <div className="styled-upload-area-label">
-                      <UserAvatar user={{ ...user, avatarUrl }} size={72} style={{ border: '2px solid var(--color-border)', marginBottom: '8px' }} />
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text-main)' }}>
-                        {uploading ? 'Enviando imagem...' : 'Carregar nova foto'}
-                      </span>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-                        Clique para escolher um arquivo quadrado para melhor resultado.
-                      </span>
-                      <button type="button" className="styled-upload-area-btn" disabled={uploading}>
-                        Selecionar Arquivo
-                      </button>
-                    </div>
-                  </div>
+        {/* Left Column: Upcoming Meetings & Past Matches */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* Upcoming Events Card */}
+          <div className="card">
+            <h3 style={cardTitleStyle}>
+              <CalendarIcon size={18} style={{ color: 'var(--color-primary)' }} />
+              <span>Próximos Encontros</span>
+            </h3>
+            {upcomingEvents.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
+                Nenhum encontro agendado nos próximos dias.
+              </p>
+            ) : (
+              <div style={eventListStyle}>
+                {upcomingEvents.map(event => {
+                  const game = state.boardGames.find(g => g.id === event.gameId);
+                  const isWaiting = event.waitingListIds.includes(user.id);
 
-                  <form onSubmit={handleAvatarSave} style={formStyle}>
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: 600 }}>Ou cole a URL da Imagem</label>
-                      <input
-                        type="url"
-                        className="form-input"
-                        value={avatarUrl}
-                        onChange={(e) => setAvatarUrl(e.target.value)}
-                        placeholder="https://exemplo.com/sua-foto.png"
-                        style={{ width: '100%' }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                      <button className="btn btn-primary btn-sm" type="submit" disabled={uploading || avatarUrl === user.avatarUrl}>
-                        Salvar foto
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-
-              {/* Password Security Card */}
-              {isSelf && (
-                <div className="card">
-                  <h3 style={settingsSectionTitleStyle}>Segurança da Conta</h3>
-                  <form onSubmit={handlePasswordChange} style={formStyle}>
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: 600 }}>Senha Atual *</label>
-                      <input 
-                        className="form-input" 
-                        type="password" 
-                        value={currentPassword} 
-                        onChange={e => setCurrentPassword(e.target.value)} 
-                        placeholder="Digite sua senha atual" 
-                        required 
-                        style={{ width: '100%' }}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: 600 }}>Nova Senha *</label>
-                      <input 
-                        className="form-input" 
-                        type="password" 
-                        value={newPassword} 
-                        onChange={e => setNewPassword(e.target.value)} 
-                        placeholder="Nova senha (mínimo 6 caracteres)" 
-                        required 
-                        style={{ width: '100%' }}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: 600 }}>Confirmar Nova Senha *</label>
-                      <input 
-                        className="form-input" 
-                        type="password" 
-                        value={confirmPassword} 
-                        onChange={e => setConfirmPassword(e.target.value)} 
-                        placeholder="Confirme sua nova senha" 
-                        required 
-                        style={{ width: '100%' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                      <button className="btn btn-primary" type="submit" disabled={changingPassword}>
-                        {changingPassword ? 'Atualizando...' : 'Alterar Senha'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-            </div>
-
-            {/* Right Column: Public content */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {/* Upcoming Events Card */}
-              <div className="card">
-                <h3 style={cardTitleStyle}>
-                  <CalendarIcon size={18} style={{ color: 'var(--color-primary)' }} />
-                  <span>Próximos Encontros</span>
-                </h3>
-                {upcomingEvents.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
-                    Nenhum encontro agendado nos próximos dias.
-                  </p>
-                ) : (
-                  <div style={eventListStyle}>
-                    {upcomingEvents.map(event => {
-                      const game = state.boardGames.find(g => g.id === event.gameId);
-                      const isWaiting = event.waitingListIds.includes(user.id);
-
-                      return (
-                        <div key={event.id} className="profile-clickable-row" style={eventRowStyle} onClick={() => navigate('/events')}>
-                          <div>
-                            <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)' }}>{game?.name}</strong>
-                            <div style={eventMetaStyle}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '10px' }}>
-                                <MapPinIcon size={12} style={{ color: 'var(--color-primary)' }} />
-                                <span>{event.location}</span>
-                              </span>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <ClockIcon size={12} style={{ color: 'var(--color-primary)' }} />
-                                <span>{new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR')} às {event.time}</span>
-                              </span>
-                            </div>
-                          </div>
-                          {isWaiting ? (
-                            <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>FILA</span>
-                          ) : (
-                            <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>CONFIRMADO</span>
-                          )}
+                  return (
+                    <div key={event.id} className="profile-clickable-row" style={eventRowStyle} onClick={() => navigate('/events')}>
+                      <div>
+                        <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)' }}>{game?.name}</strong>
+                        <div style={eventMetaStyle}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '10px' }}>
+                            <MapPinIcon size={12} style={{ color: 'var(--color-primary)' }} />
+                            <span>{event.location}</span>
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <ClockIcon size={12} style={{ color: 'var(--color-primary)' }} />
+                            <span>{new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR')} às {event.time}</span>
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      </div>
+                      {isWaiting ? (
+                        <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>FILA</span>
+                      ) : (
+                        <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>CONFIRMADO</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+            )}
+          </div>
 
-              {/* Favorite Board Games Card */}
-              <div className="card">
-                <h3 style={cardTitleStyle}>
-                  <HeartIcon size={18} fill="var(--color-danger)" style={{ color: 'var(--color-danger)' }} />
-                  <span>Jogos Favoritos</span>
-                </h3>
-                {user.favoriteGames.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', padding: '8px 0' }}>Nenhum jogo favoritado ainda.</p>
-                ) : (
-                  <div style={favoritesGridStyle}>
-                    {user.favoriteGames.map(gid => {
-                      const game = state.boardGames.find(g => g.id === gid);
-                      if (!game) return null;
-                      return (
-                        <div key={gid} style={favoriteItemStyle} onClick={() => navigate(`/games?id=${gid}`)}>
-                          <img src={game.coverUrl} alt={game.name} style={favoriteImgStyle} className="profile-clickable-row" />
-                          <span style={favoriteNameStyle} title={game.name}>{game.name}</span>
+          {/* Past Sessions History Card */}
+          <div className="card">
+            <h3 style={cardTitleStyle}>
+              <TrophyIcon size={18} style={{ color: 'var(--color-accent)' }} />
+              <span>Histórico de Partidas Recentes</span>
+            </h3>
+            {playerSessions.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
+                Nenhuma partida registrada no arquivo histórico ainda.
+              </p>
+            ) : (
+              <div style={sessionsListStyle}>
+                {[...playerSessions]
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 5) // Display top 5 recent sessions
+                  .map(s => {
+                    const game = state.boardGames.find(g => g.id === s.gameId);
+                    const isWinner = s.winnerId === user.id;
+
+                    return (
+                      <div key={s.id} className="profile-clickable-row" style={sessionRowStyle} onClick={() => navigate(`/sessions/${s.id}`)}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={sessionDateStyle}>{new Date(s.date).toLocaleDateString('pt-BR')}</span>
+                          <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)', marginTop: '2px' }}>{game?.name}</strong>
+                          <span style={sessionDescStyle}>{s.location} • {s.duration} min</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        {isWinner ? (
+                          <span className="badge badge-accent" style={{ ...winnerLabelBadgeStyle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <CrownIcon size={10} />
+                            <span>VITÓRIA</span>
+                          </span>
+                        ) : (
+                          <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>JOGOU</span>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
+            )}
+          </div>
 
-              {/* Past Sessions History Card */}
-              <div className="card">
-                <h3 style={cardTitleStyle}>
-                  <TrophyIcon size={18} style={{ color: 'var(--color-accent)' }} />
-                  <span>Histórico de Partidas Recentes</span>
-                </h3>
-                {playerSessions.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
-                    Nenhuma partida registrada no arquivo histórico ainda.
-                  </p>
-                ) : (
-                  <div style={sessionsListStyle}>
-                    {[...playerSessions]
-                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                      .slice(0, 5) // Display top 5 recent sessions
-                      .map(s => {
-                        const game = state.boardGames.find(g => g.id === s.gameId);
-                        const isWinner = s.winnerId === user.id;
+        </div>
 
-                        return (
-                          <div key={s.id} className="profile-clickable-row" style={sessionRowStyle} onClick={() => navigate(`/sessions/${s.id}`)}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={sessionDateStyle}>{new Date(s.date).toLocaleDateString('pt-BR')}</span>
-                              <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)', marginTop: '2px' }}>{game?.name}</strong>
-                              <span style={sessionDescStyle}>{s.location} • {s.duration} min</span>
-                            </div>
-                            {isWinner ? (
-                              <span className="badge badge-accent" style={{ ...winnerLabelBadgeStyle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <CrownIcon size={10} />
-                                <span>VITÓRIA</span>
-                              </span>
-                            ) : (
-                              <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>JOGOU</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
+        {/* Right Column: Favorite Games & Compact Security Settings */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {/* Favorite Board Games Card */}
+          <div className="card">
+            <h3 style={cardTitleStyle}>
+              <HeartIcon size={18} fill="var(--color-danger)" style={{ color: 'var(--color-danger)' }} />
+              <span>Jogos Favoritos</span>
+            </h3>
+            {user.favoriteGames.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', padding: '8px 0' }}>Nenhum jogo favoritado ainda.</p>
+            ) : (
+              <div style={favoritesGridStyle}>
+                {user.favoriteGames.map(gid => {
+                  const game = state.boardGames.find(g => g.id === gid);
+                  if (!game) return null;
+                  return (
+                    <div key={gid} style={favoriteItemStyle} onClick={() => navigate(`/games?id=${gid}`)}>
+                      <img src={game.coverUrl} alt={game.name} style={favoriteImgStyle} className="profile-clickable-row" />
+                      <span style={favoriteNameStyle} title={game.name}>{game.name}</span>
+                    </div>
+                  );
+                })}
               </div>
+            )}
+          </div>
 
+          {/* Account Security Card (Only shown if viewing own profile) */}
+          {isSelf && (
+            <div className="card" style={{ padding: '24px' }}>
+              <h3 style={cardTitleStyle}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <span>Segurança da Conta</span>
+              </h3>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginBottom: '16px', lineHeight: '1.5' }}>
+                Atualize sua senha de acesso para manter sua conta protegida.
+              </p>
+              <button className="btn btn-outline" onClick={() => setIsPasswordModalOpen(true)} style={{ width: '100%' }}>
+                Alterar senha
+              </button>
             </div>
-          </>
-        ) : (
-          <>
-            {/* Public Profile View (Split two columns of activities) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {/* Upcoming Events Card */}
-              <div className="card">
-                <h3 style={cardTitleStyle}>
-                  <CalendarIcon size={18} style={{ color: 'var(--color-primary)' }} />
-                  <span>Próximos Encontros</span>
-                </h3>
-                {upcomingEvents.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
-                    Nenhum encontro agendado nos próximos dias.
-                  </p>
-                ) : (
-                  <div style={eventListStyle}>
-                    {upcomingEvents.map(event => {
-                      const game = state.boardGames.find(g => g.id === event.gameId);
-                      const isWaiting = event.waitingListIds.includes(user.id);
+          )}
 
-                      return (
-                        <div key={event.id} className="profile-clickable-row" style={eventRowStyle} onClick={() => navigate('/events')}>
-                          <div>
-                            <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)' }}>{game?.name}</strong>
-                            <div style={eventMetaStyle}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '10px' }}>
-                                <MapPinIcon size={12} style={{ color: 'var(--color-primary)' }} />
-                                <span>{event.location}</span>
-                              </span>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <ClockIcon size={12} style={{ color: 'var(--color-primary)' }} />
-                                <span>{new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR')} às {event.time}</span>
-                              </span>
-                            </div>
-                          </div>
-                          {isWaiting ? (
-                            <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>FILA</span>
-                          ) : (
-                            <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>CONFIRMADO</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+        </div>
 
-              {/* Favorite Games Card */}
-              <div className="card">
-                <h3 style={cardTitleStyle}>
-                  <HeartIcon size={18} fill="var(--color-danger)" style={{ color: 'var(--color-danger)' }} />
-                  <span>Jogos Favoritos</span>
-                </h3>
-                {user.favoriteGames.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', padding: '8px 0' }}>Nenhum jogo favoritado ainda.</p>
-                ) : (
-                  <div style={favoritesGridStyle}>
-                    {user.favoriteGames.map(gid => {
-                      const game = state.boardGames.find(g => g.id === gid);
-                      if (!game) return null;
-                      return (
-                        <div key={gid} style={favoriteItemStyle} onClick={() => navigate(`/games?id=${gid}`)}>
-                          <img src={game.coverUrl} alt={game.name} style={favoriteImgStyle} className="profile-clickable-row" />
-                          <span style={favoriteNameStyle} title={game.name}>{game.name}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-            </div>
-
-            {/* Public Column 2 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
-              {/* Past Sessions History Card */}
-              <div className="card">
-                <h3 style={cardTitleStyle}>
-                  <TrophyIcon size={18} style={{ color: 'var(--color-accent)' }} />
-                  <span>Histórico de Partidas Recentes</span>
-                </h3>
-                {playerSessions.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
-                    Nenhuma partida registrada no arquivo histórico ainda.
-                  </p>
-                ) : (
-                  <div style={sessionsListStyle}>
-                    {[...playerSessions]
-                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                      .map(s => {
-                        const game = state.boardGames.find(g => g.id === s.gameId);
-                        const isWinner = s.winnerId === user.id;
-
-                        return (
-                          <div key={s.id} className="profile-clickable-row" style={sessionRowStyle} onClick={() => navigate(`/sessions/${s.id}`)}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={sessionDateStyle}>{new Date(s.date).toLocaleDateString('pt-BR')}</span>
-                              <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)', marginTop: '2px' }}>{game?.name}</strong>
-                              <span style={sessionDescStyle}>{s.location} • {s.duration} min</span>
-                            </div>
-                            {isWinner ? (
-                              <span className="badge badge-accent" style={{ ...winnerLabelBadgeStyle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <CrownIcon size={10} />
-                                <span>VITÓRIA</span>
-                              </span>
-                            ) : (
-                              <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>JOGOU</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </>
-        )}
       </div>
+
+      {/* --- MODALS --- */}
+
+      {/* Avatar configuration Modal */}
+      {isAvatarModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsAvatarModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={avatarModalContentStyle}>
+            <h2 className="mb-md" style={{ fontFamily: 'var(--font-title)' }}>Foto de perfil</h2>
+            
+            <div style={avatarModalBodyStyle}>
+              {/* Current Avatar Preview */}
+              <UserAvatar user={{ ...user, avatarUrl }} size={96} style={{ border: '2px solid var(--color-border)', marginBottom: '12px' }} />
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', textAlign: 'center', marginBottom: '20px' }}>
+                Escolha uma nova imagem ou remova a foto atual.
+              </p>
+              
+              <div style={avatarModalActionsStyle}>
+                <button type="button" className="btn btn-primary" onClick={handleAlterarFotoClick} disabled={uploading} style={{ width: '100%' }}>
+                  {uploading ? 'Enviando...' : 'Alterar foto'}
+                </button>
+                
+                {user.avatarUrl && (
+                  <button type="button" className="btn btn-outline" onClick={handleRemoverFotoClick} style={removerFotoBtnStyle}>
+                    Remover foto
+                  </button>
+                )}
+
+                {/* Secondary Option: URL Upload */}
+                <form onSubmit={handleUrlSave} style={{ marginTop: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '16px', width: '100%' }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>Ou use uma URL de imagem:</label>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                    <input
+                      type="url"
+                      className="form-input"
+                      value={avatarUrl}
+                      onChange={(e) => setAvatarUrl(e.target.value)}
+                      placeholder="https://exemplo.com/foto.png"
+                      style={{ flex: 1, fontSize: '0.8rem' }}
+                    />
+                    <button type="submit" className="btn btn-primary btn-sm" style={{ whiteSpace: 'nowrap' }}>
+                      Salvar URL
+                    </button>
+                  </div>
+                </form>
+
+                <button type="button" className="btn btn-outline" onClick={() => setIsAvatarModalOpen(false)} style={{ width: '100%', marginTop: '12px' }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Password Edit Modal */}
+      {isPasswordModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsPasswordModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={passwordModalContentStyle}>
+            <h2 className="mb-md" style={{ fontFamily: 'var(--font-title)' }}>Alterar Senha</h2>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
+              Preencha os campos abaixo para atualizar sua senha de acesso.
+            </p>
+            
+            <form onSubmit={handlePasswordChange} style={formStyle}>
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Senha Atual *</label>
+                <input 
+                  className="form-input" 
+                  type="password" 
+                  value={currentPassword} 
+                  onChange={e => setCurrentPassword(e.target.value)} 
+                  placeholder="Digite sua senha atual" 
+                  required 
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Nova Senha *</label>
+                <input 
+                  className="form-input" 
+                  type="password" 
+                  value={newPassword} 
+                  onChange={e => setNewPassword(e.target.value)} 
+                  placeholder="Mínimo de 8 caracteres" 
+                  required 
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Confirmar Nova Senha *</label>
+                <input 
+                  className="form-input" 
+                  type="password" 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  placeholder="Confirme sua nova senha" 
+                  required 
+                  style={{ width: '100%' }}
+                />
+              </div>
+              
+              <div style={formActionsStyle}>
+                <button type="button" className="btn btn-outline" onClick={() => setIsPasswordModalOpen(false)}>
+                  Cancelar
+                </button>
+                <button className="btn btn-primary" type="submit" disabled={changingPassword}>
+                  {changingPassword ? 'Atualizando...' : 'Salvar nova senha'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
 
-// Style declarations for redesigned profile
+// Styling definitions
 const backButtonStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
@@ -662,16 +603,6 @@ const headerStatLabelStyle: React.CSSProperties = {
   letterSpacing: '0.04em',
 };
 
-const settingsSectionTitleStyle: React.CSSProperties = {
-  fontSize: '1.15rem',
-  fontWeight: 700,
-  fontFamily: 'var(--font-title)',
-  marginBottom: '20px',
-  borderBottom: '2px solid var(--color-primary-light)',
-  paddingBottom: '8px',
-  color: 'var(--color-text-main)',
-};
-
 const cardTitleStyle: React.CSSProperties = {
   fontSize: '1.1rem',
   fontWeight: 700,
@@ -779,6 +710,45 @@ const sessionDescStyle: React.CSSProperties = {
 const winnerLabelBadgeStyle: React.CSSProperties = {
   fontSize: '0.65rem',
   boxShadow: '0 2px 6px rgba(243, 182, 63, 0.2)',
+};
+
+// Modals styling
+const avatarModalContentStyle: React.CSSProperties = {
+  maxWidth: '400px',
+  width: '90%',
+  padding: '28px',
+};
+
+const avatarModalBodyStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+};
+
+const avatarModalActionsStyle: React.CSSProperties = {
+  width: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '10px',
+};
+
+const removerFotoBtnStyle: React.CSSProperties = {
+  width: '100%',
+  borderColor: 'var(--color-danger)',
+  color: 'var(--color-danger)',
+};
+
+const passwordModalContentStyle: React.CSSProperties = {
+  maxWidth: '450px',
+  width: '90%',
+  padding: '28px',
+};
+
+const formActionsStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: '12px',
+  marginTop: '20px',
 };
 
 export default PlayerProfile;
