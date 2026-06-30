@@ -484,3 +484,118 @@ a:hover {
 .print-only-header {
   display: none;
 }
+
+/* Player Profile Layout & Styling */
+.profile-grid-responsive {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 32px;
+}
+
+@media (max-width: 900px) {
+  .profile-grid-responsive {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+.profile-clickable-row {
+  cursor: pointer;
+  transition: border-color 0.25s, transform 0.2s, box-shadow 0.2s;
+}
+
+.profile-clickable-row:hover {
+  border-color: var(--color-primary) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.avatar-edit-container {
+  position: relative;
+  display: inline-block;
+  border-radius: 50%;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.avatar-edit-container.editable {
+  cursor: pointer;
+}
+
+.avatar-edit-container.editable:hover {
+  transform: scale(1.03);
+  box-shadow: var(--shadow-md);
+}
+
+.avatar-edit-container.editable:hover .avatar-edit-overlay {
+  opacity: 1;
+}
+
+.avatar-edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(43, 45, 66, 0.6);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  gap: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.styled-upload-area {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+  background-color: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.styled-upload-area:hover {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light);
+}
+
+.styled-upload-area-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  width: 100%;
+}
+
+.styled-upload-area-btn {
+  background-color: white;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
+  padding: 8px 16px;
+  border-radius: var(--radius-xs);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.styled-upload-area-btn:hover {
+  background-color: #faf9f6;
+}

@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDatabase } from '../context/DatabaseContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { UserAvatar } from '../components/UserAvatar';
 import { HeartIcon, CalendarIcon, TrophyIcon, MapPinIcon, ClockIcon, CrownIcon } from '../components/Icons';
+
+const CameraIcon: React.FC<{ size?: number; style?: React.CSSProperties }> = ({ size = 16, style }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={style}>
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+    <circle cx="12" cy="13" r="4" />
+  </svg>
+);
 
 export const PlayerProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,12 +21,22 @@ export const PlayerProfile: React.FC = () => {
   const navigate = useNavigate();
 
   const user = state.users.find(u => u.id === id);
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [uploading, setUploading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync avatarUrl when user changes
+  useEffect(() => {
+    if (user) {
+      setAvatarUrl(user.avatarUrl || '');
+    }
+  }, [user]);
+
   if (!user) {
     return (
       <div className="container text-center" style={{ padding: '64px' }}>
@@ -40,10 +57,16 @@ export const PlayerProfile: React.FC = () => {
     e => e.status === 'active' && (e.participantIds.includes(user.id) || e.waitingListIds.includes(user.id))
   );
 
+  const handleAvatarClick = () => {
+    if (canEditAvatar) {
+      fileInputRef.current?.click();
+    }
+  };
+
   const handleAvatarSave = (e: React.FormEvent) => {
     e.preventDefault();
     editUser(user.id, { avatarUrl: avatarUrl.trim() || undefined });
-    showToast('Foto de perfil atualizada.', 'success');
+    showToast('Foto de perfil atualizada com sucesso.', 'success');
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,7 +79,7 @@ export const PlayerProfile: React.FC = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       setAvatarUrl(result);
       editUser(user.id, { avatarUrl: result });
-      showToast('Foto enviada com sucesso.', 'success');
+      showToast('Foto de perfil atualizada com sucesso.', 'success');
       setUploading(false);
     };
     reader.onerror = () => {
@@ -78,6 +101,15 @@ export const PlayerProfile: React.FC = () => {
     }
   };
 
+  // Helper to determine role label
+  const getRoleLabel = () => {
+    if (user.role === 'admin') return 'Organização / Admin';
+    return 'Estudante / Membro';
+  };
+
+  const showSettings = canEditAvatar;
+  const isSelf = currentUser?.id === user.id;
+
   return (
     <div className="container" style={{ paddingTop: '24px' }}>
       
@@ -86,199 +118,408 @@ export const PlayerProfile: React.FC = () => {
         ← Voltar à Lista de Jogadores
       </button>
 
-      {/* Grid Layout */}
-      <div style={profileGridStyle}>
-        
-        {/* Left Side: Profile Summary & Stats */}
-        <div style={leftColStyle}>
-          
-          <div className="card" style={profileCardStyle}>
-            {/* Header info */}
-            <UserAvatar user={user} size={100} style={avatarImageStyle} />
-            <h1 style={playerNameStyle}>{user.name}</h1>
-            <span className="badge badge-primary">{user.course}</span>
-            {user.role === 'admin' && (
-              <span className="badge badge-secondary" style={{ marginTop: '6px' }}>ORGANIZAÇÃO / ADMIN</span>
-            )}
-            
-            <p style={bioTextStyle}>"{user.bio}"</p>
-            <span style={joinedDateStyle}>Membro desde: {new Date(user.joinedAt).toLocaleDateString('pt-BR')}</span>
-
-            {canEditAvatar && (
-              <form onSubmit={handleAvatarSave} style={avatarFormStyle}>
-                <label style={avatarLabelStyle}>Enviar foto do usuário</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="form-input"
-                  onChange={handleAvatarUpload}
-                  style={avatarInputStyle}
-                />
-                <input
-                  type="url"
-                  className="form-input"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="Ou cole uma URL de imagem"
-                  style={avatarInputStyle}
-                />
-                <button className="btn btn-primary btn-sm" type="submit" disabled={uploading}>
-                  {uploading ? 'Enviando...' : 'Salvar foto'}
-                </button>
-              </form>
-            )}
-          </div>
-
-          {currentUser?.id === user.id && (
-            <div className="card" style={{ marginTop: '24px', width: '100%' }}>
-              <h3 style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>Alterar senha</h3>
-              <form onSubmit={handlePasswordChange} style={avatarFormStyle}>
-                <input className="form-input" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="Senha atual" required />
-                <input className="form-input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Nova senha" required />
-                <input className="form-input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirmar nova senha" required />
-                <button className="btn btn-primary btn-sm" type="submit" disabled={changingPassword}>{changingPassword ? 'Salvando...' : 'Alterar senha'}</button>
-              </form>
+      {/* Modern Profile Header Card */}
+      <div className="card" style={profileHeaderCardStyle}>
+        <div style={profileHeaderBannerStyle}></div>
+        <div style={profileHeaderContentStyle}>
+          <div style={profileHeaderMainInfoStyle}>
+            {/* Avatar edit trigger wrapper */}
+            <div 
+              className={`avatar-edit-container ${canEditAvatar ? 'editable' : ''}`}
+              onClick={handleAvatarClick}
+              style={profileAvatarContainerStyle}
+            >
+              <UserAvatar user={user} size={110} style={profileAvatarStyle} />
+              {canEditAvatar && (
+                <div className="avatar-edit-overlay">
+                  <CameraIcon size={18} />
+                  <span>Alterar</span>
+                </div>
+              )}
+              {/* Hidden file input */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleAvatarUpload}
+              />
             </div>
-          )}
 
-          {/* Quick numbers */}
-          <div style={statsBlockGridStyle}>
-            <div className="card" style={statCardStyle}>
-              <span style={statNumberStyle}>{playerSessions.length}</span>
-              <span style={statLabelStyle}>Partidas Jogadas</span>
-            </div>
-            <div className="card" style={statCardStyle}>
-              <span style={statNumberStyle}>{playerWins}</span>
-              <span style={statLabelStyle}>Vitórias Gravadas</span>
-            </div>
-            <div className="card" style={{ ...statCardStyle, backgroundColor: 'var(--color-secondary-light)' }}>
-              <span style={{ ...statNumberStyle, color: 'var(--color-secondary)' }}>{winRate}%</span>
-              <span style={{ ...statLabelStyle, color: 'var(--color-secondary-hover)' }}>Taxa de Vitória</span>
-            </div>
-          </div>
-
-          {/* Favorite Board Games */}
-          <div className="card" style={{ marginTop: '24px' }}>
-            <h3 style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <HeartIcon size={16} fill="var(--color-danger)" style={{ color: 'var(--color-danger)' }} />
-              <span>Jogos Favoritos</span>
-            </h3>
-            {user.favoriteGames.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Nenhum jogo favoritado ainda.</p>
-            ) : (
-              <div style={favoritesGridStyle}>
-                {user.favoriteGames.map(gid => {
-                  const game = state.boardGames.find(g => g.id === gid);
-                  if (!game) return null;
-                  return (
-                    <div key={gid} style={favoriteItemStyle} onClick={() => navigate(`/games?id=${gid}`)}>
-                      <img src={game.coverUrl} alt={game.name} style={favoriteImgStyle} />
-                      <span style={favoriteNameStyle}>{game.name}</span>
-                    </div>
-                  );
-                })}
+            <div style={profileTextDetailsStyle}>
+              <div style={nameAndBadgeRowStyle}>
+                <h1 style={profileNameStyle}>{user.name}</h1>
+                <span className={`badge ${user.role === 'admin' ? 'badge-secondary' : 'badge-primary'}`} style={badgeRoleStyle}>
+                  {getRoleLabel()}
+                </span>
               </div>
-            )}
+              <p style={profileCourseStyle}>{user.course}</p>
+              <p style={profileBioStyle}>"{user.bio || 'Sem bio informada.'}"</p>
+              <span style={profileJoinedStyle}>
+                <CalendarIcon size={14} style={{ marginRight: '6px', color: 'var(--color-primary)' }} />
+                Membro desde: {new Date(user.joinedAt).toLocaleDateString('pt-BR')}
+              </span>
+            </div>
           </div>
 
+          {/* Stats Bar */}
+          <div style={headerStatsGridStyle}>
+            <div style={headerStatItemStyle}>
+              <span style={headerStatValueStyle}>{playerSessions.length}</span>
+              <span style={headerStatLabelStyle}>Partidas Jogadas</span>
+            </div>
+            <div style={headerStatItemStyle}>
+              <span style={headerStatValueStyle}>{playerWins}</span>
+              <span style={headerStatLabelStyle}>Vitórias</span>
+            </div>
+            <div style={{ ...headerStatItemStyle, borderRight: 'none', backgroundColor: 'var(--color-secondary-light)' }}>
+              <span style={{ ...headerStatValueStyle, color: 'var(--color-secondary)' }}>{winRate}%</span>
+              <span style={{ ...headerStatLabelStyle, color: 'var(--color-secondary-hover)' }}>Taxa de Vitória</span>
+            </div>
+          </div>
         </div>
-
-        {/* Right Side: History of sessions & Upcoming Events */}
-        <div style={rightColStyle}>
-          
-          {/* Upcoming scheduled games */}
-          <div className="card" style={{ marginBottom: '24px' }}>
-            <h3 style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <CalendarIcon size={16} style={{ color: 'var(--color-primary)' }} />
-              <span>Próximos Encontros</span>
-            </h3>
-            {upcomingEvents.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                Nenhum encontro agendado nos próximos dias.
-              </p>
-            ) : (
-              <div style={eventListStyle}>
-                {upcomingEvents.map(event => {
-                  const game = state.boardGames.find(g => g.id === event.gameId);
-                  const isWaiting = event.waitingListIds.includes(user.id);
-
-                  return (
-                    <div key={event.id} style={eventRowStyle} onClick={() => navigate('/events')}>
-                      <div>
-                        <strong style={{ fontSize: '0.9rem' }}>{game?.name}</strong>
-                        <div style={{ ...eventMetaStyle, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                            <MapPinIcon size={12} style={{ color: 'var(--color-primary)' }} />
-                            <span>{event.location}</span>
-                          </span>
-                          <span>•</span>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                            <ClockIcon size={12} style={{ color: 'var(--color-primary)' }} />
-                            <span>{new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR')} às {event.time}</span>
-                          </span>
-                        </div>
-                      </div>
-                      {isWaiting ? (
-                        <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>FILA</span>
-                      ) : (
-                        <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>CONFIRMADO</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Past sessions history */}
-          <div className="card">
-            <h3 style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <TrophyIcon size={16} style={{ color: 'var(--color-accent)' }} />
-              <span>Histórico de Partidas Recentes</span>
-            </h3>
-            {playerSessions.length === 0 ? (
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                Nenhuma partida registrada no arquivo histórico ainda.
-              </p>
-            ) : (
-              <div style={sessionsListStyle}>
-                {[...playerSessions]
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                  .map(s => {
-                    const game = state.boardGames.find(g => g.id === s.gameId);
-                    const isWinner = s.winnerId === user.id;
-
-                    return (
-                      <div key={s.id} style={sessionRowStyle} onClick={() => navigate(`/sessions/${s.id}`)}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={sessionDateStyle}>{new Date(s.date).toLocaleDateString('pt-BR')}</span>
-                          <strong style={{ fontSize: '0.95rem' }}>{game?.name}</strong>
-                          <span style={sessionDescStyle}>{s.location} • {s.duration} min</span>
-                        </div>
-                        {isWinner ? (
-                          <span className="badge badge-accent" style={{ ...winnerLabelBadgeStyle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            <CrownIcon size={10} />
-                            <span>VITÓRIA</span>
-                          </span>
-                        ) : (
-                          <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>JOGOU</span>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-
-        </div>
-
       </div>
 
+      {/* Main Grid Section */}
+      <div className="profile-grid-responsive" style={{ marginTop: '24px' }}>
+        
+        {showSettings ? (
+          <>
+            {/* Left Column: Settings and Security */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Profile Photo Settings Card */}
+              <div className="card">
+                <h3 style={settingsSectionTitleStyle}>Configurações de Foto</h3>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="styled-upload-area" onClick={handleAvatarClick}>
+                    <div className="styled-upload-area-label">
+                      <UserAvatar user={{ ...user, avatarUrl }} size={72} style={{ border: '2px solid var(--color-border)', marginBottom: '8px' }} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text-main)' }}>
+                        {uploading ? 'Enviando imagem...' : 'Carregar nova foto'}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                        Clique para escolher um arquivo quadrado para melhor resultado.
+                      </span>
+                      <button type="button" className="styled-upload-area-btn" disabled={uploading}>
+                        Selecionar Arquivo
+                      </button>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleAvatarSave} style={formStyle}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 600 }}>Ou cole a URL da Imagem</label>
+                      <input
+                        type="url"
+                        className="form-input"
+                        value={avatarUrl}
+                        onChange={(e) => setAvatarUrl(e.target.value)}
+                        placeholder="https://exemplo.com/sua-foto.png"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                      <button className="btn btn-primary btn-sm" type="submit" disabled={uploading || avatarUrl === user.avatarUrl}>
+                        Salvar foto
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* Password Security Card */}
+              {isSelf && (
+                <div className="card">
+                  <h3 style={settingsSectionTitleStyle}>Segurança da Conta</h3>
+                  <form onSubmit={handlePasswordChange} style={formStyle}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 600 }}>Senha Atual *</label>
+                      <input 
+                        className="form-input" 
+                        type="password" 
+                        value={currentPassword} 
+                        onChange={e => setCurrentPassword(e.target.value)} 
+                        placeholder="Digite sua senha atual" 
+                        required 
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 600 }}>Nova Senha *</label>
+                      <input 
+                        className="form-input" 
+                        type="password" 
+                        value={newPassword} 
+                        onChange={e => setNewPassword(e.target.value)} 
+                        placeholder="Nova senha (mínimo 6 caracteres)" 
+                        required 
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 600 }}>Confirmar Nova Senha *</label>
+                      <input 
+                        className="form-input" 
+                        type="password" 
+                        value={confirmPassword} 
+                        onChange={e => setConfirmPassword(e.target.value)} 
+                        placeholder="Confirme sua nova senha" 
+                        required 
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                      <button className="btn btn-primary" type="submit" disabled={changingPassword}>
+                        {changingPassword ? 'Atualizando...' : 'Alterar Senha'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Public content */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Upcoming Events Card */}
+              <div className="card">
+                <h3 style={cardTitleStyle}>
+                  <CalendarIcon size={18} style={{ color: 'var(--color-primary)' }} />
+                  <span>Próximos Encontros</span>
+                </h3>
+                {upcomingEvents.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
+                    Nenhum encontro agendado nos próximos dias.
+                  </p>
+                ) : (
+                  <div style={eventListStyle}>
+                    {upcomingEvents.map(event => {
+                      const game = state.boardGames.find(g => g.id === event.gameId);
+                      const isWaiting = event.waitingListIds.includes(user.id);
+
+                      return (
+                        <div key={event.id} className="profile-clickable-row" style={eventRowStyle} onClick={() => navigate('/events')}>
+                          <div>
+                            <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)' }}>{game?.name}</strong>
+                            <div style={eventMetaStyle}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '10px' }}>
+                                <MapPinIcon size={12} style={{ color: 'var(--color-primary)' }} />
+                                <span>{event.location}</span>
+                              </span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <ClockIcon size={12} style={{ color: 'var(--color-primary)' }} />
+                                <span>{new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR')} às {event.time}</span>
+                              </span>
+                            </div>
+                          </div>
+                          {isWaiting ? (
+                            <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>FILA</span>
+                          ) : (
+                            <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>CONFIRMADO</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Favorite Board Games Card */}
+              <div className="card">
+                <h3 style={cardTitleStyle}>
+                  <HeartIcon size={18} fill="var(--color-danger)" style={{ color: 'var(--color-danger)' }} />
+                  <span>Jogos Favoritos</span>
+                </h3>
+                {user.favoriteGames.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', padding: '8px 0' }}>Nenhum jogo favoritado ainda.</p>
+                ) : (
+                  <div style={favoritesGridStyle}>
+                    {user.favoriteGames.map(gid => {
+                      const game = state.boardGames.find(g => g.id === gid);
+                      if (!game) return null;
+                      return (
+                        <div key={gid} style={favoriteItemStyle} onClick={() => navigate(`/games?id=${gid}`)}>
+                          <img src={game.coverUrl} alt={game.name} style={favoriteImgStyle} className="profile-clickable-row" />
+                          <span style={favoriteNameStyle} title={game.name}>{game.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Past Sessions History Card */}
+              <div className="card">
+                <h3 style={cardTitleStyle}>
+                  <TrophyIcon size={18} style={{ color: 'var(--color-accent)' }} />
+                  <span>Histórico de Partidas Recentes</span>
+                </h3>
+                {playerSessions.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
+                    Nenhuma partida registrada no arquivo histórico ainda.
+                  </p>
+                ) : (
+                  <div style={sessionsListStyle}>
+                    {[...playerSessions]
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .slice(0, 5) // Display top 5 recent sessions
+                      .map(s => {
+                        const game = state.boardGames.find(g => g.id === s.gameId);
+                        const isWinner = s.winnerId === user.id;
+
+                        return (
+                          <div key={s.id} className="profile-clickable-row" style={sessionRowStyle} onClick={() => navigate(`/sessions/${s.id}`)}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={sessionDateStyle}>{new Date(s.date).toLocaleDateString('pt-BR')}</span>
+                              <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)', marginTop: '2px' }}>{game?.name}</strong>
+                              <span style={sessionDescStyle}>{s.location} • {s.duration} min</span>
+                            </div>
+                            {isWinner ? (
+                              <span className="badge badge-accent" style={{ ...winnerLabelBadgeStyle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <CrownIcon size={10} />
+                                <span>VITÓRIA</span>
+                              </span>
+                            ) : (
+                              <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>JOGOU</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Public Profile View (Split two columns of activities) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Upcoming Events Card */}
+              <div className="card">
+                <h3 style={cardTitleStyle}>
+                  <CalendarIcon size={18} style={{ color: 'var(--color-primary)' }} />
+                  <span>Próximos Encontros</span>
+                </h3>
+                {upcomingEvents.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
+                    Nenhum encontro agendado nos próximos dias.
+                  </p>
+                ) : (
+                  <div style={eventListStyle}>
+                    {upcomingEvents.map(event => {
+                      const game = state.boardGames.find(g => g.id === event.gameId);
+                      const isWaiting = event.waitingListIds.includes(user.id);
+
+                      return (
+                        <div key={event.id} className="profile-clickable-row" style={eventRowStyle} onClick={() => navigate('/events')}>
+                          <div>
+                            <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)' }}>{game?.name}</strong>
+                            <div style={eventMetaStyle}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '10px' }}>
+                                <MapPinIcon size={12} style={{ color: 'var(--color-primary)' }} />
+                                <span>{event.location}</span>
+                              </span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <ClockIcon size={12} style={{ color: 'var(--color-primary)' }} />
+                                <span>{new Date(event.date + 'T' + event.time).toLocaleDateString('pt-BR')} às {event.time}</span>
+                              </span>
+                            </div>
+                          </div>
+                          {isWaiting ? (
+                            <span className="badge badge-danger" style={{ fontSize: '0.65rem' }}>FILA</span>
+                          ) : (
+                            <span className="badge badge-success" style={{ fontSize: '0.65rem' }}>CONFIRMADO</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Favorite Games Card */}
+              <div className="card">
+                <h3 style={cardTitleStyle}>
+                  <HeartIcon size={18} fill="var(--color-danger)" style={{ color: 'var(--color-danger)' }} />
+                  <span>Jogos Favoritos</span>
+                </h3>
+                {user.favoriteGames.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', padding: '8px 0' }}>Nenhum jogo favoritado ainda.</p>
+                ) : (
+                  <div style={favoritesGridStyle}>
+                    {user.favoriteGames.map(gid => {
+                      const game = state.boardGames.find(g => g.id === gid);
+                      if (!game) return null;
+                      return (
+                        <div key={gid} style={favoriteItemStyle} onClick={() => navigate(`/games?id=${gid}`)}>
+                          <img src={game.coverUrl} alt={game.name} style={favoriteImgStyle} className="profile-clickable-row" />
+                          <span style={favoriteNameStyle} title={game.name}>{game.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Public Column 2 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Past Sessions History Card */}
+              <div className="card">
+                <h3 style={cardTitleStyle}>
+                  <TrophyIcon size={18} style={{ color: 'var(--color-accent)' }} />
+                  <span>Histórico de Partidas Recentes</span>
+                </h3>
+                {playerSessions.length === 0 ? (
+                  <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '8px 0' }}>
+                    Nenhuma partida registrada no arquivo histórico ainda.
+                  </p>
+                ) : (
+                  <div style={sessionsListStyle}>
+                    {[...playerSessions]
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .map(s => {
+                        const game = state.boardGames.find(g => g.id === s.gameId);
+                        const isWinner = s.winnerId === user.id;
+
+                        return (
+                          <div key={s.id} className="profile-clickable-row" style={sessionRowStyle} onClick={() => navigate(`/sessions/${s.id}`)}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={sessionDateStyle}>{new Date(s.date).toLocaleDateString('pt-BR')}</span>
+                              <strong style={{ fontSize: '0.92rem', color: 'var(--color-text-main)', marginTop: '2px' }}>{game?.name}</strong>
+                              <span style={sessionDescStyle}>{s.location} • {s.duration} min</span>
+                            </div>
+                            {isWinner ? (
+                              <span className="badge badge-accent" style={{ ...winnerLabelBadgeStyle, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <CrownIcon size={10} />
+                                <span>VITÓRIA</span>
+                              </span>
+                            ) : (
+                              <span className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>JOGOU</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };
 
-// Styling for player profile
+// Style declarations for redesigned profile
 const backButtonStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
@@ -289,118 +530,168 @@ const backButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   padding: '6px 0',
   marginBottom: '20px',
-};
-
-const profileGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '0.9fr 1.1fr',
-  gap: '32px',
-};
-
-const leftColStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-const rightColStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-const profileCardStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
+  display: 'inline-flex',
   alignItems: 'center',
-  textAlign: 'center',
-  padding: '32px 24px',
+  gap: '4px',
 };
 
-const avatarImageStyle: React.CSSProperties = {
-  width: '100px',
-  height: '100px',
-  border: '3px solid var(--color-border)',
-  boxShadow: 'var(--shadow-sm)',
-  marginBottom: '16px',
-};
-
-const avatarFormStyle: React.CSSProperties = {
-  width: '100%',
+const profileHeaderCardStyle: React.CSSProperties = {
+  position: 'relative',
+  overflow: 'hidden',
+  padding: '0',
   display: 'flex',
   flexDirection: 'column',
-  gap: '8px',
-  marginTop: '16px',
-};
-
-const avatarLabelStyle: React.CSSProperties = {
-  fontSize: '0.78rem',
-  fontWeight: 600,
-  color: 'var(--color-text-muted)',
-};
-
-const avatarInputStyle: React.CSSProperties = {
   width: '100%',
 };
 
-const playerNameStyle: React.CSSProperties = {
+const profileHeaderBannerStyle: React.CSSProperties = {
+  height: '120px',
+  background: 'linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-secondary-light) 100%)',
+  borderBottom: '1px solid var(--color-border)',
+};
+
+const profileHeaderContentStyle: React.CSSProperties = {
+  padding: '24px 32px 32px 32px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '24px',
+};
+
+const profileHeaderMainInfoStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '24px',
+  alignItems: 'flex-start',
+  flexWrap: 'wrap',
+};
+
+const profileAvatarContainerStyle: React.CSSProperties = {
+  marginTop: '-72px',
+  border: '4px solid white',
+  boxShadow: 'var(--shadow-md)',
+  zIndex: 2,
+};
+
+const profileAvatarStyle: React.CSSProperties = {
+  display: 'block',
+  borderRadius: '50%',
+};
+
+const profileTextDetailsStyle: React.CSSProperties = {
+  flex: '1',
+  minWidth: '250px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '6px',
+};
+
+const nameAndBadgeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  flexWrap: 'wrap',
+};
+
+const profileNameStyle: React.CSSProperties = {
   fontSize: '1.8rem',
   fontWeight: 800,
   color: 'var(--color-text-main)',
-  marginBottom: '6px',
+  lineHeight: 1.2,
 };
 
-const bioTextStyle: React.CSSProperties = {
+const badgeRoleStyle: React.CSSProperties = {
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  letterSpacing: '0.05em',
+  padding: '4px 8px',
+};
+
+const profileCourseStyle: React.CSSProperties = {
+  fontSize: '0.95rem',
+  fontWeight: 600,
+  color: 'var(--color-primary)',
+};
+
+const profileBioStyle: React.CSSProperties = {
   fontSize: '0.9rem',
   color: 'var(--color-text-muted)',
   fontStyle: 'italic',
   lineHeight: '1.5',
-  margin: '16px 0',
+  margin: '8px 0 4px 0',
 };
 
-const joinedDateStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
+const profileJoinedStyle: React.CSSProperties = {
+  fontSize: '0.78rem',
   color: 'var(--color-text-light)',
   fontWeight: 500,
+  display: 'inline-flex',
+  alignItems: 'center',
 };
 
-const statsBlockGridStyle: React.CSSProperties = {
+const headerStatsGridStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(3, 1fr)',
-  gap: '12px',
-  marginTop: '16px',
+  border: '1px solid var(--color-border)',
+  borderRadius: '12px',
+  overflow: 'hidden',
+  backgroundColor: '#FAF9F6',
 };
 
-const statCardStyle: React.CSSProperties = {
+const headerStatItemStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  padding: '12px',
+  padding: '16px 12px',
   textAlign: 'center',
+  borderRight: '1px solid var(--color-border)',
 };
 
-const statNumberStyle: React.CSSProperties = {
-  fontSize: '1.4rem',
+const headerStatValueStyle: React.CSSProperties = {
+  fontSize: '1.5rem',
   fontWeight: 800,
   color: 'var(--color-text-main)',
   fontFamily: 'var(--font-title)',
+  lineHeight: '1',
 };
 
-const statLabelStyle: React.CSSProperties = {
-  fontSize: '0.7rem',
+const headerStatLabelStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
   color: 'var(--color-text-muted)',
   fontWeight: 600,
-  marginTop: '4px',
+  marginTop: '6px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
 };
 
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '1.05rem',
+const settingsSectionTitleStyle: React.CSSProperties = {
+  fontSize: '1.15rem',
   fontWeight: 700,
-  marginBottom: '16px',
   fontFamily: 'var(--font-title)',
+  marginBottom: '20px',
+  borderBottom: '2px solid var(--color-primary-light)',
+  paddingBottom: '8px',
+  color: 'var(--color-text-main)',
+};
+
+const cardTitleStyle: React.CSSProperties = {
+  fontSize: '1.1rem',
+  fontWeight: 700,
+  fontFamily: 'var(--font-title)',
+  marginBottom: '16px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  color: 'var(--color-text-main)',
+};
+
+const formStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '14px',
 };
 
 const favoritesGridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
   gap: '12px',
 };
 
@@ -420,25 +711,30 @@ const favoriteImgStyle: React.CSSProperties = {
   objectFit: 'cover',
   boxShadow: 'var(--shadow-sm)',
   border: '1px solid var(--color-border)',
+  transition: 'border-color 0.2s',
 };
 
 const favoriteNameStyle: React.CSSProperties = {
-  fontSize: '0.8rem',
+  fontSize: '0.78rem',
   fontWeight: 600,
   color: 'var(--color-text-main)',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  width: '100%',
 };
 
 const eventListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '12px',
+  gap: '10px',
 };
 
 const eventRowStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '10px 14px',
+  padding: '12px 14px',
   backgroundColor: '#FAF9F6',
   borderRadius: '8px',
   border: '1px solid var(--color-border)',
@@ -448,40 +744,28 @@ const eventRowStyle: React.CSSProperties = {
 const eventMetaStyle: React.CSSProperties = {
   fontSize: '0.75rem',
   color: 'var(--color-text-muted)',
-  marginTop: '2px',
+  marginTop: '4px',
 };
 
 const sessionsListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '12px',
+  gap: '10px',
 };
 
 const sessionRowStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '10px 14px',
+  padding: '12px 14px',
   backgroundColor: 'white',
   borderRadius: '8px',
   border: '1px solid var(--color-border)',
   cursor: 'pointer',
-  transition: 'border-color 0.2s',
 };
 
-// Add profile row hover styling dynamically
-if (typeof document !== 'undefined') {
-  const hoverStyle = document.createElement('style');
-  hoverStyle.textContent = `
-    div[style*="cursor: pointer"]:hover {
-      border-color: var(--color-border-hover) !important;
-    }
-  `;
-  document.head.appendChild(hoverStyle);
-}
-
 const sessionDateStyle: React.CSSProperties = {
-  fontSize: '0.7rem',
+  fontSize: '0.72rem',
   color: 'var(--color-text-light)',
   fontWeight: 600,
 };
@@ -489,7 +773,7 @@ const sessionDateStyle: React.CSSProperties = {
 const sessionDescStyle: React.CSSProperties = {
   fontSize: '0.75rem',
   color: 'var(--color-text-muted)',
-  marginTop: '2px',
+  marginTop: '4px',
 };
 
 const winnerLabelBadgeStyle: React.CSSProperties = {
@@ -497,17 +781,4 @@ const winnerLabelBadgeStyle: React.CSSProperties = {
   boxShadow: '0 2px 6px rgba(243, 182, 63, 0.2)',
 };
 
-const responsiveProfileStyle = `
-@media (max-width: 800px) {
-  .profile-grid-responsive {
-    grid-template-columns: 1fr !important;
-    gap: 24px !important;
-  }
-}
-`;
-if (typeof document !== 'undefined') {
-  const styleEl = document.createElement('style');
-  styleEl.textContent = responsiveProfileStyle;
-  document.head.appendChild(styleEl);
-}
 export default PlayerProfile;

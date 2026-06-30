@@ -30,7 +30,7 @@ export const Games: React.FC = () => {
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [avgPlayTime, setAvgPlayTime] = useState(60);
   const [complexity, setComplexity] = useState(2);
-  const [tagsInput, setTagsInput] = useState('');
+
   const [coverUrl, setCoverUrl] = useState('');
 
   const selectedGame = useMemo(() => {
@@ -54,7 +54,6 @@ export const Games: React.FC = () => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
     const mockCover = coverUrl.trim() || '/images/tabletop-placeholder.svg';
 
     addGame({
@@ -65,7 +64,6 @@ export const Games: React.FC = () => {
       maxPlayers,
       avgPlayTime,
       complexity,
-      tags,
       coverUrl: mockCover
     });
 
@@ -85,7 +83,6 @@ export const Games: React.FC = () => {
     setMaxPlayers(game.maxPlayers);
     setAvgPlayTime(game.avgPlayTime);
     setComplexity(game.complexity);
-    setTagsInput(game.tags.join(', '));
     setCoverUrl(game.coverUrl);
     setIsEditModalOpen(true);
   };
@@ -94,8 +91,6 @@ export const Games: React.FC = () => {
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingGame || !name.trim()) return;
-
-    const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
 
     editGame({
       ...editingGame,
@@ -106,7 +101,6 @@ export const Games: React.FC = () => {
       maxPlayers,
       avgPlayTime,
       complexity,
-      tags,
       coverUrl
     });
 
@@ -135,7 +129,6 @@ export const Games: React.FC = () => {
     setMaxPlayers(4);
     setAvgPlayTime(60);
     setComplexity(2);
-    setTagsInput('');
     setCoverUrl('');
     setEditingGame(null);
   };
@@ -243,13 +236,7 @@ export const Games: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
-                  {game.tags.slice(0, 3).map(t => (
-                    <span key={t} className="badge badge-neutral" style={{ fontSize: '0.65rem' }}>
-                      {t}
-                    </span>
-                  ))}
-                </div>
+
 
                 <div style={adminActionsWrapperStyle}>
                   <Link to={`/games/${game.id}`} className="btn btn-outline btn-sm" style={detailBtnStyle} onClick={e => e.stopPropagation()}>
@@ -336,16 +323,7 @@ export const Games: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ marginTop: '24px' }}>
-              <h4 style={subTitleStyle}>Tags</h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {selectedGame.tags.map(t => (
-                  <span key={t} className="badge badge-neutral">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
+
 
             {/* Recents plays of this game */}
             <div style={{ marginTop: '28px', borderTop: '1px solid var(--color-border)', paddingTop: '20px' }}>
@@ -428,10 +406,7 @@ export const Games: React.FC = () => {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Tags (separadas por vírgula)</label>
-                <input type="text" className="form-input" value={tagsInput} onChange={e => setTagsInput(e.target.value)} placeholder="Ex: Negociação, Dados, Controle de Área" />
-              </div>
+
 
               <div style={formActionsStyle}>
                 <button type="button" className="btn btn-outline" onClick={() => setIsAddModalOpen(false)}>Cancelar</button>
@@ -494,10 +469,7 @@ export const Games: React.FC = () => {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Tags (separadas por vírgula)</label>
-                <input type="text" className="form-input" value={tagsInput} onChange={e => setTagsInput(e.target.value)} />
-              </div>
+
 
               <div style={formActionsStyle}>
                 <button type="button" className="btn btn-outline" onClick={() => setIsEditModalOpen(false)}>Cancelar</button>

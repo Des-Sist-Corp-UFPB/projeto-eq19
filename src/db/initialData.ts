@@ -85,8 +85,7 @@ export const INITIAL_GAMES: BoardGame[] = [
     minPlayers: 2,
     maxPlayers: 2,
     avgPlayTime: 45,
-    complexity: 2.1,
-    tags: ['Tabuleiro', 'Planejamento', 'Clássico', 'Tática']
+    complexity: 2.1
   },
   {
     id: 'g2',
@@ -97,8 +96,7 @@ export const INITIAL_GAMES: BoardGame[] = [
     minPlayers: 2,
     maxPlayers: 4,
     avgPlayTime: 60,
-    complexity: 3.2,
-    tags: ['Mana', 'Draft', 'Combos', 'Baralho']
+    complexity: 3.2
   },
   {
     id: 'g3',
@@ -109,8 +107,7 @@ export const INITIAL_GAMES: BoardGame[] = [
     minPlayers: 2,
     maxPlayers: 4,
     avgPlayTime: 40,
-    complexity: 2.0,
-    tags: ['Pokémon', 'Coleção', 'Ataques', 'Festa']
+    complexity: 2.0
   }
 ];
 

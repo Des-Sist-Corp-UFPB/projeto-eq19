@@ -45,8 +45,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     ? state.boardGames.filter(
         g =>
           g.name.toLowerCase().includes(searchQuery) ||
-          g.category.toLowerCase().includes(searchQuery) ||
-          g.tags.some(t => t.toLowerCase().includes(searchQuery))
+          g.category.toLowerCase().includes(searchQuery)
       )
     : [];
 

@@ -38,11 +38,7 @@ export const GameDetails: React.FC = () => {
           <span className="badge badge-primary" style={{ marginBottom: '8px' }}>{game.category}</span>
           <h1 style={titleStyle}>{game.name}</h1>
           <p style={descriptionStyle}>{game.description}</p>
-          <div style={tagRowStyle}>
-            {game.tags.map(tag => (
-              <span key={tag} className="badge badge-neutral">{tag}</span>
-            ))}
-          </div>
+
         </div>
       </div>
 
@@ -140,11 +136,7 @@ const descriptionStyle: React.CSSProperties = {
   marginBottom: '16px'
 };
 
-const tagRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  flexWrap: 'wrap'
-};
+
 
 const metricsGridStyle: React.CSSProperties = {
   display: 'grid',

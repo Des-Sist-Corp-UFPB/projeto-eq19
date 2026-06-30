@@ -25,7 +25,6 @@ export interface BoardGame {
   maxPlayers: number;
   avgPlayTime: number; // in minutes
   complexity: number; // 1 to 5
-  tags: string[];
 }
 
 export interface Comment {
