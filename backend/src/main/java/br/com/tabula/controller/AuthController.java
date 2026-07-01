@@ -349,254 +349,83 @@ public class AuthController {
     }
 
     private static String renderSuccessPage(String frontendUrl) {
-        return """
-                <!DOCTYPE html>
-                <html lang="pt-BR">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>E-mail Verificado - Tabula</title>
-                    <link rel="preconnect" href="https://fonts.googleapis.com">
-                    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-                    <style>
-                        :root {
-                            --color-bg: #0b0f19;
-                            --color-card: rgba(22, 28, 45, 0.6);
-                            --color-primary: #6366f1;
-                            --color-primary-hover: #4f46e5;
-                            --color-success: #10b981;
-                            --color-text: #f3f4f6;
-                            --color-text-muted: #9ca3af;
-                        }
-                        body {
-                            margin: 0;
-                            padding: 0;
-                            background-color: var(--color-bg);
-                            color: var(--color-text);
-                            font-family: 'Outfit', sans-serif;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            min-height: 100vh;
-                            background-image: 
-                                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-                                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
-                        }
-                        .container {
-                            width: 100%;
-                            max-width: 480px;
-                            padding: 20px;
-                        }
-                        .card {
-                            background: var(--color-card);
-                            backdrop-filter: blur(12px);
-                            -webkit-backdrop-filter: blur(12px);
-                            border: 1px solid rgba(255, 255, 255, 0.08);
-                            border-radius: 24px;
-                            padding: 40px 32px;
-                            text-align: center;
-                            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-                            animation: fadeIn 0.8s ease-out;
-                        }
-                        @keyframes fadeIn {
-                            from { opacity: 0; transform: translateY(20px); }
-                            to { opacity: 1; transform: translateY(0); }
-                        }
-                        .icon-wrapper {
-                            width: 80px;
-                            height: 80px;
-                            background: rgba(16, 185, 129, 0.1);
-                            border-radius: 50%;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            margin: 0 auto 24px;
-                            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
-                            animation: pulse 2s infinite;
-                        }
-                        @keyframes pulse {
-                            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-                            70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
-                            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-                        }
-                        .icon {
-                            font-size: 40px;
-                            color: var(--color-success);
-                        }
-                        h1 {
-                            font-size: 28px;
-                            font-weight: 800;
-                            margin: 0 0 12px;
-                            background: linear-gradient(135deg, #fff 0%, var(--color-text-muted) 100%);
-                            -webkit-background-clip: text;
-                            -webkit-text-fill-color: transparent;
-                        }
-                        p {
-                            font-size: 16px;
-                            line-height: 1.6;
-                            color: var(--color-text-muted);
-                            margin: 0 0 32px;
-                        }
-                        .btn {
-                            display: inline-block;
-                            background: var(--color-primary);
-                            color: #ffffff;
-                            font-weight: 600;
-                            font-size: 16px;
-                            padding: 14px 32px;
-                            text-decoration: none;
-                            border-radius: 12px;
-                            box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25);
-                            transition: all 0.3s ease;
-                        }
-                        .btn:hover {
-                            background: var(--color-primary-hover);
-                            transform: translateY(-2px);
-                            box-shadow: 0 12px 20px rgba(99, 102, 241, 0.35);
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="card">
-                            <div class="icon-wrapper">
-                                <span class="icon">✓</span>
-                            </div>
-                            <h1>E-mail Verificado!</h1>
-                            <p>Sua conta foi ativada com sucesso. Agora você pode entrar na plataforma e aproveitar tudo o que o Tabula oferece.</p>
-                            <a href="%s/#/login" class="btn">Ir para o Login</a>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                """.formatted(frontendUrl);
+        return "<!DOCTYPE html>"
+                + "<html lang=\"pt-BR\">"
+                + "<head>"
+                + "<meta charset=\"UTF-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+                + "<title>E-mail Verificado - Tabula</title>"
+                + "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
+                + "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
+                + "<link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap\" rel=\"stylesheet\">"
+                + "<style>"
+                + ":root { --color-bg: #0b0f19; --color-card: rgba(22, 28, 45, 0.6); --color-primary: #6366f1; --color-primary-hover: #4f46e5; --color-success: #10b981; --color-text: #f3f4f6; --color-text-muted: #9ca3af; }"
+                + "body { margin: 0; padding: 0; background-color: var(--color-bg); color: var(--color-text); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background-image: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%), radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%); }"
+                + ".container { width: 100%; max-width: 480px; padding: 20px; }"
+                + ".card { background: var(--color-card); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 40px 32px; text-align: center; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); animation: fadeIn 0.8s ease-out; }"
+                + "@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }"
+                + ".icon-wrapper { width: 80px; height: 80px; background: rgba(16, 185, 129, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); animation: pulse 2s infinite; }"
+                + "@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }"
+                + ".icon { font-size: 40px; color: var(--color-success); }"
+                + "h1 { font-size: 28px; font-weight: 800; margin: 0 0 12px; background: linear-gradient(135deg, #fff 0%, var(--color-text-muted) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }"
+                + "p { font-size: 16px; line-height: 1.6; color: var(--color-text-muted); margin: 0 0 32px; }"
+                + ".btn { display: inline-block; background: var(--color-primary); color: #ffffff; font-weight: 600; font-size: 16px; padding: 14px 32px; text-decoration: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25); transition: all 0.3s ease; }"
+                + ".btn:hover { background: var(--color-primary-hover); transform: translateY(-2px); box-shadow: 0 12px 20px rgba(99, 102, 241, 0.35); }"
+                + "</style>"
+                + "</head>"
+                + "<body>"
+                + "<div class=\"container\">"
+                + "<div class=\"card\">"
+                + "<div class=\"icon-wrapper\">"
+                + "<span class=\"icon\">✓</span>"
+                + "</div>"
+                + "<h1>E-mail Verificado!</h1>"
+                + "<p>Sua conta foi ativada com sucesso. Agora você pode entrar na plataforma e aproveitar tudo o que o Tabula oferece.</p>"
+                + "<a href=\"" + frontendUrl + "/#/login\" class=\"btn\">Ir para o Login</a>"
+                + "</div>"
+                + "</div>"
+                + "</body>"
+                + "</html>";
     }
 
     private static String renderErrorPage(String message, String frontendUrl) {
-        return """
-                <!DOCTYPE html>
-                <html lang="pt-BR">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Falha na Verificação - Tabula</title>
-                    <link rel="preconnect" href="https://fonts.googleapis.com">
-                    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-                    <style>
-                        :root {
-                            --color-bg: #0b0f19;
-                            --color-card: rgba(22, 28, 45, 0.6);
-                            --color-primary: #6366f1;
-                            --color-primary-hover: #4f46e5;
-                            --color-error: #ef4444;
-                            --color-text: #f3f4f6;
-                            --color-text-muted: #9ca3af;
-                        }
-                        body {
-                            margin: 0;
-                            padding: 0;
-                            background-color: var(--color-bg);
-                            color: var(--color-text);
-                            font-family: 'Outfit', sans-serif;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            min-height: 100vh;
-                            background-image: 
-                                radial-gradient(at 0% 0%, rgba(239, 68, 68, 0.1) 0px, transparent 50%),
-                                radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%);
-                        }
-                        .container {
-                            width: 100%;
-                            max-width: 480px;
-                            padding: 20px;
-                        }
-                        .card {
-                            background: var(--color-card);
-                            backdrop-filter: blur(12px);
-                            -webkit-backdrop-filter: blur(12px);
-                            border: 1px solid rgba(255, 255, 255, 0.08);
-                            border-radius: 24px;
-                            padding: 40px 32px;
-                            text-align: center;
-                            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-                            animation: fadeIn 0.8s ease-out;
-                        }
-                        @keyframes fadeIn {
-                            from { opacity: 0; transform: translateY(20px); }
-                            to { opacity: 1; transform: translateY(0); }
-                        }
-                        .icon-wrapper {
-                            width: 80px;
-                            height: 80px;
-                            background: rgba(239, 68, 68, 0.1);
-                            border-radius: 50%;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            margin: 0 auto 24px;
-                            box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
-                            animation: pulse 2s infinite;
-                        }
-                        @keyframes pulse {
-                            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-                            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
-                            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-                        }
-                        .icon {
-                            font-size: 40px;
-                            color: var(--color-error);
-                            font-weight: bold;
-                        }
-                        h1 {
-                            font-size: 28px;
-                            font-weight: 800;
-                            margin: 0 0 12px;
-                            background: linear-gradient(135deg, #fff 0%, var(--color-text-muted) 100%);
-                            -webkit-background-clip: text;
-                            -webkit-text-fill-color: transparent;
-                        }
-                        p {
-                            font-size: 16px;
-                            line-height: 1.6;
-                            color: var(--color-text-muted);
-                            margin: 0 0 32px;
-                        }
-                        .btn {
-                            display: inline-block;
-                            background: var(--color-primary);
-                            color: #ffffff;
-                            font-weight: 600;
-                            font-size: 16px;
-                            padding: 14px 32px;
-                            text-decoration: none;
-                            border-radius: 12px;
-                            box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25);
-                            transition: all 0.3s ease;
-                        }
-                        .btn:hover {
-                            background: var(--color-primary-hover);
-                            transform: translateY(-2px);
-                            box-shadow: 0 12px 20px rgba(99, 102, 241, 0.35);
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <div class="card">
-                            <div class="icon-wrapper">
-                                <span class="icon">✗</span>
-                            </div>
-                            <h1>Link Inválido ou Expirado</h1>
-                            <p>%s</p>
-                            <a href="%s/#/login" class="btn">Voltar para o Tabula</a>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                """.formatted(message, frontendUrl);
+        return "<!DOCTYPE html>"
+                + "<html lang=\"pt-BR\">"
+                + "<head>"
+                + "<meta charset=\"UTF-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+                + "<title>Falha na Verificação - Tabula</title>"
+                + "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
+                + "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>"
+                + "<link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap\" rel=\"stylesheet\">"
+                + "<style>"
+                + ":root { --color-bg: #0b0f19; --color-card: rgba(22, 28, 45, 0.6); --color-primary: #6366f1; --color-primary-hover: #4f46e5; --color-error: #ef4444; --color-text: #f3f4f6; --color-text-muted: #9ca3af; }"
+                + "body { margin: 0; padding: 0; background-color: var(--color-bg); color: var(--color-text); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background-image: radial-gradient(at 0% 0%, rgba(239, 68, 68, 0.1) 0px, transparent 50%), radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%); }"
+                + ".container { width: 100%; max-width: 480px; padding: 20px; }"
+                + ".card { background: var(--color-card); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 40px 32px; text-align: center; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); animation: fadeIn 0.8s ease-out; }"
+                + "@keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }"
+                + ".icon-wrapper { width: 80px; height: 80px; background: rgba(239, 68, 68, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); animation: pulse 2s infinite; }"
+                + "@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }"
+                + ".icon { font-size: 40px; color: var(--color-error); font-weight: bold; }"
+                + "h1 { font-size: 28px; font-weight: 800; margin: 0 0 12px; background: linear-gradient(135deg, #fff 0%, var(--color-text-muted) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }"
+                + "p { font-size: 16px; line-height: 1.6; color: var(--color-text-muted); margin: 0 0 32px; }"
+                + ".btn { display: inline-block; background: var(--color-primary); color: #ffffff; font-weight: 600; font-size: 16px; padding: 14px 32px; text-decoration: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(99, 102, 241, 0.25); transition: all 0.3s ease; }"
+                + ".btn:hover { background: var(--color-primary-hover); transform: translateY(-2px); box-shadow: 0 12px 20px rgba(99, 102, 241, 0.35); }"
+                + "</style>"
+                + "</head>"
+                + "<body>"
+                + "<div class=\"container\">"
+                + "<div class=\"card\">"
+                + "<div class=\"icon-wrapper\">"
+                + "<span class=\"icon\">✗</span>"
+                + "</div>"
+                + "<h1>Link Inválido ou Expirado</h1>"
+                + "<p>" + message + "</p>"
+                + "<a href=\"" + frontendUrl + "/#/login\" class=\"btn\">Voltar para o Tabula</a>"
+                + "</div>"
+                + "</div>"
+                + "</body>"
+                + "</html>";
     }
 
     private static String buildBackendUrl(io.javalin.http.Context ctx) {
