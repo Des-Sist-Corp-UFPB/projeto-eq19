@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">StateController.java</span></div><h1>StateController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Map;
+
+public class StateController {
+<span class="fc" id="L16">    private static final Logger LOGGER = LoggerFactory.getLogger(StateController.class);</span>
+
+    private StateController() {
+    }
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L22">        app.get(&quot;/state&quot;, ctx -&gt; {</span>
+            try {
+<span class="fc" id="L24">                String payload = readState(dataSource);</span>
+<span class="pc bpc" id="L25" title="1 of 4 branches missed.">                if (payload == null || payload.isBlank()) {</span>
+<span class="fc" id="L26">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Estado ainda não inicializado.&quot;));</span>
+<span class="fc" id="L27">                    return;</span>
+                }
+<span class="fc" id="L29">                ctx.contentType(&quot;application/json&quot;).result(payload);</span>
+<span class="fc" id="L30">            } catch (SQLException ex) {</span>
+<span class="fc" id="L31">                LOGGER.error(&quot;Failed to read app state&quot;, ex);</span>
+<span class="fc" id="L32">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível carregar os dados.&quot;));</span>
+<span class="fc" id="L33">            }</span>
+<span class="fc" id="L34">        });</span>
+
+<span class="fc" id="L36">        app.put(&quot;/state&quot;, ctx -&gt; {</span>
+<span class="fc" id="L37">            String payload = ctx.body();</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">            if (payload == null || payload.isBlank()) {</span>
+<span class="fc" id="L39">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Payload vazio.&quot;));</span>
+<span class="fc" id="L40">                return;</span>
+            }
+
+            try {
+<span class="fc bfc" id="L44" title="All 4 branches covered.">                if (stateExists(dataSource) &amp;&amp; !hasValidBearerToken(dataSource, ctx)) {</span>
+<span class="fc" id="L45">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="fc" id="L46">                    return;</span>
+                }
+
+<span class="fc" id="L49">                saveState(dataSource, payload);</span>
+<span class="fc" id="L50">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
+<span class="fc" id="L51">            } catch (SQLException ex) {</span>
+<span class="fc" id="L52">                LOGGER.error(&quot;Failed to save app state&quot;, ex);</span>
+<span class="fc" id="L53">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
+<span class="fc" id="L54">            }</span>
+<span class="fc" id="L55">        });</span>
+<span class="fc" id="L56">    }</span>
+
+    private static String readState(HikariDataSource dataSource) throws SQLException {
+<span class="fc" id="L59">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L60">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L61">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L62">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
+<span class="fc" id="L64">            return null;</span>
+<span class="pc bpc" id="L65" title="3 of 6 branches missed.">        }</span>
+    }
+
+    private static boolean stateExists(HikariDataSource dataSource) throws SQLException {
+<span class="fc" id="L69">        String sql = &quot;SELECT 1 FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L70">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L71">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L72">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L73">            return resultSet.next();</span>
+        }
+    }
+
+    private static boolean hasValidBearerToken(HikariDataSource dataSource, Context ctx) throws SQLException {
+<span class="fc" id="L78">        String authorization = ctx.header(&quot;Authorization&quot;);</span>
+<span class="fc bfc" id="L79" title="All 4 branches covered.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return false;</span>
+
+<span class="fc" id="L81">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (token.isBlank()) return false;</span>
+
+<span class="fc" id="L84">        String sql = &quot;SELECT 1 FROM auth_tokens WHERE token = ? AND expires_at &gt; CURRENT_TIMESTAMP&quot;;</span>
+<span class="fc" id="L85">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L86">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L87">            statement.setString(1, token);</span>
+<span class="fc" id="L88">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L89">                return resultSet.next();</span>
+            }
+        }
+    }
+
+    private static void saveState(HikariDataSource dataSource, String payload) throws SQLException {
+<span class="fc" id="L95">        String sql = &quot;&quot;&quot;</span>
+                INSERT INTO app_state (id, data, updated_at)
+                VALUES (1, ?::jsonb, CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO UPDATE
+                SET data = EXCLUDED.data,
+                    updated_at = CURRENT_TIMESTAMP
+                &quot;&quot;&quot;;
+<span class="fc" id="L102">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L103">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L104">            statement.setString(1, payload);</span>
+<span class="fc" id="L105">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L107">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EmailService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">EmailService.java</span></div><h1>EmailService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import jakarta.mail.Authenticator;
+import jakarta.mail.Message;
+import jakarta.mail.MessagingException;
+import jakarta.mail.PasswordAuthentication;
+import jakarta.mail.Session;
+import jakarta.mail.Transport;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Properties;
+
+public class EmailService {
+<span class="fc" id="L18">    private static final Logger LOGGER = LoggerFactory.getLogger(EmailService.class);</span>
+
+    private final String smtpHost;
+    private final int smtpPort;
+    private final String smtpUser;
+    private final String smtpPassword;
+    private final String smtpFrom;
+    private final String smtpFromName;
+
+<span class="fc" id="L27">    public EmailService() {</span>
+<span class="fc" id="L28">        this.smtpHost = getEnvOrDefault(&quot;SMTP_HOST&quot;, &quot;smtp.gmail.com&quot;);</span>
+<span class="fc" id="L29">        this.smtpPort = parsePort(getEnvOrDefault(&quot;SMTP_PORT&quot;, &quot;587&quot;));</span>
+<span class="fc" id="L30">        this.smtpUser = System.getenv(&quot;SMTP_USER&quot;);</span>
+<span class="fc" id="L31">        this.smtpPassword = System.getenv(&quot;SMTP_PASSWORD&quot;);</span>
+<span class="fc" id="L32">        this.smtpFrom = getEnvOrDefault(&quot;SMTP_FROM&quot;, this.smtpUser);</span>
+<span class="fc" id="L33">        this.smtpFromName = getEnvOrDefault(&quot;SMTP_FROM_NAME&quot;, &quot;Tabula&quot;);</span>
+<span class="fc" id="L34">    }</span>
+
+<span class="fc" id="L36">    public EmailService(String smtpHost, int smtpPort, String smtpUser, String smtpPassword, String smtpFrom, String smtpFromName) {</span>
+<span class="fc" id="L37">        this.smtpHost = smtpHost;</span>
+<span class="fc" id="L38">        this.smtpPort = smtpPort;</span>
+<span class="fc" id="L39">        this.smtpUser = smtpUser;</span>
+<span class="fc" id="L40">        this.smtpPassword = smtpPassword;</span>
+<span class="fc" id="L41">        this.smtpFrom = smtpFrom;</span>
+<span class="fc" id="L42">        this.smtpFromName = smtpFromName;</span>
+<span class="fc" id="L43">    }</span>
+
+    public void sendVerificationCode(String recipientEmail, String recipientName, String code) {
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">        if (isBlank(smtpUser) || isBlank(smtpPassword)) {</span>
+<span class="fc" id="L47">            LOGGER.error(&quot;[EmailService] SMTP_USER ou SMTP_PASSWORD não configurados. E-mail de verificação não enviado.&quot;);</span>
+<span class="fc" id="L48">            throw new IllegalStateException(&quot;SMTP_USER e SMTP_PASSWORD precisam estar configurados.&quot;);</span>
+        }
+
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (isBlank(smtpFrom)) {</span>
+<span class="fc" id="L52">            LOGGER.error(&quot;[EmailService] SMTP_FROM não configurado. E-mail de verificação não enviado.&quot;);</span>
+<span class="fc" id="L53">            throw new IllegalStateException(&quot;SMTP_FROM precisa estar configurado.&quot;);</span>
+        }
+
+        try {
+<span class="nc" id="L57">            Properties props = new Properties();</span>
+<span class="nc" id="L58">            props.put(&quot;mail.smtp.auth&quot;, &quot;true&quot;);</span>
+<span class="nc" id="L59">            props.put(&quot;mail.smtp.starttls.enable&quot;, &quot;true&quot;);</span>
+<span class="nc" id="L60">            props.put(&quot;mail.smtp.host&quot;, smtpHost);</span>
+<span class="nc" id="L61">            props.put(&quot;mail.smtp.port&quot;, String.valueOf(smtpPort));</span>
+<span class="nc" id="L62">            props.put(&quot;mail.smtp.ssl.trust&quot;, smtpHost);</span>
+<span class="nc" id="L63">            props.put(&quot;mail.smtp.connectiontimeout&quot;, &quot;10000&quot;);</span>
+<span class="nc" id="L64">            props.put(&quot;mail.smtp.timeout&quot;, &quot;10000&quot;);</span>
+<span class="nc" id="L65">            props.put(&quot;mail.smtp.writetimeout&quot;, &quot;10000&quot;);</span>
+
+<span class="pc" id="L67">            Session session = Session.getInstance(props, new Authenticator() {</span>
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+<span class="fc" id="L70">                    return new PasswordAuthentication(smtpUser.trim(), smtpPassword.trim());</span>
+                }
+            });
+
+<span class="nc" id="L74">            MimeMessage message = new MimeMessage(session);</span>
+<span class="nc" id="L75">            message.setFrom(new InternetAddress(</span>
+<span class="nc" id="L76">                    smtpFrom.trim(),</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">                    smtpFromName == null ? &quot;Tabula&quot; : smtpFromName.trim(),</span>
+<span class="nc" id="L78">                    StandardCharsets.UTF_8.name()</span>
+            ));
+<span class="nc" id="L80">            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail.trim(), false));</span>
+<span class="nc" id="L81">            message.setSubject(&quot;Código de verificação - Tabula&quot;, StandardCharsets.UTF_8.name());</span>
+<span class="nc" id="L82">            message.setContent(buildVerificationHtml(recipientName, code), &quot;text/html; charset=UTF-8&quot;);</span>
+
+<span class="nc" id="L84">            LOGGER.info(&quot;[EmailService] Enviando código de verificação para {} via SMTP {}:{}...&quot;, recipientEmail, smtpHost, smtpPort);</span>
+<span class="nc" id="L85">            Transport.send(message);</span>
+<span class="nc" id="L86">            LOGGER.info(&quot;[EmailService] Código de verificação enviado com sucesso para {}.&quot;, recipientEmail);</span>
+<span class="nc" id="L87">        } catch (Exception e) {</span>
+<span class="nc" id="L88">            LOGGER.error(&quot;[EmailService] Falha ao enviar código de verificação para {}&quot;, recipientEmail, e);</span>
+<span class="nc" id="L89">            throw new RuntimeException(&quot;Falha ao enviar e-mail de verificação: &quot; + e.getMessage(), e);</span>
+<span class="nc" id="L90">        }</span>
+<span class="nc" id="L91">    }</span>
+
+    private static String buildVerificationHtml(String recipientName, String code) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        String safeName = escapeHtml(isBlank(recipientName) ? &quot;jogador&quot; : recipientName.trim());</span>
+<span class="fc" id="L95">        String safeCode = escapeHtml(code);</span>
+
+<span class="fc" id="L97">        return &quot;&quot;&quot;</span>
+                &lt;!DOCTYPE html&gt;
+                &lt;html&gt;
+                &lt;body style=&quot;margin:0;padding:0;background:#f5f3ff;font-family:Arial,sans-serif;&quot;&gt;
+                &lt;table width=&quot;100%%&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; style=&quot;padding:40px 0;&quot;&gt;
+                    &lt;tr&gt;
+                    &lt;td align=&quot;center&quot;&gt;
+                        &lt;table width=&quot;600&quot; cellpadding=&quot;0&quot; cellspacing=&quot;0&quot; style=&quot;background:#ffffff;border-radius:16px;padding:36px;box-shadow:0 4px 18px rgba(79,70,229,0.18);&quot;&gt;
+                        &lt;tr&gt;
+                            &lt;td align=&quot;center&quot;&gt;
+                            &lt;div style=&quot;font-size:42px;margin-bottom:10px;&quot;&gt;🎲&lt;/div&gt;
+                            &lt;h1 style=&quot;margin:0;color:#4f46e5;font-size:28px;&quot;&gt;Tabula&lt;/h1&gt;
+                            &lt;h2 style=&quot;margin:24px 0 8px;color:#111827;font-size:22px;&quot;&gt;Confirme seu e-mail&lt;/h2&gt;
+
+                            &lt;p style=&quot;font-size:16px;color:#374151;line-height:1.6;margin:0 0 18px;&quot;&gt;
+                                Olá, &lt;strong&gt;%s&lt;/strong&gt;! Use o código abaixo para ativar sua conta.
+                            &lt;/p&gt;
+
+                            &lt;div style=&quot;margin:28px auto;background:#eef2ff;border:2px dashed #4f46e5;border-radius:14px;width:280px;padding:22px 16px;&quot;&gt;
+                                &lt;span style=&quot;font-size:40px;letter-spacing:10px;color:#4f46e5;font-weight:800;&quot;&gt;%s&lt;/span&gt;
+                            &lt;/div&gt;
+
+                            &lt;p style=&quot;font-size:14px;color:#6b7280;margin:0;&quot;&gt;
+                                Este código expira em &lt;strong&gt;15 minutos&lt;/strong&gt;.
+                            &lt;/p&gt;
+
+                            &lt;hr style=&quot;margin:30px 0;border:none;border-top:1px solid #e5e7eb;&quot;&gt;
+
+                            &lt;p style=&quot;font-size:13px;color:#9ca3af;line-height:1.5;margin:0;&quot;&gt;
+                                Se você não criou uma conta no Tabula, pode ignorar este e-mail.
+                            &lt;/p&gt;
+                            &lt;/td&gt;
+                        &lt;/tr&gt;
+                        &lt;/table&gt;
+                    &lt;/td&gt;
+                    &lt;/tr&gt;
+                &lt;/table&gt;
+                &lt;/body&gt;
+                &lt;/html&gt;
+<span class="fc" id="L136">                &quot;&quot;&quot;.formatted(safeName, safeCode);</span>
+    }
+    
+    private static String getEnvOrDefault(String key, String defaultValue) {
+<span class="fc" id="L140">        String value = System.getenv(key);</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        return isBlank(value) ? defaultValue : value;</span>
+    }
+
+    private static int parsePort(String value) {
+        try {
+<span class="fc" id="L146">            return Integer.parseInt(value.trim());</span>
+<span class="fc" id="L147">        } catch (Exception ex) {</span>
+<span class="fc" id="L148">            return 587;</span>
+        }
+    }
+
+    private static boolean isBlank(String value) {
+<span class="fc bfc" id="L153" title="All 4 branches covered.">        return value == null || value.isBlank();</span>
+    }
+
+    private static String escapeHtml(String value) {
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+<span class="fc" id="L158">        return value</span>
+<span class="fc" id="L159">                .replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;)</span>
+<span class="fc" id="L160">                .replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="fc" id="L161">                .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;)</span>
+<span class="fc" id="L162">                .replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;)</span>
+<span class="fc" id="L163">                .replace(&quot;'&quot;, &quot;&amp;#39;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
