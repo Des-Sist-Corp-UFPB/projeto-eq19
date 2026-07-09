@@ -26,6 +26,14 @@ public class StateController {
         return "true".equalsIgnoreCase(value);
     }
 
+    private static boolean isRelationalReadGuardEnabled() {
+        String value = System.getenv("RELATIONAL_STATE_READ_GUARD_ENABLED");
+        if (value == null || value.isBlank()) {
+            value = System.getProperty("RELATIONAL_STATE_READ_GUARD_ENABLED");
+        }
+        return "true".equalsIgnoreCase(value);
+    }
+
     private static boolean isRelationalComparisonEnabled() {
         String value = System.getenv("RELATIONAL_STATE_COMPARISON_ENABLED");
         if (value == null || value.isBlank()) {
@@ -165,10 +173,40 @@ public class StateController {
             try {
                 String payload = null;
                 if (isRelationalReadEnabled()) {
-                    try {
-                        payload = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
-                    } catch (Exception ex) {
-                        LOGGER.error("Failed to read relational database state, falling back to app_state", ex);
+                    if (isRelationalReadGuardEnabled()) {
+                        String legacyJson = null;
+                        try {
+                            legacyJson = readState(dataSource);
+                        } catch (SQLException ex) {
+                            LOGGER.error("Failed to read legacy state for guard check", ex);
+                        }
+
+                        if (legacyJson != null && !legacyJson.isBlank()) {
+                            try {
+                                String relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
+                                String comparisonReport = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);
+                                
+                                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                                com.fasterxml.jackson.databind.JsonNode comparisonNode = mapper.readTree(comparisonReport);
+                                boolean comparisonOk = comparisonNode.has("ok") && comparisonNode.get("ok").asBoolean(false);
+
+                                if (comparisonOk) {
+                                    payload = relationalJson;
+                                } else {
+                                    LOGGER.warn("Relational read guard check failed. Comparison report: {}", comparisonReport);
+                                    payload = legacyJson;
+                                }
+                            } catch (Exception ex) {
+                                LOGGER.error("Failed during relational read guard check, falling back to legacy state", ex);
+                                payload = legacyJson;
+                            }
+                        }
+                    } else {
+                        try {
+                            payload = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
+                        } catch (Exception ex) {
+                            LOGGER.error("Failed to read relational database state, falling back to app_state", ex);
+                        }
                     }
                 }
 

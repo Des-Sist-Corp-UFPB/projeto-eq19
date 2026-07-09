@@ -275,8 +275,216 @@ class StateControllerTest {
     @org.junit.jupiter.api.AfterEach
     void clearRelationalFlags() {
         System.clearProperty("RELATIONAL_STATE_READ_ENABLED");
+        System.clearProperty("RELATIONAL_STATE_READ_GUARD_ENABLED");
         System.clearProperty("RELATIONAL_STATE_COMPARISON_ENABLED");
         System.clearProperty("RELATIONAL_STATE_BACKFILL_ENABLED");
+    }
+
+    @Test
+    void shouldReturnRelationalJsonWhenGuardIsDisabled() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        System.clearProperty("RELATIONAL_STATE_READ_GUARD_ENABLED");
+
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            }
+
+            if (sql.contains("usuarios")) {
+                when(rs.next()).thenReturn(true, false);
+                when(rs.getString("external_id")).thenReturn("relational_u");
+            } else {
+                when(rs.next()).thenReturn(false);
+            }
+            return stmt;
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[{\"id\":\"legacy_u\"}],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertEquals("relational_u", root.get("users").get(0).get("id").asText());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnRelationalJsonWhenGuardIsEnabledAndComparisonPasses() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        System.setProperty("RELATIONAL_STATE_READ_GUARD_ENABLED", "true");
+        
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+            when(rs.next()).thenReturn(false);
+
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            }
+            return stmt;
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertTrue(root.get("users").isArray());
+            assertEquals(0, root.get("users").size());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnLegacyJsonWhenGuardIsEnabledAndComparisonFails() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        System.setProperty("RELATIONAL_STATE_READ_GUARD_ENABLED", "true");
+        
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+            when(rs.next()).thenReturn(false);
+
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            }
+            return stmt;
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[{\"id\":\"u1\",\"name\":\"User\",\"email\":\"u@test.com\",\"role\":\"student\"}],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertTrue(root.get("users").isArray());
+            assertEquals(1, root.get("users").size());
+            assertEquals("u1", root.get("users").get(0).get("id").asText());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnLegacyJsonWhenGuardIsEnabledAndRelationalReadThrows() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        System.setProperty("RELATIONAL_STATE_READ_GUARD_ENABLED", "true");
+        
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            } else {
+                throw new SQLException("relational database down during read");
+            }
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[{\"id\":\"legacy_user\"}],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertEquals("legacy_user", root.get("users").get(0).get("id").asText());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnLegacyJsonWhenGuardIsEnabledAndComparisonThrows() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        System.setProperty("RELATIONAL_STATE_READ_GUARD_ENABLED", "true");
+        
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            } else {
+                return null;
+            }
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[{\"id\":\"legacy_user_on_err\"}],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertEquals("legacy_user_on_err", root.get("users").get(0).get("id").asText());
+        } finally {
+            app.stop();
+        }
     }
 
     @Test
