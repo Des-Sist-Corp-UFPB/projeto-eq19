@@ -272,8 +272,105 @@ class StateControllerTest {
     }
 
     @org.junit.jupiter.api.AfterEach
-    void clearRelationalReadFlag() {
+    void clearRelationalFlags() {
         System.clearProperty("RELATIONAL_STATE_READ_ENABLED");
+        System.clearProperty("RELATIONAL_STATE_COMPARISON_ENABLED");
+    }
+
+    @Test
+    void shouldReturn404WhenComparisonIsDisabled() throws Exception {
+        System.setProperty("RELATIONAL_STATE_COMPARISON_ENABLED", "false");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state/relational-comparison");
+            assertEquals(404, response.statusCode());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnComparisonReportWhenComparisonIsEnabled() throws Exception {
+        System.setProperty("RELATIONAL_STATE_COMPARISON_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+            when(rs.next()).thenReturn(false);
+
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            }
+            return stmt;
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state/relational-comparison");
+            assertEquals(200, response.statusCode());
+            
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertTrue(root.get("ok").asBoolean(), root.toPrettyString());
+            assertTrue(root.get("errors").isArray());
+            assertEquals(0, root.get("errors").size(), root.toPrettyString());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnOkFalseReportWhenRelationalReadFails() throws Exception {
+        System.setProperty("RELATIONAL_STATE_COMPARISON_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            } else {
+                throw new SQLException("relational database down");
+            }
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state/relational-comparison");
+            assertEquals(200, response.statusCode());
+            
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            org.junit.jupiter.api.Assertions.assertFalse(root.get("ok").asBoolean());
+            assertTrue(root.get("errors").isArray());
+            assertTrue(root.get("errors").size() > 0, root.toPrettyString());
+            
+            String body = response.body();
+            assertTrue(body.contains("relational") || body.contains("database"), body);
+        } finally {
+            app.stop();
+        }
     }
 
     @Test

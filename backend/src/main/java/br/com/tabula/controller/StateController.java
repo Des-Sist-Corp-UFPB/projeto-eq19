@@ -26,7 +26,59 @@ public class StateController {
         return "true".equalsIgnoreCase(value);
     }
 
+    private static boolean isRelationalComparisonEnabled() {
+        String value = System.getenv("RELATIONAL_STATE_COMPARISON_ENABLED");
+        if (value == null || value.isBlank()) {
+            value = System.getProperty("RELATIONAL_STATE_COMPARISON_ENABLED");
+        }
+        return "true".equalsIgnoreCase(value);
+    }
+
     public static void register(Javalin app, HikariDataSource dataSource) {
+        app.get("/state/relational-comparison", ctx -> {
+            if (!isRelationalComparisonEnabled()) {
+                ctx.status(404).json(Map.of("error", "Not Found"));
+                return;
+            }
+
+            String legacyJson = null;
+            try {
+                legacyJson = readState(dataSource);
+            } catch (SQLException ex) {
+                LOGGER.error("Failed to read legacy state for comparison", ex);
+                ctx.status(500).json(Map.of("error", "Erro ao carregar estado legado."));
+                return;
+            }
+
+            if (legacyJson == null) {
+                legacyJson = "{}";
+            }
+
+            String relationalJson = null;
+            String readError = null;
+            try {
+                relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
+            } catch (Exception ex) {
+                LOGGER.error("Failed to read relational state for comparison", ex);
+                readError = ex.getMessage();
+            }
+
+            if (readError != null) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                com.fasterxml.jackson.databind.node.ObjectNode report = mapper.createObjectNode();
+                report.put("ok", false);
+                report.putObject("summary");
+                report.putArray("warnings");
+                com.fasterxml.jackson.databind.node.ArrayNode errors = report.putArray("errors");
+                errors.add("Relational read failed: " + readError);
+                ctx.contentType("application/json").result(report.toPrettyString());
+                return;
+            }
+
+            String reportJson = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);
+            ctx.contentType("application/json").result(reportJson);
+        });
+
         app.get("/state", ctx -> {
             try {
                 String payload = null;
