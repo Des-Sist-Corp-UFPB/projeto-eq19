@@ -18,10 +18,30 @@ public class StateController {
     private StateController() {
     }
 
+    private static boolean isRelationalReadEnabled() {
+        String value = System.getenv("RELATIONAL_STATE_READ_ENABLED");
+        if (value == null || value.isBlank()) {
+            value = System.getProperty("RELATIONAL_STATE_READ_ENABLED");
+        }
+        return "true".equalsIgnoreCase(value);
+    }
+
     public static void register(Javalin app, HikariDataSource dataSource) {
         app.get("/state", ctx -> {
             try {
-                String payload = readState(dataSource);
+                String payload = null;
+                if (isRelationalReadEnabled()) {
+                    try {
+                        payload = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
+                    } catch (Exception ex) {
+                        LOGGER.error("Failed to read relational database state, falling back to app_state", ex);
+                    }
+                }
+
+                if (payload == null || payload.isBlank()) {
+                    payload = readState(dataSource);
+                }
+
                 if (payload == null || payload.isBlank()) {
                     ctx.status(404).json(Map.of("error", "Estado ainda não inicializado."));
                     return;

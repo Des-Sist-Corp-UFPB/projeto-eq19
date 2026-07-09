@@ -271,6 +271,91 @@ class StateControllerTest {
         }
     }
 
+    @org.junit.jupiter.api.AfterEach
+    void clearRelationalReadFlag() {
+        System.clearProperty("RELATIONAL_STATE_READ_ENABLED");
+    }
+
+    @Test
+    void shouldReadFromAppStateWhenRelationalReadIsDisabled() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "false");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true);
+        when(resultSet.getString(1)).thenReturn("{\"ready\":true}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("\"ready\":true"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReadFromRelationalReconstructionWhenEnabled() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+            when(rs.next()).thenReturn(false);
+            return stmt;
+        });
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("\"users\":[]"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldFallbackToAppStateWhenRelationalReadThrowsException() throws Exception {
+        System.setProperty("RELATIONAL_STATE_READ_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            } else {
+                throw new SQLException("relational schema not ready");
+            }
+        });
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"fallback\":true}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendGet(app, "/state");
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("\"fallback\":true"));
+        } finally {
+            app.stop();
+        }
+    }
+
     private static Javalin startStateApp(HikariDataSource dataSource) {
         Javalin app = Javalin.create(config -> config.showJavalinBanner = false);
         StateController.register(app, dataSource);
