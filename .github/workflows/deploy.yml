@@ -16,12 +16,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Iniciar Docker no runner
+      - name: Preparar Docker no runner
         run: |
-          if ! docker info > /dev/null 2>&1; then
-            sudo systemctl start docker || sudo service docker start
+          echo "Runner name: $RUNNER_NAME"
+          echo "Runner OS: $RUNNER_OS"
+
+          if docker info > /dev/null 2>&1; then
+            echo "Docker já está disponível."
+            docker info
+            exit 0
           fi
-          docker info
+
+          echo "Docker ainda não disponível. Tentando iniciar..."
+
+          if command -v systemctl > /dev/null 2>&1; then
+            sudo systemctl start docker || true
+          fi
+
+          if command -v service > /dev/null 2>&1; then
+            sudo service docker start || true
+          fi
+
+          echo "Aguardando Docker daemon ficar disponível..."
+
+          for i in {1..60}; do
+            if docker info > /dev/null 2>&1; then
+              echo "Docker ficou disponível após $i tentativa(s)."
+              docker info
+              exit 0
+            fi
+
+            echo "Tentativa $i/60: Docker ainda indisponível. Aguardando 5s..."
+            sleep 5
+          done
+
+          echo "Docker não ficou disponível depois de 5 minutos."
+          docker version || true
+          ls -la /var/run/docker.sock || true
+          ps aux | grep -E "dockerd|containerd" | grep -v grep || true
+
+          exit 1
 
       - name: Prepara nome da imagem (lowercase)
         run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]'):latest" >> $GITHUB_ENV
