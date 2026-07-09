@@ -47,63 +47,68 @@ public class StateController {
                 }
 
 <span class="fc" id="L49">                saveState(dataSource, payload);</span>
-<span class="fc" id="L50">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
-<span class="fc" id="L51">            } catch (SQLException ex) {</span>
-<span class="fc" id="L52">                LOGGER.error(&quot;Failed to save app state&quot;, ex);</span>
-<span class="fc" id="L53">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
-<span class="fc" id="L54">            }</span>
-<span class="fc" id="L55">        });</span>
-<span class="fc" id="L56">    }</span>
+                try {
+<span class="nc" id="L51">                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);</span>
+<span class="fc" id="L52">                } catch (Exception ex) {</span>
+<span class="fc" id="L53">                    LOGGER.error(&quot;Failed to sync relational database state in shadow mode&quot;, ex);</span>
+<span class="nc" id="L54">                }</span>
+<span class="fc" id="L55">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
+<span class="fc" id="L56">            } catch (SQLException ex) {</span>
+<span class="fc" id="L57">                LOGGER.error(&quot;Failed to save app state&quot;, ex);</span>
+<span class="fc" id="L58">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
+<span class="fc" id="L59">            }</span>
+<span class="fc" id="L60">        });</span>
+<span class="fc" id="L61">    }</span>
 
     private static String readState(HikariDataSource dataSource) throws SQLException {
-<span class="fc" id="L59">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
-<span class="fc" id="L60">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L61">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L62">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
-<span class="fc" id="L64">            return null;</span>
-<span class="pc bpc" id="L65" title="3 of 6 branches missed.">        }</span>
+<span class="fc" id="L64">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L65">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L66">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L67">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
+<span class="fc" id="L69">            return null;</span>
+<span class="pc bpc" id="L70" title="3 of 6 branches missed.">        }</span>
     }
 
     private static boolean stateExists(HikariDataSource dataSource) throws SQLException {
-<span class="fc" id="L69">        String sql = &quot;SELECT 1 FROM app_state WHERE id = 1&quot;;</span>
-<span class="fc" id="L70">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L71">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L72">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L73">            return resultSet.next();</span>
+<span class="fc" id="L74">        String sql = &quot;SELECT 1 FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L75">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L76">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L77">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L78">            return resultSet.next();</span>
         }
     }
 
     private static boolean hasValidBearerToken(HikariDataSource dataSource, Context ctx) throws SQLException {
-<span class="fc" id="L78">        String authorization = ctx.header(&quot;Authorization&quot;);</span>
-<span class="fc bfc" id="L79" title="All 4 branches covered.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return false;</span>
+<span class="fc" id="L83">        String authorization = ctx.header(&quot;Authorization&quot;);</span>
+<span class="fc bfc" id="L84" title="All 4 branches covered.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return false;</span>
 
-<span class="fc" id="L81">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
-<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (token.isBlank()) return false;</span>
+<span class="fc" id="L86">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (token.isBlank()) return false;</span>
 
-<span class="fc" id="L84">        String sql = &quot;SELECT 1 FROM auth_tokens WHERE token = ? AND expires_at &gt; CURRENT_TIMESTAMP&quot;;</span>
-<span class="fc" id="L85">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L86">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L87">            statement.setString(1, token);</span>
-<span class="fc" id="L88">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L89">                return resultSet.next();</span>
+<span class="fc" id="L89">        String sql = &quot;SELECT 1 FROM auth_tokens WHERE token = ? AND expires_at &gt; CURRENT_TIMESTAMP&quot;;</span>
+<span class="fc" id="L90">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L91">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L92">            statement.setString(1, token);</span>
+<span class="fc" id="L93">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L94">                return resultSet.next();</span>
             }
         }
     }
 
     private static void saveState(HikariDataSource dataSource, String payload) throws SQLException {
-<span class="fc" id="L95">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L100">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO app_state (id, data, updated_at)
                 VALUES (1, ?::jsonb, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE
                 SET data = EXCLUDED.data,
                     updated_at = CURRENT_TIMESTAMP
                 &quot;&quot;&quot;;
-<span class="fc" id="L102">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L103">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L104">            statement.setString(1, payload);</span>
-<span class="fc" id="L105">            statement.executeUpdate();</span>
+<span class="fc" id="L107">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L108">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L109">            statement.setString(1, payload);</span>
+<span class="fc" id="L110">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L107">    }</span>
+<span class="fc" id="L112">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

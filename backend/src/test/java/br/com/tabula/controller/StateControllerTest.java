@@ -232,6 +232,45 @@ class StateControllerTest {
         }
     }
 
+    @Test
+    void shouldNotFailPutStateWhenRelationalSyncThrowsException() throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        
+        Connection connection1 = mock(Connection.class);
+        PreparedStatement stmt1 = mock(PreparedStatement.class);
+        ResultSet rs1 = mock(ResultSet.class);
+        when(connection1.prepareStatement(anyString())).thenReturn(stmt1);
+        when(stmt1.executeQuery()).thenReturn(rs1);
+        when(rs1.next()).thenReturn(true);
+
+        Connection connection2 = mock(Connection.class);
+        PreparedStatement stmt2 = mock(PreparedStatement.class);
+        ResultSet rs2 = mock(ResultSet.class);
+        when(connection2.prepareStatement(anyString())).thenReturn(stmt2);
+        when(stmt2.executeQuery()).thenReturn(rs2);
+        when(rs2.next()).thenReturn(true);
+
+        Connection connection3 = mock(Connection.class);
+        PreparedStatement stmt3 = mock(PreparedStatement.class);
+        when(connection3.prepareStatement(anyString())).thenReturn(stmt3);
+        when(stmt3.executeUpdate()).thenReturn(1);
+
+        when(dataSource.getConnection())
+                .thenReturn(connection1)
+                .thenReturn(connection2)
+                .thenReturn(connection3)
+                .thenThrow(new SQLException("database down during sync"));
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendPut(app, "/state", "{\"value\":1}", "Bearer abc");
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("\"ok\":true"));
+        } finally {
+            app.stop();
+        }
+    }
+
     private static Javalin startStateApp(HikariDataSource dataSource) {
         Javalin app = Javalin.create(config -> config.showJavalinBanner = false);
         StateController.register(app, dataSource);

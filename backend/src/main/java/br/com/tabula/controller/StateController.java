@@ -47,6 +47,11 @@ public class StateController {
                 }
 
                 saveState(dataSource, payload);
+                try {
+                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);
+                } catch (Exception ex) {
+                    LOGGER.error("Failed to sync relational database state in shadow mode", ex);
+                }
                 ctx.json(Map.of("ok", true));
             } catch (SQLException ex) {
                 LOGGER.error("Failed to save app state", ex);

@@ -4,6 +4,7 @@ Tabula Backend,br.com.tabula.repository,VerificationTokenRepository,0,177,6,10,0
 Tabula Backend,br.com.tabula.repository,VerificationTokenRepository.TokenInfo,0,15,0,0,0,6,0,3,0,3
 Tabula Backend,br.com.tabula.service,EmailService,141,155,6,12,26,40,5,13,0,9
 Tabula Backend,br.com.tabula.service,EmailService.new Authenticator() {...},0,18,0,0,0,2,0,2,0,2
+Tabula Backend,br.com.tabula.service,RelationalStateSyncService,89,1467,40,118,13,356,36,49,0,6
 Tabula Backend,br.com.tabula.dto,LoginRequest,0,17,0,0,0,5,0,5,0,5
 Tabula Backend,br.com.tabula.dto,RegisterRequest,0,24,0,0,0,10,0,7,0,7
 Tabula Backend,br.com.tabula.dto,ResetPasswordRequest,0,17,0,0,0,5,0,5,0,5
@@ -11,6 +12,6 @@ Tabula Backend,br.com.tabula.dto,VerifyEmailCodeRequest,0,17,0,0,0,8,0,5,0,5
 Tabula Backend,br.com.tabula.dto,ResendVerificationRequest,0,10,0,0,0,3,0,3,0,3
 Tabula Backend,br.com.tabula.dto,ChangePasswordRequest,0,24,0,0,0,7,0,7,0,7
 Tabula Backend,br.com.tabula.controller,PingController,0,27,0,0,0,7,0,3,0,3
-Tabula Backend,br.com.tabula.controller,StateController,2,226,6,20,0,56,6,15,0,8
+Tabula Backend,br.com.tabula.controller,StateController,6,231,6,20,2,58,6,15,0,8
 Tabula Backend,br.com.tabula.controller,AuthController,53,1000,22,78,8,211,20,46,0,16
 Tabula Backend,br.com.tabula.model,UserAccount,0,45,0,0,0,16,0,8,0,8

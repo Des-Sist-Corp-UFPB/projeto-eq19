@@ -102,6 +102,25 @@ updated_at
 
 A aplicação também possui migrations para tabelas relacionais, como `jogos`, `eventos`, `partidas`, `comentarios`, `favoritos` e `logs`. Essas tabelas foram criadas de forma não destrutiva para evolução da modelagem, mas o fluxo principal atual da aplicação ainda utiliza o estado persistido via `/api/state`.
 
+## Migração Relacional — Fase 2
+
+O projeto iniciou a segunda fase da migração dos dados para tabelas relacionais.
+
+Nesta fase, o `app_state.data` continua sendo a fonte principal de dados da aplicação. O endpoint `PUT /api/state` mantém o comportamento original, salvando o JSON normalmente no PostgreSQL.
+
+Após salvar o JSON com sucesso, o backend executa uma sincronização relacional em modo espelho, copiando os dados principais para tabelas como `usuarios`, `jogos`, `eventos`, `partidas`, `comentarios`, `favoritos` e `logs`.
+
+Essa sincronização é executada em modo seguro:
+
+- se o salvamento em `app_state.data` funcionar, a resposta ao frontend continua sendo sucesso;
+- se a sincronização relacional falhar, o erro é registrado em log, mas não quebra o fluxo atual da aplicação;
+- a rota `/ping` continua independente do banco de dados e do serviço de e-mail.
+
+Arquivos relacionados:
+
+- `backend/src/main/java/br/com/tabula/service/RelationalStateSyncService.java`
+- `backend/src/main/java/br/com/tabula/controller/StateController.java`
+
 ## Conta administrativa inicial
 
 A aplicação cria uma conta administrativa inicial via migration do banco.
@@ -217,13 +236,13 @@ Os testes automatizados do backend foram executados com Maven e JaCoCo.
 
 Resultado da última execução:
 
-* Testes executados: 87
-* Falhas: 0
-* Erros: 0
-* Ignorados: 0
-* Cobertura por instruções: 91,2%
-* Cobertura por linhas: 93,5%
-* Cobertura por branches: 74,2%
+- Testes executados: 96
+- Falhas: 0
+- Erros: 0
+- Ignorados: 0
+- Cobertura por instruções: 92%
+- Cobertura por linhas: 94,6%
+- Cobertura por branches: 74%
 
 Relatório HTML:
 
