@@ -34,7 +34,89 @@ public class StateController {
         return "true".equalsIgnoreCase(value);
     }
 
+    private static boolean isRelationalBackfillEnabled() {
+        String value = System.getenv("RELATIONAL_STATE_BACKFILL_ENABLED");
+        if (value == null || value.isBlank()) {
+            value = System.getProperty("RELATIONAL_STATE_BACKFILL_ENABLED");
+        }
+        return "true".equalsIgnoreCase(value);
+    }
+
     public static void register(Javalin app, HikariDataSource dataSource) {
+        app.post("/state/relational-backfill", ctx -> {
+            if (!isRelationalBackfillEnabled()) {
+                ctx.status(404).json(Map.of("error", "Not Found"));
+                return;
+            }
+
+            String legacyJson = null;
+            try {
+                legacyJson = readState(dataSource);
+            } catch (SQLException ex) {
+                LOGGER.error("Failed to read legacy state for backfill", ex);
+                ctx.status(500).json(Map.of(
+                    "ok", false,
+                    "message", "Relational backfill failed",
+                    "errors", java.util.List.of("Failed to read legacy state: " + ex.getMessage())
+                ));
+                return;
+            }
+
+            if (legacyJson == null || legacyJson.isBlank()) {
+                ctx.status(500).json(Map.of(
+                    "ok", false,
+                    "message", "Relational backfill failed",
+                    "errors", java.util.List.of("Legacy state is empty or not initialized.")
+                ));
+                return;
+            }
+
+            try {
+                br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson);
+            } catch (Exception ex) {
+                LOGGER.error("Failed to sync legacy state during backfill", ex);
+                ctx.status(500).json(Map.of(
+                    "ok", false,
+                    "message", "Relational backfill failed",
+                    "errors", java.util.List.of(ex.getMessage() != null ? ex.getMessage() : ex.toString())
+                ));
+                return;
+            }
+
+            String relationalJson = null;
+            try {
+                relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
+            } catch (Exception ex) {
+                LOGGER.error("Failed to read relational state after backfill", ex);
+                ctx.status(500).json(Map.of(
+                    "ok", false,
+                    "message", "Relational backfill failed",
+                    "errors", java.util.List.of("Failed to read relational state after sync: " + ex.getMessage())
+                ));
+                return;
+            }
+
+            String comparisonReport = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ObjectNode responseNode = mapper.createObjectNode();
+            
+            try {
+                com.fasterxml.jackson.databind.JsonNode comparisonNode = mapper.readTree(comparisonReport);
+                boolean comparisonOk = comparisonNode.has("ok") && comparisonNode.get("ok").asBoolean(false);
+                responseNode.put("ok", comparisonOk);
+                responseNode.put("message", comparisonOk ? "Relational backfill completed" : "Relational backfill completed with validation errors");
+                responseNode.set("comparison", comparisonNode);
+            } catch (Exception ex) {
+                LOGGER.error("Failed to parse comparison report during backfill", ex);
+                responseNode.put("ok", false);
+                responseNode.put("message", "Relational backfill completed with validation errors");
+                responseNode.put("comparison", comparisonReport);
+            }
+
+            ctx.contentType("application/json").result(responseNode.toPrettyString());
+        });
+
         app.get("/state/relational-comparison", ctx -> {
             if (!isRelationalComparisonEnabled()) {
                 ctx.status(404).json(Map.of("error", "Not Found"));

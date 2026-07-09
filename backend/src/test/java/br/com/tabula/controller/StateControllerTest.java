@@ -15,6 +15,7 @@ import java.sql.SQLException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -275,6 +276,165 @@ class StateControllerTest {
     void clearRelationalFlags() {
         System.clearProperty("RELATIONAL_STATE_READ_ENABLED");
         System.clearProperty("RELATIONAL_STATE_COMPARISON_ENABLED");
+        System.clearProperty("RELATIONAL_STATE_BACKFILL_ENABLED");
+    }
+
+    @Test
+    void shouldReturn404WhenBackfillIsDisabled() throws Exception {
+        System.setProperty("RELATIONAL_STATE_BACKFILL_ENABLED", "false");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + app.port() + "/state/relational-backfill"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(404, response.statusCode());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnOkTrueWhenBackfillSucceedsAndValidationPasses() throws Exception {
+        System.setProperty("RELATIONAL_STATE_BACKFILL_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+            when(rs.next()).thenReturn(false);
+
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            }
+            return stmt;
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + app.port() + "/state/relational-backfill"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertTrue(root.get("ok").asBoolean(), root.toPrettyString());
+            assertEquals("Relational backfill completed", root.get("message").asText());
+            assertTrue(root.get("comparison").isObject());
+            assertTrue(root.get("comparison").get("ok").asBoolean());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnOkFalseWhenBackfillSucceedsButValidationFails() throws Exception {
+        System.setProperty("RELATIONAL_STATE_BACKFILL_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            PreparedStatement stmt = mock(PreparedStatement.class);
+            ResultSet rs = mock(ResultSet.class);
+            when(stmt.executeQuery()).thenReturn(rs);
+            when(rs.next()).thenReturn(false);
+
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            }
+            return stmt;
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[{\"id\":\"u1\",\"name\":\"A\",\"email\":\"a@b.com\",\"role\":\"student\"}],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + app.port() + "/state/relational-backfill"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertFalse(root.get("ok").asBoolean(), root.toPrettyString());
+            assertEquals("Relational backfill completed with validation errors", root.get("message").asText());
+            assertTrue(root.get("comparison").isObject());
+            assertFalse(root.get("comparison").get("ok").asBoolean());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldReturnOkFalseAnd500WhenBackfillThrowsException() throws Exception {
+        System.setProperty("RELATIONAL_STATE_BACKFILL_ENABLED", "true");
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement appStateStatement = mock(PreparedStatement.class);
+        ResultSet appStateResultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("app_state")) {
+                return appStateStatement;
+            } else {
+                throw new SQLException("relational database sync error during backfill");
+            }
+        });
+
+        when(appStateStatement.executeQuery()).thenReturn(appStateResultSet);
+        when(appStateResultSet.next()).thenReturn(true);
+        when(appStateResultSet.getString(1)).thenReturn("{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}");
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + app.port() + "/state/relational-backfill"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(500, response.statusCode());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
+            assertFalse(root.get("ok").asBoolean(), root.toPrettyString());
+            assertEquals("Relational backfill failed", root.get("message").asText());
+            assertTrue(root.get("errors").isArray());
+            assertTrue(root.get("errors").get(0).asText().contains("relational database sync error during backfill"));
+        } finally {
+            app.stop();
+        }
     }
 
     @Test
