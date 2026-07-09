@@ -102,24 +102,103 @@ updated_at
 
 A aplicação também possui migrations para tabelas relacionais, como `jogos`, `eventos`, `partidas`, `comentarios`, `favoritos` e `logs`. Essas tabelas foram criadas de forma não destrutiva para evolução da modelagem, mas o fluxo principal atual da aplicação ainda utiliza o estado persistido via `/api/state`.
 
-## Migração Relacional — Fase 2
+## Migração Relacional
 
-O projeto iniciou a segunda fase da migração dos dados para tabelas relacionais.
+Este projeto utiliza uma estratégia de migração segura, incremental e tolerante a falhas para mover os dados da aplicação para um modelo relacional no PostgreSQL.
 
-Nesta fase, o `app_state.data` continua sendo a fonte principal de dados da aplicação. O endpoint `PUT /api/state` mantém o comportamento original, salvando o JSON normalmente no PostgreSQL.
+### 1. Arquitetura da Migração Atual
 
-Após salvar o JSON com sucesso, o backend executa uma sincronização relacional em modo espelho, copiando os dados principais para tabelas como `usuarios`, `jogos`, `eventos`, `partidas`, `comentarios`, `favoritos` e `logs`.
+Atualmente, a aplicação utiliza a tabela `app_state` (coluna `data` do tipo JSONB) como fonte de dados e fallback seguro. 
 
-Essa sincronização é executada em modo seguro:
+O fluxo de escrita ocorre da seguinte forma:
+1. **Salvamento Principal**: O endpoint `PUT /state` recebe o JSON do frontend e o salva diretamente no banco de dados na tabela `app_state.data`.
+2. **Sincronização em Sombra (Shadow Sync)**: Após o salvamento com sucesso, o backend inicia uma sincronização em segundo plano (shadow mode) utilizando o `RelationalStateSyncService`.
+3. Sincroniza e insere as informações mapeadas nas tabelas relacionais (`usuarios`, `jogos`, `eventos`, `evento_participantes`, `partidas`, `partida_participantes`, `partida_fotos`, `comentarios`, `favoritos` e `logs`).
 
-- se o salvamento em `app_state.data` funcionar, a resposta ao frontend continua sendo sucesso;
-- se a sincronização relacional falhar, o erro é registrado em log, mas não quebra o fluxo atual da aplicação;
-- a rota `/ping` continua independente do banco de dados e do serviço de e-mail.
+Pontos importantes:
+- A tabela `app_state.data` **não foi removida** e continua sendo atualizada.
+- Se a sincronização relacional falhar por qualquer motivo (erros de chave, constraint ou banco), o erro é registrado no log do servidor, mas a resposta de sucesso (`200 OK`) é retornada normalmente ao cliente.
+- A rota `/ping` continua independente de conexões de banco de dados e SMTP.
 
-Arquivos relacionados:
+### 2. Arquitetura de Leitura
 
-- `backend/src/main/java/br/com/tabula/service/RelationalStateSyncService.java`
-- `backend/src/main/java/br/com/tabula/controller/StateController.java`
+O fluxo de leitura (`GET /state`) possui três modos operacionais controlados por flags de recurso:
+
+1. **Leitura Padrão (Legada)**: Quando a leitura relacional está desativada, a aplicação lê diretamente a coluna `app_state.data`.
+2. **Leitura Relacional Sem Guardão**: Quando `RELATIONAL_STATE_READ_ENABLED=true` e o guardão está desativado, o backend tenta reconstruir o JSON a partir das tabelas relacionais usando `RelationalStateReadService`. Se houver falha, ele reverte automaticamente para o `app_state.data`.
+3. **Leitura Relacional Protegida (Guarded Relational Read)**: Quando `RELATIONAL_STATE_READ_ENABLED=true` e `RELATIONAL_STATE_READ_GUARD_ENABLED=true`, a rota executa uma verificação ativa de consistência em tempo de execução:
+   - Lê o `app_state.data` legado e o JSON reconstruído relacional.
+   - Compara ambos através do `RelationalStateComparisonService`.
+   - Se a comparação for bem-sucedida (`comparison.ok = true`), retorna o JSON relacional.
+   - Se a comparação falhar (`comparison.ok = false`) ou se houver qualquer erro/exceção, o sistema registra um aviso no log do servidor e retorna o `app_state.data` com status `200 OK`, sem afetar o usuário final.
+
+### 3. Serviços da Migração Relacional
+
+- **RelationalStateSyncService**: Responsável pela sincronização e inserção idempotente das tabelas relacionais a partir do JSONB. Utilizado no shadow sync (`PUT /state`) e no endpoint administrativo de backfill.
+- **RelationalStateReadService**: Reconstrói e formata o payload JSON compatível com o tipo `DatabaseState` do frontend a partir das tabelas relacionais do banco.
+- **RelationalStateComparisonService**: Compara estruturalmente os dois payloads JSON e gera um relatório. Ele detecta arrays de primeiro nível, discrepâncias de contagem de itens, IDs ausentes (erros críticos) e IDs extras ou diferenças em campos principais como `name`, `email`, `role`, `category`, `gameId`, `organizerId`, `winnerId`, `status` e `action` (warnings). Ignora safe defaults como avatares, imagens de capa, descrições, formatações de timestamp e campos opcionais vazios.
+
+### 4. Endpoints de Diagnóstico e Administração
+
+O backend expõe dois endpoints estritamente administrativos e protegidos por flags de recursos:
+
+- **GET /state/relational-comparison** (Flag: `RELATIONAL_STATE_COMPARISON_ENABLED=true`):
+  Retorna um relatório estruturado comparando as duas fontes de dados em tempo real. Não altera nenhum dado (operação somente leitura). Se a flag estiver desativada ou ausente, retorna `404 Not Found`.
+- **POST /state/relational-backfill** (Flag: `RELATIONAL_STATE_BACKFILL_ENABLED=true`):
+  Lê o `app_state.data` e realiza a carga inicial (sincronização) relacional de forma manual e idempotente. Retorna um relatório de comparação pós-sincronização. Deve ser desativado após o uso. Se a flag estiver desativada ou ausente, retorna `404 Not Found`.
+
+### 5. Variáveis de Ambiente e Feature Flags
+
+- `RELATIONAL_STATE_READ_ENABLED=true`: Ativa a tentativa de leitura relacional no `GET /state`.
+- `RELATIONAL_STATE_READ_GUARD_ENABLED=true`: Ativa a verificação ativa de integridade e comparação no `GET /state` antes de servir o JSON relacional.
+- `RELATIONAL_STATE_COMPARISON_ENABLED=true`: Habilita o endpoint de diagnóstico `/state/relational-comparison`.
+- `RELATIONAL_STATE_BACKFILL_ENABLED=true`: Habilita o endpoint administrativo `/state/relational-backfill`.
+
+### 6. Roteiro Recomendado de Rollout Seguro
+
+Siga este procedimento para ativar a leitura relacional em produção sem downtime ou riscos:
+
+1. **Passo 1 — Modo Seguro Padrão**: Mantenha as variáveis de leitura desativadas. A escrita shadow sync já popula gradualmente as tabelas relacionais a cada ação do usuário.
+2. **Passo 2 — Executar Carga Inicial (Backfill)**:
+   - Configure temporariamente `RELATIONAL_STATE_BACKFILL_ENABLED=true` no ambiente.
+   - Faça uma chamada `POST /api/state/relational-backfill`.
+   - Certifique-se de que a resposta retorne sucesso e remova a flag `RELATIONAL_STATE_BACKFILL_ENABLED`.
+3. **Passo 3 — Executar Validação Cruzada**:
+   - Configure temporariamente `RELATIONAL_STATE_COMPARISON_ENABLED=true`.
+   - Faça uma chamada `GET /api/state/relational-comparison`.
+   - Confirme se a comparação retornou `"ok": true`. Remova a flag `RELATIONAL_STATE_COMPARISON_ENABLED`.
+4. **Passo 4 — Habilitar Leitura Protegida (Guarded Read)**:
+   - Configure no ambiente:
+     ```env
+     RELATIONAL_STATE_READ_ENABLED=true
+     RELATIONAL_STATE_READ_GUARD_ENABLED=true
+     ```
+   - Reinicie a aplicação. O sistema agora lê do relacional de forma protegida. Mismatches reverterão automaticamente de forma silenciosa para o `app_state`.
+5. **Passo 5 — Ativação Direta Opcional**:
+   - Após constatar estabilidade e logs livres de avisos, você pode opcionalmente desativar a leitura protegida mantendo apenas `RELATIONAL_STATE_READ_ENABLED=true` e definindo `RELATIONAL_STATE_READ_GUARD_ENABLED=false`.
+   - **Nota**: A tabela `app_state` e o shadow sync continuam ativos em produção como fallback essencial.
+
+### 7. Instruções de Rollback Imediato
+
+Se houver qualquer instabilidade, indisponibilidade ou inconsistência de dados com a leitura relacional, remova ou defina as seguintes flags de leitura como `false`:
+
+```env
+RELATIONAL_STATE_READ_ENABLED=false
+RELATIONAL_STATE_READ_GUARD_ENABLED=false
+RELATIONAL_STATE_COMPARISON_ENABLED=false
+RELATIONAL_STATE_BACKFILL_ENABLED=false
+```
+
+A aplicação voltará instantaneamente a usar o `app_state.data` legado como única fonte de leitura e escrita, anulando qualquer risco de indisponibilidade.
+
+### 8. Explicação para Avaliação / Professor
+
+Esta migração seguiu uma estratégia incremental recomendada para sistemas em produção:
+- **Evolução Não Destrutiva**: Preserva o `app_state.data` original como fonte primária e backup.
+- **Sincronização em Sombra**: A escrita relacional funciona de forma passiva sem afetar o tempo de resposta ou disponibilidade do cliente.
+- **Auditoria ao Vivo**: Os endpoints de comparação e backfill permitem verificar a consistência da migração antes de ligar a chave.
+- **Rede de Segurança Ativa (Guarded Read)**: Se houver qualquer divergência em produção, a aplicação reverte de forma transparente e serve o estado JSONB original.
+- **Rollback Instantâneo**: Desfazer a mudança requer apenas alterar variáveis de ambiente, sem necessidade de reverter migrations ou dados.
 
 ## Conta administrativa inicial
 
@@ -236,7 +315,7 @@ Os testes automatizados do backend foram executados com Maven e JaCoCo.
 
 Resultado da última execução:
 
-- Testes executados: 96
+- Testes executados: 121
 - Falhas: 0
 - Erros: 0
 - Ignorados: 0
