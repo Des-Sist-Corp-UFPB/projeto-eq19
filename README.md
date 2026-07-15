@@ -68,7 +68,8 @@ As credenciais reais não devem ser versionadas no Git.
 
 Externamente, os endpoints são acessados pelo prefixo `/api`:
 
-* `GET /api/ping` — healthcheck da aplicação, deve retornar HTTP 200.
+* `GET /api/ping` — healthcheck do ambiente/professor, dependente do PostgreSQL (retorna HTTP 200 se estiver UP, ou HTTP 503 se estiver DOWN).
+* `GET /api/live` — liveness da aplicação, não dependente do PostgreSQL (retorna HTTP 200 se a aplicação estiver rodando).
 * `POST /api/auth/login` — login real no backend.
 * `POST /api/auth/register` — cadastro real no backend.
 * `POST /api/auth/verify-email` — verificação de e-mail por código.
@@ -118,7 +119,7 @@ O fluxo de escrita ocorre da seguinte forma:
 Pontos importantes:
 - A tabela `app_state.data` **não foi removida** e continua sendo atualizada.
 - Se a sincronização relacional falhar por qualquer motivo (erros de chave, constraint ou banco), o erro é registrado no log do servidor, mas a resposta de sucesso (`200 OK`) é retornada normalmente ao cliente.
-- A rota `/ping` continua independente de conexões de banco de dados e SMTP.
+- A rota `/ping` e `/api/ping` dependem do PostgreSQL, retornando status unhealthy se o banco estiver indisponível (garantindo que o status do projeto fique vermelho para o monitoramento do professor), enquanto as rotas `/live` e `/api/live` permanecem independentes do banco.
 
 ### 2. Arquitetura de Leitura
 

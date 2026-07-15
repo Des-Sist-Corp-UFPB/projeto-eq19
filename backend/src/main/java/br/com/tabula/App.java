@@ -52,7 +52,7 @@ public class App {
                 ctx.status(204);
             });
 
-            PingController.register(app);
+            PingController.register(app, dataSource);
             AuthController.register(app, dataSource);
             StateController.register(app, dataSource);
 
