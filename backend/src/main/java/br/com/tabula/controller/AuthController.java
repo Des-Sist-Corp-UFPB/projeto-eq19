@@ -12,6 +12,8 @@ import br.com.tabula.repository.VerificationTokenRepository;
 import br.com.tabula.service.EmailService;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,16 +51,28 @@ public class AuthController {
 
                 Optional<UserAccount> account = userRepository.findByEmail(email);
                 if (account.isEmpty() || !sha256(password).equals(account.get().getPasswordHash())) {
+                    LOGGER.atWarn()
+                          .addKeyValue("auth_result", "invalid_credentials")
+                          .log("Login rejected");
                     ctx.status(401).json(Map.of("error", "Credenciais inválidas."));
                     return;
                 }
 
                 if (!account.get().isEmailVerificado()) {
+                    LOGGER.atWarn()
+                          .addKeyValue("user_id", account.get().getExternalId())
+                          .addKeyValue("auth_result", "unverified_email")
+                          .log("Login attempt for unverified email");
                     ctx.status(403).json(Map.of("error", "Please verify your email before signing in."));
                     return;
                 }
 
                 String token = userRepository.createAuthToken(account.get().getId());
+                LOGGER.atInfo()
+                      .addKeyValue("user_id", account.get().getExternalId())
+                      .addKeyValue("auth_result", "success")
+                      .log("User login completed");
+
                 ctx.json(Map.of(
                         "ok", true,
                         "message", "Login realizado com sucesso.",
@@ -66,10 +80,14 @@ public class AuthController {
                         "user", toFrontendUser(account.get())
                 ));
             } catch (SQLException ex) {
-                LOGGER.error("Failed to login user", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Failed to login user");
                 ctx.status(500).json(Map.of("error", "Não foi possível fazer login no momento."));
             } catch (Exception ex) {
-                LOGGER.error("Invalid login payload", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Invalid login payload");
                 ctx.status(400).json(Map.of("error", "Dados inválidos para login."));
             }
         });
@@ -100,7 +118,10 @@ public class AuthController {
                         false // email_verificado = false
                 );
 
-                LOGGER.info("Registered user {} ({}) with id {}", name, email, account.getId());
+                LOGGER.atInfo()
+                      .addKeyValue("user_id", account.getExternalId())
+                      .addKeyValue("operation", "user_registration")
+                      .log("User registration completed");
 
                 // Generate secure random verification token (UUID)
                 String code = generateVerificationCode();
@@ -112,13 +133,17 @@ public class AuthController {
                 EmailService emailService = new EmailService();
 
                 try {
-                    emailService.sendVerificationCode(email, name, code);
+                    emailService.sendVerificationCode(email, name, code, account.getExternalId());
                     ctx.status(201).json(Map.of(
                             "ok", true,
                             "message", "Conta criada com sucesso. Código de verificação enviado para seu e-mail."
                     ));
                 } catch (Exception ex) {
-                    LOGGER.error("Failed to send verification email during registration for {}", email, ex);
+                    LOGGER.atError()
+                          .addKeyValue("user_id", account.getExternalId())
+                          .addKeyValue("operation", "email_verification_delivery")
+                          .setCause(ex)
+                          .log("Verification email delivery failed");
                     // As requested: Do NOT delete the user. Keep unverified and return clear error
                     ctx.status(201).json(Map.of(
                             "ok", true,
@@ -126,10 +151,16 @@ public class AuthController {
                     ));
                 }
             } catch (SQLException ex) {
-                LOGGER.error("Failed to register user", ex);
+                LOGGER.atError()
+                      .addKeyValue("operation", "user_registration")
+                      .setCause(ex)
+                      .log("Failed to register user");
                 ctx.status(500).json(Map.of("error", "Não foi possível criar a conta no momento."));
             } catch (Exception ex) {
-                LOGGER.error("Invalid registration payload", ex);
+                LOGGER.atError()
+                      .addKeyValue("operation", "user_registration")
+                      .setCause(ex)
+                      .log("Invalid registration payload");
                 ctx.status(400).json(Map.of("error", "Dados inválidos para cadastro."));
             }
         });
@@ -170,40 +201,41 @@ public class AuthController {
                 }
 
                 UserAccount account = accountOpt.get();
-                if (account.isEmailVerificado()) {
-                    ctx.status(400).json(Map.of("error", "Este e-mail já está verificado."));
-                    return;
-                }
-
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
-                Optional<VerificationTokenRepository.TokenInfo> tokenInfoOpt = tokenRepository.findCodeForEmail(email, code);
 
-                if (tokenInfoOpt.isEmpty()) {
-                    ctx.status(400).json(Map.of("error", "Código de verificação inválido ou incorreto."));
-                    return;
+                try {
+                    verifyUserEmail(userRepository, tokenRepository, account, code, account.getExternalId());
+
+                    LOGGER.atInfo()
+                          .addKeyValue("user_id", account.getExternalId())
+                          .addKeyValue("verification_result", "success")
+                          .log("User email verification completed");
+
+                    ctx.json(Map.of(
+                            "ok", true,
+                            "message", "E-mail verificado com sucesso."
+                    ));
+                } catch (VerificationException vex) {
+                    String resultType = "invalid_code";
+                    if (vex.getMessage().contains("expirou")) {
+                        resultType = "expired_code";
+                    }
+                    LOGGER.atWarn()
+                          .addKeyValue("user_id", account.getExternalId())
+                          .addKeyValue("verification_result", resultType)
+                          .log("User email verification rejected");
+
+                    ctx.status(vex.getStatusCode()).json(Map.of("error", vex.getMessage()));
                 }
-
-                VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();
-                if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {
-                    ctx.status(400).json(Map.of("error", "Este código de verificação expirou. Por favor, solicite um novo."));
-                    return;
-                }
-
-                // Mark user as verified
-                userRepository.verifyEmail(tokenInfo.getUserId());
-
-                // Invalidate/delete all verification codes for this user
-                tokenRepository.deleteTokensByUser(tokenInfo.getUserId());
-
-                ctx.json(Map.of(
-                        "ok", true,
-                        "message", "E-mail verificado com sucesso."
-                ));
             } catch (SQLException ex) {
-                LOGGER.error("Failed to verify email code", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Failed to verify email code");
                 ctx.status(500).json(Map.of("error", "Erro interno no servidor ao verificar o e-mail."));
             } catch (Exception ex) {
-                LOGGER.error("Invalid verify-email payload", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Invalid verify-email payload");
                 ctx.status(400).json(Map.of("error", "Dados inválidos para verificação."));
             }
         });
@@ -244,14 +276,20 @@ public class AuthController {
                 EmailService emailService = new EmailService();
 
                 try {
-                    emailService.sendVerificationCode(account.getEmail(), account.getName(), code);
+                    emailService.sendVerificationCode(account.getEmail(), account.getName(), code, account.getExternalId());
                     ctx.json(Map.of("ok", true, "message", "Código de verificação reenviado com sucesso."));
                 } catch (Exception ex) {
-                    LOGGER.error("Failed to send verification code during resend for {}", email, ex);
+                    LOGGER.atError()
+                          .addKeyValue("user_id", account.getExternalId())
+                          .addKeyValue("operation", "email_verification_delivery")
+                          .setCause(ex)
+                          .log("Verification email delivery failed");
                     ctx.status(500).json(Map.of("error", "Falha ao enviar o código de verificação. Por favor, tente novamente."));
                 }
             } catch (Exception ex) {
-                LOGGER.error("Invalid resend verification payload", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Invalid resend verification payload");
                 ctx.status(400).json(Map.of("error", "Dados inválidos para reenvio de verificação."));
             }
         });
@@ -275,7 +313,9 @@ public class AuthController {
                 userRepository.updatePassword(email, sha256(newPassword));
                 ctx.json(Map.of("ok", true, "message", "Senha redefinida com sucesso."));
             } catch (SQLException ex) {
-                LOGGER.error("Failed to reset password", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Failed to reset password");
                 ctx.status(500).json(Map.of("error", "Não foi possível redefinir a senha."));
             }
         });
@@ -301,7 +341,9 @@ public class AuthController {
                 userRepository.updatePassword(email, sha256(newPassword));
                 ctx.json(Map.of("ok", true, "message", "Senha alterada com sucesso."));
             } catch (SQLException ex) {
-                LOGGER.error("Failed to change password", ex);
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Failed to change password");
                 ctx.status(500).json(Map.of("error", "Não foi possível alterar a senha."));
             }
         });
@@ -443,5 +485,40 @@ public class AuthController {
             host = ctx.host();
         }
         return proto + "://" + host;
+    }
+
+    private static class VerificationException extends Exception {
+        private final int statusCode;
+        public VerificationException(String message, int statusCode) {
+            super(message);
+            this.statusCode = statusCode;
+        }
+        public int getStatusCode() { return statusCode; }
+    }
+
+    @WithSpan("verify-user-email")
+    private static void verifyUserEmail(
+            UserRepository userRepository,
+            VerificationTokenRepository tokenRepository,
+            UserAccount account,
+            String code,
+            @SpanAttribute("user_id") String userId) throws SQLException, VerificationException {
+        if (account.isEmailVerificado()) {
+            throw new VerificationException("Este e-mail já está verificado.", 400);
+        }
+
+        Optional<VerificationTokenRepository.TokenInfo> tokenInfoOpt = tokenRepository.findCodeForEmail(account.getEmail(), code);
+
+        if (tokenInfoOpt.isEmpty()) {
+            throw new VerificationException("Código de verificação inválido ou incorreto.", 400);
+        }
+
+        VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();
+        if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {
+            throw new VerificationException("Este código de verificação expirou. Por favor, solicite um novo.", 400);
+        }
+
+        userRepository.verifyEmail(tokenInfo.getUserId());
+        tokenRepository.deleteTokensByUser(tokenInfo.getUserId());
     }
 }

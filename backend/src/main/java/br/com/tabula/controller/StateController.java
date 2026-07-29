@@ -61,7 +61,11 @@ public class StateController {
             try {
                 legacyJson = readState(dataSource);
             } catch (SQLException ex) {
-                LOGGER.error("Failed to read legacy state for backfill", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_backfill")
+                      .setCause(ex)
+                      .log("Failed to read legacy state for backfill");
                 ctx.status(500).json(Map.of(
                     "ok", false,
                     "message", "Relational backfill failed",
@@ -82,7 +86,11 @@ public class StateController {
             try {
                 br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson);
             } catch (Exception ex) {
-                LOGGER.error("Failed to sync legacy state during backfill", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_backfill")
+                      .setCause(ex)
+                      .log("Failed to sync legacy state during backfill");
                 ctx.status(500).json(Map.of(
                     "ok", false,
                     "message", "Relational backfill failed",
@@ -95,7 +103,11 @@ public class StateController {
             try {
                 relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
             } catch (Exception ex) {
-                LOGGER.error("Failed to read relational state after backfill", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_backfill")
+                      .setCause(ex)
+                      .log("Failed to read relational state after backfill");
                 ctx.status(500).json(Map.of(
                     "ok", false,
                     "message", "Relational backfill failed",
@@ -116,7 +128,11 @@ public class StateController {
                 responseNode.put("message", comparisonOk ? "Relational backfill completed" : "Relational backfill completed with validation errors");
                 responseNode.set("comparison", comparisonNode);
             } catch (Exception ex) {
-                LOGGER.error("Failed to parse comparison report during backfill", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_backfill")
+                      .setCause(ex)
+                      .log("Failed to parse comparison report during backfill");
                 responseNode.put("ok", false);
                 responseNode.put("message", "Relational backfill completed with validation errors");
                 responseNode.put("comparison", comparisonReport);
@@ -135,7 +151,11 @@ public class StateController {
             try {
                 legacyJson = readState(dataSource);
             } catch (SQLException ex) {
-                LOGGER.error("Failed to read legacy state for comparison", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_comparison")
+                      .setCause(ex)
+                      .log("Failed to read legacy state for comparison");
                 ctx.status(500).json(Map.of("error", "Erro ao carregar estado legado."));
                 return;
             }
@@ -149,7 +169,11 @@ public class StateController {
             try {
                 relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
             } catch (Exception ex) {
-                LOGGER.error("Failed to read relational state for comparison", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_comparison")
+                      .setCause(ex)
+                      .log("Failed to read relational state for comparison");
                 readError = ex.getMessage();
             }
 
@@ -178,7 +202,11 @@ public class StateController {
                         try {
                             legacyJson = readState(dataSource);
                         } catch (SQLException ex) {
-                            LOGGER.error("Failed to read legacy state for guard check", ex);
+                            LOGGER.atError()
+                                  .addKeyValue("state_id", 1)
+                                  .addKeyValue("operation", "state_read")
+                                  .setCause(ex)
+                                  .log("Failed to read legacy state for guard check");
                         }
 
                         if (legacyJson != null && !legacyJson.isBlank()) {
@@ -193,11 +221,18 @@ public class StateController {
                                 if (comparisonOk) {
                                     payload = relationalJson;
                                 } else {
-                                    LOGGER.warn("Relational read guard check failed. Comparison report: {}", comparisonReport);
+                                    LOGGER.atWarn()
+                                          .addKeyValue("state_id", 1)
+                                          .addKeyValue("operation", "state_read")
+                                          .log("Relational read guard check failed. Comparison report: {}", comparisonReport);
                                     payload = legacyJson;
                                 }
                             } catch (Exception ex) {
-                                LOGGER.error("Failed during relational read guard check, falling back to legacy state", ex);
+                                LOGGER.atError()
+                                      .addKeyValue("state_id", 1)
+                                      .addKeyValue("operation", "state_read")
+                                      .setCause(ex)
+                                      .log("Failed during relational read guard check, falling back to legacy state");
                                 payload = legacyJson;
                             }
                         }
@@ -205,7 +240,11 @@ public class StateController {
                         try {
                             payload = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
                         } catch (Exception ex) {
-                            LOGGER.error("Failed to read relational database state, falling back to app_state", ex);
+                            LOGGER.atError()
+                                  .addKeyValue("state_id", 1)
+                                  .addKeyValue("operation", "state_read")
+                                  .setCause(ex)
+                                  .log("Failed to read relational database state, falling back to app_state");
                         }
                     }
                 }
@@ -220,7 +259,11 @@ public class StateController {
                 }
                 ctx.contentType("application/json").result(payload);
             } catch (SQLException ex) {
-                LOGGER.error("Failed to read app state", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "state_read")
+                      .setCause(ex)
+                      .log("Failed to read app state");
                 ctx.status(500).json(Map.of("error", "Não foi possível carregar os dados."));
             }
         });
@@ -242,11 +285,19 @@ public class StateController {
                 try {
                     br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);
                 } catch (Exception ex) {
-                    LOGGER.error("Failed to sync relational database state in shadow mode", ex);
+                    LOGGER.atError()
+                          .addKeyValue("state_id", 1)
+                          .addKeyValue("operation", "state_update")
+                          .setCause(ex)
+                          .log("Failed to sync relational database state in shadow mode");
                 }
                 ctx.json(Map.of("ok", true));
             } catch (SQLException ex) {
-                LOGGER.error("Failed to save app state", ex);
+                LOGGER.atError()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "state_update")
+                      .setCause(ex)
+                      .log("Failed to save app state");
                 ctx.status(500).json(Map.of("error", "Não foi possível salvar os dados."));
             }
         });

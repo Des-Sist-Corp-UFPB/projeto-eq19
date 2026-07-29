@@ -230,6 +230,12 @@ No ambiente local, o compose usa um container PostgreSQL próprio e expõe a apl
 127.0.0.1:8119
 ```
 
+## Observabilidade Local (OpenTelemetry)
+
+Para rodar a aplicação local com coleta de traces via OpenTelemetry, Grafana e Tempo, consulte o guia detalhado:
+- [Guia de Instrumentação OpenTelemetry Local](file:///c:/Users/cauab/Downloads/Tabula/docs/opentelemetry-local.md)
+
+
 ## Log de Auditoria
 
 O Tabula possui um módulo de log de auditoria para registrar ações importantes realizadas na aplicação.

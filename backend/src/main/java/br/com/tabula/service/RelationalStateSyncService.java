@@ -6,6 +6,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -22,6 +24,7 @@ public class RelationalStateSyncService {
     private RelationalStateSyncService() {
     }
 
+    @WithSpan("sync-from-state-json")
     public static void syncFromStateJson(HikariDataSource dataSource, String payload) throws Exception {
         if (payload == null || payload.isBlank()) {
             LOGGER.warn("RelationalStateSyncService: Empty or blank payload provided.");
@@ -29,6 +32,11 @@ public class RelationalStateSyncService {
         }
 
         JsonNode root = MAPPER.readTree(payload);
+
+        int usersSynced = 0;
+        int gamesSynced = 0;
+        int eventsSynced = 0;
+        int sessionsSynced = 0;
 
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
@@ -107,6 +115,13 @@ public class RelationalStateSyncService {
                                         emailSafe = !rs.next();
                                     }
                                 }
+                                if (!emailSafe) {
+                                    LOGGER.atWarn()
+                                          .addKeyValue("user_id", userId)
+                                          .addKeyValue("operation", "relational_state_sync")
+                                          .addKeyValue("sync_result", "email_conflict")
+                                          .log("Email update skipped during state synchronization");
+                                }
                             }
 
                             String updateSql = emailSafe
@@ -175,6 +190,7 @@ public class RelationalStateSyncService {
                                 }
                             }
                         }
+                        usersSynced++;
                     }
                 }
 
@@ -288,6 +304,7 @@ public class RelationalStateSyncService {
                                 }
                             }
                         }
+                        gamesSynced++;
                     }
                 }
 
@@ -384,6 +401,7 @@ public class RelationalStateSyncService {
                                     }
                                 }
                             }
+                            eventsSynced++;
                         }
                     }
                 }
@@ -488,6 +506,7 @@ public class RelationalStateSyncService {
                                     }
                                 }
                             }
+                            sessionsSynced++;
                         }
                     }
                 }
@@ -546,7 +565,15 @@ public class RelationalStateSyncService {
                 }
 
                 conn.commit();
-                LOGGER.info("RelationalStateSyncService: Relational tables synchronization completed successfully.");
+                LOGGER.atInfo()
+                      .addKeyValue("state_id", 1)
+                      .addKeyValue("operation", "relational_state_sync")
+                      .addKeyValue("sync_result", "success")
+                      .addKeyValue("users_synced", usersSynced)
+                      .addKeyValue("games_synced", gamesSynced)
+                      .addKeyValue("events_synced", eventsSynced)
+                      .addKeyValue("sessions_synced", sessionsSynced)
+                      .log("Relational state synchronization completed");
             } catch (Exception ex) {
                 conn.rollback();
                 throw ex;

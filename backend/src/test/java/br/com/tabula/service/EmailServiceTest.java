@@ -16,7 +16,7 @@ class EmailServiceTest {
 
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
-                () -> service.sendVerificationCode("recipient@example.com", "Recipient", "123456")
+                () -> service.sendVerificationCode("recipient@example.com", "Recipient", "123456", "u_test")
         );
 
         assertTrue(exception.getMessage().contains("SMTP_USER"));
@@ -28,7 +28,7 @@ class EmailServiceTest {
 
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
-                () -> service.sendVerificationCode("recipient@example.com", "Recipient", "123456")
+                () -> service.sendVerificationCode("recipient@example.com", "Recipient", "123456", "u_test")
         );
 
         assertTrue(exception.getMessage().contains("SMTP_FROM"));

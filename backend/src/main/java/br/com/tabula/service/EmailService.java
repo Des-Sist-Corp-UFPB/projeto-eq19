@@ -1,5 +1,7 @@
 package br.com.tabula.service;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import jakarta.mail.Authenticator;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
@@ -42,14 +44,23 @@ public class EmailService {
         this.smtpFromName = smtpFromName;
     }
 
-    public void sendVerificationCode(String recipientEmail, String recipientName, String code) {
+    @WithSpan("send-verification-email")
+    public void sendVerificationCode(String recipientEmail, String recipientName, String code, @SpanAttribute("user_id") String userExternalId) {
         if (isBlank(smtpUser) || isBlank(smtpPassword)) {
-            LOGGER.error("[EmailService] SMTP_USER ou SMTP_PASSWORD não configurados. E-mail de verificação não enviado.");
+            LOGGER.atError()
+                  .addKeyValue("user_id", userExternalId)
+                  .addKeyValue("operation", "email_verification_delivery")
+                  .addKeyValue("delivery_result", "failure")
+                  .log("[EmailService] SMTP_USER ou SMTP_PASSWORD não configurados. E-mail de verificação não enviado.");
             throw new IllegalStateException("SMTP_USER e SMTP_PASSWORD precisam estar configurados.");
         }
 
         if (isBlank(smtpFrom)) {
-            LOGGER.error("[EmailService] SMTP_FROM não configurado. E-mail de verificação não enviado.");
+            LOGGER.atError()
+                  .addKeyValue("user_id", userExternalId)
+                  .addKeyValue("operation", "email_verification_delivery")
+                  .addKeyValue("delivery_result", "failure")
+                  .log("[EmailService] SMTP_FROM não configurado. E-mail de verificação não enviado.");
             throw new IllegalStateException("SMTP_FROM precisa estar configurado.");
         }
 
@@ -81,11 +92,23 @@ public class EmailService {
             message.setSubject("Código de verificação - Tabula", StandardCharsets.UTF_8.name());
             message.setContent(buildVerificationHtml(recipientName, code), "text/html; charset=UTF-8");
 
-            LOGGER.info("[EmailService] Enviando código de verificação para {} via SMTP {}:{}...", recipientEmail, smtpHost, smtpPort);
+            LOGGER.atInfo()
+                  .addKeyValue("user_id", userExternalId)
+                  .addKeyValue("operation", "email_verification_delivery")
+                  .log("[EmailService] Enviando código de verificação via SMTP {}:{}...", smtpHost, smtpPort);
             Transport.send(message);
-            LOGGER.info("[EmailService] Código de verificação enviado com sucesso para {}.", recipientEmail);
+            LOGGER.atInfo()
+                  .addKeyValue("user_id", userExternalId)
+                  .addKeyValue("operation", "email_verification_delivery")
+                  .addKeyValue("delivery_result", "success")
+                  .log("[EmailService] Código de verificação enviado com sucesso.");
         } catch (Exception e) {
-            LOGGER.error("[EmailService] Falha ao enviar código de verificação para {}", recipientEmail, e);
+            LOGGER.atError()
+                  .addKeyValue("user_id", userExternalId)
+                  .addKeyValue("operation", "email_verification_delivery")
+                  .addKeyValue("delivery_result", "failure")
+                  .setCause(e)
+                  .log("[EmailService] Falha ao enviar código de verificação.");
             throw new RuntimeException("Falha ao enviar e-mail de verificação: " + e.getMessage(), e);
         }
     }
