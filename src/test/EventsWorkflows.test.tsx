@@ -1,0 +1,112 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Events } from '../pages/Events';
+import { renderWithProviders } from './renderWithProviders';
+import { getDefaultDatabaseState } from '../db/database';
+import * as api from '../services/api';
+
+vi.mock('../services/api', async importOriginal => {
+  const original = await importOriginal<typeof import('../services/api')>();
+  return {
+    ...original,
+    getServerState: vi.fn(),
+    saveServerState: vi.fn(),
+    generateEventDraft: vi.fn(),
+    refineEventDraft: vi.fn(),
+  };
+});
+
+describe('Events workflows', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem('tabula_auth_token', 'session-token');
+    sessionStorage.setItem('tabula_auth_session', 'u1');
+    vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
+    vi.mocked(api.saveServerState).mockResolvedValue();
+  });
+
+  it('filters the calendar, changes month and clears the selected day', async () => {
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByText('12', { selector: 'span' }));
+    expect(screen.getByRole('heading', { name: /Eventos em 12\/06\/2026/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Limpar Filtro de Dia/i }));
+    expect(screen.getByRole('heading', { name: /Próximos Eventos/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '▶' }));
+    expect(screen.getByRole('heading', { name: /Julho de 2026/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '◀' }));
+    expect(screen.getByRole('heading', { name: /Junho de 2026/i })).toBeInTheDocument();
+  });
+
+  it('joins a full event waiting list and leaves an existing table', async () => {
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /Entrar na Fila de Espera/i }));
+    expect(await screen.findByText(/adicionado à lista de espera/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Sair da Espera/i }));
+    expect(await screen.findByText(/Participação cancelada/i)).toBeInTheDocument();
+
+    const leaveButtons = screen.getAllByRole('button', { name: /Sair da Mesa/i });
+    await user.click(leaveButtons[0]);
+    expect((await screen.findAllByText(/Participação cancelada/i)).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByRole('button', { name: /Inscrever-se|Entrar na Fila de Espera/i }).length)
+      .toBeGreaterThan(0);
+  });
+
+  it('creates an event only after manual submission and resets the form', async () => {
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+
+    const form = screen.getByRole('heading', { name: /Agendar Encontro de Jogo/i }).closest('.modal-content')!
+      .querySelector('form')!;
+    const select = form.querySelector('select')!;
+    const date = form.querySelector('input[type="date"]')!;
+    const description = form.querySelectorAll('textarea')[1];
+    await user.selectOptions(select, 'g1');
+    await user.clear(date);
+    await user.type(date, '2026-09-20');
+    await user.clear(screen.getByLabelText(/Local de Encontro/i));
+    await user.type(screen.getByLabelText(/Local de Encontro/i), 'Sala 5');
+    await user.type(description, 'Evento confirmado manualmente.');
+
+    const callsBeforeSubmit = vi.mocked(api.saveServerState).mock.calls.length;
+    await user.click(within(form).getByRole('button', { name: /^Agendar Encontro$/i }));
+    expect(await screen.findByText(/agendado com sucesso/i)).toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(api.saveServerState).mock.calls.length).toBeGreaterThan(callsBeforeSubmit));
+    expect(screen.queryByRole('heading', { name: /Agendar Encontro de Jogo/i })).not.toBeInTheDocument();
+  });
+
+  it('validates and completes an event with winner and match details', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('button', { name: /Concluir Evento/i })[0]);
+
+    const modal = screen.getByRole('heading', { name: /Concluir Encontro de Jogo/i }).closest('.modal-content')!;
+    const form = modal.querySelector('form')!;
+    fireEvent.submit(form);
+    expect(alertSpy).toHaveBeenCalledWith('Por favor, selecione o vencedor.');
+
+    await user.selectOptions(form.querySelector('select')!, 'u1');
+    fireEvent.submit(form);
+    expect(alertSpy).toHaveBeenCalledWith('Por favor, adicione notas do relato da partida.');
+
+    const inputs = form.querySelectorAll('input');
+    await user.clear(form.querySelector('textarea')!);
+    await user.type(form.querySelector('textarea')!, 'Vitória após uma disputa equilibrada.');
+    await user.clear(inputs[1]);
+    await user.type(inputs[1], 'https://example.test/partida.jpg');
+    await user.type(inputs[2], 'Ótima partida!');
+    await user.click(within(form).getByRole('button', { name: /Salvar Resultados/i }));
+
+    expect(await screen.findByText(/finalizada e arquivada/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Concluir Encontro de Jogo/i })).not.toBeInTheDocument();
+    alertSpy.mockRestore();
+  });
+});

@@ -335,15 +335,17 @@ Os testes automatizados do frontend foram executados com Vitest e V8 Coverage.
 
 Resultado da última execução:
 
-* Arquivos de teste: 13
-* Testes aprovados: 38
+* Arquivos de teste: 14
+* Testes aprovados: 46
 * Falhas: 0
-* Cobertura por statements: 80,69% (1.145/1.419)
-* Cobertura por linhas: 82,35% (1.069/1.298)
-* Cobertura por branches: 70,92% (500/705)
-* Cobertura por funções: 70,50% (263/373)
+* Cobertura por statements: 87,66% (1.244/1.419)
+* Cobertura por linhas: 89,13% (1.157/1.298)
+* Cobertura por branches: 76,02% (536/705)
+* Cobertura por funções: 79,62% (297/373)
 
-Os testes de interface cobrem também a auditoria e os fluxos de geração e refinamento por IA, inclusive a preservação do formulário quando o limite é atingido.
+Os testes de interface cobrem também a auditoria, os fluxos manuais de eventos e os fluxos de geração e refinamento por IA, inclusive refinamentos sucessivos, erros do provedor e preservação do formulário.
+
+Os builds de cobertura exigem no mínimo 85% de statements e 85% de linhas no frontend. O JaCoCo exige no mínimo 85% de instruções no backend.
 
 Relatórios:
 

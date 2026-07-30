@@ -38,19 +38,21 @@ npm run test:coverage
 
 Resultado:
 
-- 13 arquivos de teste;
-- 38 testes aprovados;
-- statements: 80,69% (1.145 de 1.419);
-- branches: 70,92% (500 de 705);
-- functions: 70,50% (263 de 373);
-- lines: 82,35% (1.069 de 1.298).
+- 14 arquivos de teste;
+- 46 testes aprovados;
+- statements: 87,66% (1.244 de 1.419);
+- branches: 76,02% (536 de 705);
+- functions: 79,62% (297 de 373);
+- lines: 89,13% (1.157 de 1.298).
 
 Relatórios versionados:
 
 - [Vitest/V8 HTML](../cobertura/frontend/index.html)
 - [Resumo JSON](../cobertura/frontend/coverage-summary.json)
 
-Os testes incluem contextos de autenticação e banco, páginas principais, auditoria e os fluxos de IA no formulário de eventos. A cobertura não implica validação de serviços externos reais: PostgreSQL em container é usado apenas no teste de privilégios, e a LiteLLM é sempre simulada.
+Os testes incluem contextos de autenticação e banco, páginas principais, auditoria, criação e participação em eventos e os fluxos de IA no formulário de eventos. A cobertura não implica validação de serviços externos reais: PostgreSQL em container é usado apenas no teste de privilégios, e a LiteLLM é sempre simulada.
+
+Os limiares automatizados são 85% de statements e linhas no frontend e 85% de instruções no backend. Eles foram definidos somente após a suíte atingir esses valores com testes de comportamento.
 
 ## Validação rápida
 

@@ -128,4 +128,71 @@ describe('Events AI draft assistant', () => {
     expect(screen.getByDisplayValue('18:00')).toBeInTheDocument();
     expect(screen.getByLabelText(/Alteração desejada/i)).toHaveValue('Troque para domingo');
   });
+
+  it('applies successive refinements, sends edited fields and clears each successful instruction', async () => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue({
+      gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
+      location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
+    });
+    vi.mocked(api.refineEventDraft)
+      .mockResolvedValueOnce({
+        gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-02', time: '15:00',
+        location: 'Sala editada', maxParticipants: 4, description: 'Mesa aberta.', warnings: ['Data alterada.'],
+      })
+      .mockResolvedValueOnce({
+        gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-02', time: '16:00',
+        location: 'Sala editada', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
+      });
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+    const location = await screen.findByLabelText(/Local de Encontro/i);
+    await user.clear(location);
+    await user.type(location, 'Sala editada');
+
+    const instruction = screen.getByLabelText(/Alteração desejada/i);
+    await user.type(instruction, 'Troque para domingo às 15h');
+    await user.click(screen.getByRole('button', { name: /Aplicar alteração/i }));
+    await waitFor(() => expect(instruction).toHaveValue(''));
+    expect(api.refineEventDraft).toHaveBeenLastCalledWith(
+      'Troque para domingo às 15h',
+      expect.objectContaining({ location: 'Sala editada', description: 'Mesa aberta.' }),
+    );
+    expect(screen.getByDisplayValue('15:00')).toBeInTheDocument();
+    expect(screen.getByText('Data alterada.')).toBeInTheDocument();
+
+    await user.type(instruction, 'Agora às 16h');
+    await user.click(screen.getByRole('button', { name: /Aplicar alteração/i }));
+    await waitFor(() => expect(instruction).toHaveValue(''));
+    expect(api.refineEventDraft).toHaveBeenCalledTimes(2);
+    expect(screen.getByDisplayValue('16:00')).toBeInTheDocument();
+    expect(api.saveServerState).not.toHaveBeenCalledWith(expect.objectContaining({
+      events: expect.arrayContaining([expect.objectContaining({ description: 'Mesa aberta.' })]),
+    }));
+  });
+
+  it.each([
+    [422, /não conseguiu aplicar essa alteração/i],
+    [502, /temporariamente indisponível/i],
+    [503, /temporariamente indisponível/i],
+  ])('preserves refinement data for HTTP %s', async (status, expectedMessage) => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue({
+      gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
+      location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
+    });
+    vi.mocked(api.refineEventDraft).mockRejectedValue(new ApiError(status, 'internal'));
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+    const instruction = await screen.findByLabelText(/Alteração desejada/i);
+    await user.type(instruction, 'Mude o horário');
+    await user.click(screen.getByRole('button', { name: /Aplicar alteração/i }));
+    expect(await screen.findByText(expectedMessage)).toBeInTheDocument();
+    expect(instruction).toHaveValue('Mude o horário');
+    expect(screen.getByDisplayValue('Biblioteca')).toBeInTheDocument();
+  });
 });

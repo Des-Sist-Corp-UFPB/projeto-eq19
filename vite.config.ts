@@ -6,10 +6,15 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    testTimeout: 15000,
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
+      reporter: ['text', 'html', 'lcov', 'json-summary'],
       reportsDirectory: './coverage',
+      thresholds: {
+        statements: 85,
+        lines: 85,
+      },
     },
   },
 })
