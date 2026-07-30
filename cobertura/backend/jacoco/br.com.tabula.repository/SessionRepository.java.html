@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.repository</a> &gt; <span class="el_source">SessionRepository.java</span></div><h1>SessionRepository.java</h1><pre class="source lang-java linenums">package br.com.tabula.repository;
+
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+public final class SessionRepository {
+    private final HikariDataSource dataSource;
+
+<span class="fc" id="L14">    public SessionRepository(HikariDataSource dataSource) {</span>
+<span class="fc" id="L15">        this.dataSource = dataSource;</span>
+<span class="fc" id="L16">    }</span>
+
+    public List&lt;SessionData&gt; findAll() throws SQLException {
+<span class="fc" id="L19">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L20">            String sql = baseSelect() + &quot; ORDER BY p.data_hora DESC, p.id DESC LIMIT 500&quot;;</span>
+<span class="fc" id="L21">            try (PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L22">                 ResultSet rows = statement.executeQuery()) {</span>
+<span class="fc" id="L23">                List&lt;SessionData&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">                while (rows.next()) result.add(map(connection, rows));</span>
+<span class="fc" id="L25">                return result;</span>
+            }
+        }
+    }
+
+    public Optional&lt;SessionData&gt; findByExternalId(String id) throws SQLException {
+<span class="fc" id="L31">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L32">            return findByExternalId(connection, id, false);</span>
+        }
+    }
+
+    public Optional&lt;SessionData&gt; findByExternalId(Connection connection, String id, boolean lock)
+            throws SQLException {
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        String sql = baseSelect() + &quot; WHERE p.external_id = ?&quot; + (lock ? &quot; FOR UPDATE OF p&quot; : &quot;&quot;);</span>
+<span class="fc" id="L39">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L40">            statement.setString(1, id);</span>
+<span class="fc" id="L41">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                return rows.next() ? Optional.of(map(connection, rows)) : Optional.empty();</span>
+            }
+        }
+    }
+
+    public long requireGameId(Connection connection, String externalId) throws SQLException {
+<span class="fc" id="L48">        return requireId(connection, &quot;SELECT id FROM jogos WHERE external_id = ?&quot;, externalId, &quot;game_not_found&quot;);</span>
+    }
+
+    public long requireUserId(Connection connection, String externalId) throws SQLException {
+<span class="fc" id="L52">        return requireId(connection, &quot;SELECT id FROM usuarios WHERE external_id = ?&quot;, externalId, &quot;user_not_found&quot;);</span>
+    }
+
+    public SessionData insert(Connection connection, String externalId, long gameId,
+                              LocalDateTime dateTime, String location, long organizerId,
+                              Long winnerId, int duration, String notes,
+                              List&lt;Long&gt; participants) throws SQLException {
+        long id;
+<span class="fc" id="L60">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+                INSERT INTO partidas
+                    (external_id, jogo_id, data_hora, local, organizador_id, vencedor_id,
+                     duracao_minutos, notas, criado_em, atualizado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                &quot;&quot;&quot;, Statement.RETURN_GENERATED_KEYS)) {
+<span class="fc" id="L66">            statement.setString(1, externalId);</span>
+<span class="fc" id="L67">            statement.setLong(2, gameId);</span>
+<span class="fc" id="L68">            statement.setTimestamp(3, Timestamp.valueOf(dateTime));</span>
+<span class="fc" id="L69">            statement.setString(4, location);</span>
+<span class="fc" id="L70">            statement.setLong(5, organizerId);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if (winnerId == null) statement.setNull(6, Types.BIGINT); else statement.setLong(6, winnerId);</span>
+<span class="fc" id="L72">            statement.setInt(7, duration);</span>
+<span class="fc" id="L73">            statement.setString(8, notes);</span>
+<span class="fc" id="L74">            statement.executeUpdate();</span>
+<span class="fc" id="L75">            try (ResultSet keys = statement.getGeneratedKeys()) {</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                if (!keys.next()) throw new SQLException(&quot;session_insert_failed&quot;);</span>
+<span class="fc" id="L77">                id = keys.getLong(1);</span>
+            }
+        }
+<span class="fc" id="L80">        try (PreparedStatement statement = connection.prepareStatement(</span>
+                &quot;INSERT INTO partida_participantes (partida_id, usuario_id) VALUES (?, ?)&quot;)) {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            for (Long participant : participants) {</span>
+<span class="fc" id="L83">                statement.setLong(1, id);</span>
+<span class="fc" id="L84">                statement.setLong(2, participant);</span>
+<span class="fc" id="L85">                statement.addBatch();</span>
+<span class="fc" id="L86">            }</span>
+<span class="fc" id="L87">            statement.executeBatch();</span>
+        }
+<span class="fc" id="L89">        return findByExternalId(connection, externalId, false).orElseThrow();</span>
+    }
+
+    public void delete(Connection connection, long id) throws SQLException {
+<span class="fc" id="L93">        try (PreparedStatement statement = connection.prepareStatement(&quot;DELETE FROM partidas WHERE id = ?&quot;)) {</span>
+<span class="fc" id="L94">            statement.setLong(1, id);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            if (statement.executeUpdate() != 1) throw new SQLException(&quot;session_delete_conflict&quot;);</span>
+        }
+<span class="fc" id="L97">    }</span>
+
+    private SessionData map(Connection connection, ResultSet row) throws SQLException {
+<span class="fc" id="L100">        long id = row.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L101">        List&lt;String&gt; participants = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L102">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+                SELECT u.external_id
+                FROM partida_participantes pp
+                JOIN usuarios u ON u.id = pp.usuario_id
+                WHERE pp.partida_id = ?
+                ORDER BY u.external_id
+                &quot;&quot;&quot;)) {
+<span class="fc" id="L109">            statement.setLong(1, id);</span>
+<span class="fc" id="L110">            try (ResultSet members = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                while (members.next()) participants.add(members.getString(1));</span>
+            }
+        }
+<span class="fc" id="L114">        List&lt;String&gt; photos = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L115">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+                SELECT url FROM partida_fotos WHERE partida_id = ? ORDER BY ordem, id
+                &quot;&quot;&quot;)) {
+<span class="fc" id="L118">            statement.setLong(1, id);</span>
+<span class="fc" id="L119">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">                while (rows.next()) photos.add(rows.getString(1));</span>
+            }
+        }
+<span class="fc" id="L123">        List&lt;CommentData&gt; comments = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L124">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+                SELECT c.external_id, u.external_id AS user_id, u.nome, c.conteudo, c.criado_em
+                FROM comentarios c LEFT JOIN usuarios u ON u.id = c.usuario_id
+                WHERE c.partida_id = ? ORDER BY c.criado_em, c.id
+                &quot;&quot;&quot;)) {
+<span class="fc" id="L129">            statement.setLong(1, id);</span>
+<span class="fc" id="L130">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                while (rows.next()) comments.add(new CommentData(rows.getString(&quot;external_id&quot;),</span>
+<span class="nc" id="L132">                        rows.getString(&quot;user_id&quot;), rows.getString(&quot;nome&quot;), rows.getString(&quot;conteudo&quot;),</span>
+<span class="nc" id="L133">                        rows.getTimestamp(&quot;criado_em&quot;).toLocalDateTime()));</span>
+            }
+        }
+<span class="fc" id="L136">        return new SessionData(id, row.getString(&quot;external_id&quot;), row.getString(&quot;game_external_id&quot;),</span>
+<span class="fc" id="L137">                row.getTimestamp(&quot;data_hora&quot;).toLocalDateTime(), row.getString(&quot;local&quot;),</span>
+<span class="fc" id="L138">                row.getLong(&quot;organizador_id&quot;), row.getString(&quot;organizer_external_id&quot;),</span>
+<span class="fc" id="L139">                row.getString(&quot;winner_external_id&quot;), row.getInt(&quot;duracao_minutos&quot;),</span>
+<span class="fc" id="L140">                row.getString(&quot;notas&quot;), participants, photos, comments);</span>
+    }
+
+    private static long requireId(Connection connection, String sql, String id, String error)
+            throws SQLException {
+<span class="fc" id="L145">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L146">            statement.setString(1, id);</span>
+<span class="fc" id="L147">            try (ResultSet rows = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                if (!rows.next()) throw new SQLException(error);</span>
+<span class="fc" id="L149">                return rows.getLong(1);</span>
+            }
+        }
+    }
+
+    private static String baseSelect() {
+<span class="fc" id="L155">        return &quot;&quot;&quot;</span>
+                SELECT p.id, p.external_id, p.data_hora, p.local, p.organizador_id,
+                       p.duracao_minutos, p.notas, j.external_id AS game_external_id,
+                       organizer.external_id AS organizer_external_id,
+                       winner.external_id AS winner_external_id
+                FROM partidas p
+                JOIN jogos j ON j.id = p.jogo_id
+                JOIN usuarios organizer ON organizer.id = p.organizador_id
+                LEFT JOIN usuarios winner ON winner.id = p.vencedor_id
+                &quot;&quot;&quot;;
+    }
+
+<span class="fc" id="L167">    public record SessionData(long databaseId, String externalId, String gameId,</span>
+                              LocalDateTime dateTime, String location,
+                              long organizerDatabaseId, String organizerId, String winnerId,
+                              int duration, String notes, List&lt;String&gt; participantIds,
+                              List&lt;String&gt; photos, List&lt;CommentData&gt; comments) {}
+<span class="nc" id="L172">    public record CommentData(String id, String userId, String userName, String content,</span>
+                              LocalDateTime createdAt) {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

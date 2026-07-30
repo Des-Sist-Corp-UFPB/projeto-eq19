@@ -271,7 +271,7 @@ public class StateController {
 <span class="fc" id="L271">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Estado ainda não inicializado.&quot;));</span>
 <span class="fc" id="L272">                    return;</span>
                 }
-<span class="fc bfc" id="L274" title="All 2 branches covered.">                if (!relationalPayload) payload = overlayRelationalEvents(dataSource, payload);</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                if (!relationalPayload) payload = overlayRelationalSlices(dataSource, payload);</span>
 <span class="fc" id="L275">                ctx.contentType(&quot;application/json&quot;).result(payload);</span>
 <span class="fc" id="L276">            } catch (SQLException ex) {</span>
 <span class="fc" id="L277">                LOGGER.atError()</span>
@@ -311,155 +311,202 @@ public class StateController {
 
 <span class="fc bfc" id="L312" title="All 2 branches covered.">                if (snapshot.exists()) {</span>
 <span class="fc" id="L313">                    payload = ensureEventsSection(snapshot.payload(), payload);</span>
-<span class="fc" id="L314">                    StateAuthorizationService.AuthorizationDecision authorization =</span>
-<span class="fc" id="L315">                            stateAuthorizationService.authorize(</span>
-<span class="fc" id="L316">                                    snapshot.payload(), payload, principal.orElseThrow());</span>
-<span class="fc bfc" id="L317" title="All 2 branches covered.">                    if (!authorization.allowed()) {</span>
-<span class="fc" id="L318">                        auditLogService.recordBestEffort(</span>
-<span class="fc" id="L319">                                principal.orElseThrow(), authorization.auditAction(),</span>
-<span class="fc" id="L320">                                authorization.resourceType(), &quot;1&quot;, false,</span>
-<span class="fc" id="L321">                                ctx.ip(), ctx.header(&quot;User-Agent&quot;),</span>
-<span class="fc" id="L322">                                Map.of(&quot;reason&quot;, authorization.reason())</span>
+<span class="fc" id="L314">                    payload = ensureSessionsSection(snapshot.payload(), payload);</span>
+<span class="fc" id="L315">                    StateAuthorizationService.AuthorizationDecision authorization =</span>
+<span class="fc" id="L316">                            stateAuthorizationService.authorize(</span>
+<span class="fc" id="L317">                                    snapshot.payload(), payload, principal.orElseThrow());</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">                    if (!authorization.allowed()) {</span>
+<span class="fc" id="L319">                        auditLogService.recordBestEffort(</span>
+<span class="fc" id="L320">                                principal.orElseThrow(), authorization.auditAction(),</span>
+<span class="fc" id="L321">                                authorization.resourceType(), &quot;1&quot;, false,</span>
+<span class="fc" id="L322">                                ctx.ip(), ctx.header(&quot;User-Agent&quot;),</span>
+<span class="fc" id="L323">                                Map.of(&quot;reason&quot;, authorization.reason())</span>
                         );
-<span class="pc bpc" id="L324" title="1 of 2 branches missed.">                        if (authorization.invalidPayload()) {</span>
-<span class="nc" id="L325">                            ctx.status(422).json(Map.of(&quot;error&quot;, &quot;Payload de estado inválido.&quot;));</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">                        if (authorization.invalidPayload()) {</span>
+<span class="nc" id="L326">                            ctx.status(422).json(Map.of(&quot;error&quot;, &quot;Payload de estado inválido.&quot;));</span>
                         } else {
-<span class="fc" id="L327">                            ctx.status(403).json(Map.of(&quot;error&quot;, &quot;Operação não permitida.&quot;));</span>
+<span class="fc" id="L328">                            ctx.status(403).json(Map.of(&quot;error&quot;, &quot;Operação não permitida.&quot;));</span>
                         }
-<span class="fc" id="L329">                        return;</span>
+<span class="fc" id="L330">                        return;</span>
                     }
                     try {
-<span class="fc" id="L332">                        payload = protectRelationalEvents(dataSource, snapshot.payload(), payload);</span>
-<span class="fc" id="L333">                    } catch (EventSliceConflictException ex) {</span>
-<span class="fc" id="L334">                        auditLogService.recordBestEffort(</span>
-<span class="fc" id="L335">                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,</span>
-<span class="fc" id="L336">                                &quot;EVENT&quot;, null, false, ctx.ip(), ctx.header(&quot;User-Agent&quot;),</span>
-<span class="fc" id="L337">                                Map.of(&quot;reason&quot;, &quot;relational_events_are_authoritative&quot;)</span>
+<span class="fc" id="L333">                        payload = protectRelationalEvents(dataSource, snapshot.payload(), payload);</span>
+<span class="fc" id="L334">                    } catch (EventSliceConflictException ex) {</span>
+<span class="fc" id="L335">                        auditLogService.recordBestEffort(</span>
+<span class="fc" id="L336">                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,</span>
+<span class="fc" id="L337">                                &quot;EVENT&quot;, null, false, ctx.ip(), ctx.header(&quot;User-Agent&quot;),</span>
+<span class="fc" id="L338">                                Map.of(&quot;reason&quot;, &quot;relational_events_are_authoritative&quot;)</span>
                         );
-<span class="fc" id="L339">                        ctx.status(409).json(Map.of(</span>
+<span class="fc" id="L340">                        ctx.status(409).json(Map.of(</span>
                                 &quot;error&quot;, &quot;Eventos devem ser alterados pelos endpoints específicos.&quot;
                         ));
-<span class="fc" id="L342">                        return;</span>
-<span class="fc" id="L343">                    }</span>
+<span class="fc" id="L343">                        return;</span>
+<span class="fc" id="L344">                    }</span>
+                    try {
+<span class="fc" id="L346">                        payload = protectRelationalSessions(dataSource, snapshot.payload(), payload);</span>
+<span class="fc" id="L347">                    } catch (SessionSliceConflictException ex) {</span>
+<span class="fc" id="L348">                        auditLogService.recordBestEffort(</span>
+<span class="fc" id="L349">                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,</span>
+<span class="fc" id="L350">                                &quot;SESSION&quot;, null, false, ctx.ip(), ctx.header(&quot;User-Agent&quot;),</span>
+<span class="fc" id="L351">                                Map.of(&quot;reason&quot;, &quot;relational_sessions_are_authoritative&quot;)</span>
+                        );
+<span class="fc" id="L353">                        ctx.status(409).json(Map.of(</span>
+                                &quot;error&quot;, &quot;Partidas devem ser alteradas pelos endpoints específicos.&quot;
+                        ));
+<span class="fc" id="L356">                        return;</span>
+<span class="fc" id="L357">                    }</span>
                 }
 
-<span class="fc" id="L346">                List&lt;String&gt; changedSections = changedSections(snapshot.payload(), payload);</span>
-<span class="fc" id="L347">                try (Connection connection = dataSource.getConnection()) {</span>
-<span class="fc" id="L348">                    connection.setAutoCommit(false);</span>
+<span class="fc" id="L360">                List&lt;String&gt; changedSections = changedSections(snapshot.payload(), payload);</span>
+<span class="fc" id="L361">                try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L362">                    connection.setAutoCommit(false);</span>
                     try {
-<span class="fc" id="L350">                        saveState(connection, payload);</span>
-<span class="fc" id="L351">                        auditLogService.record(</span>
+<span class="fc" id="L364">                        saveState(connection, payload);</span>
+<span class="fc" id="L365">                        auditLogService.record(</span>
                                 connection,
-<span class="fc" id="L353">                                principal.orElse(null),</span>
+<span class="fc" id="L367">                                principal.orElse(null),</span>
                                 AuditAction.STATE_UPDATED,
                                 &quot;APP_STATE&quot;,
                                 &quot;1&quot;,
                                 true,
-<span class="fc" id="L358">                                ctx.ip(),</span>
-<span class="fc" id="L359">                                ctx.header(&quot;User-Agent&quot;),</span>
-<span class="fc" id="L360">                                Map.of(</span>
+<span class="fc" id="L372">                                ctx.ip(),</span>
+<span class="fc" id="L373">                                ctx.header(&quot;User-Agent&quot;),</span>
+<span class="fc" id="L374">                                Map.of(</span>
                                         &quot;changedSections&quot;, changedSections,
-<span class="fc bfc" id="L362" title="All 2 branches covered.">                                        &quot;initialization&quot;, !snapshot.exists()</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">                                        &quot;initialization&quot;, !snapshot.exists()</span>
                                 )
                         );
-<span class="fc" id="L365">                        connection.commit();</span>
-<span class="fc" id="L366">                    } catch (Exception ex) {</span>
-<span class="fc" id="L367">                        connection.rollback();</span>
-<span class="pc bpc" id="L368" title="1 of 2 branches missed.">                        if (ex instanceof SQLException sqlException) {</span>
-<span class="fc" id="L369">                            throw sqlException;</span>
+<span class="fc" id="L379">                        connection.commit();</span>
+<span class="fc" id="L380">                    } catch (Exception ex) {</span>
+<span class="fc" id="L381">                        connection.rollback();</span>
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">                        if (ex instanceof SQLException sqlException) {</span>
+<span class="fc" id="L383">                            throw sqlException;</span>
                         }
-<span class="nc" id="L371">                        throw new SQLException(&quot;State transaction failed&quot;, ex);</span>
-<span class="fc" id="L372">                    }</span>
+<span class="nc" id="L385">                        throw new SQLException(&quot;State transaction failed&quot;, ex);</span>
+<span class="fc" id="L386">                    }</span>
                 }
                 try {
-<span class="pc" id="L375">                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(</span>
-<span class="fc bfc" id="L376" title="All 2 branches covered.">                            dataSource, payload, !snapshot.exists());</span>
-<span class="fc" id="L377">                } catch (Exception ex) {</span>
-<span class="fc" id="L378">                    LOGGER.atError()</span>
-<span class="fc" id="L379">                          .addKeyValue(&quot;state_id&quot;, 1)</span>
-<span class="fc" id="L380">                          .addKeyValue(&quot;operation&quot;, &quot;state_update&quot;)</span>
-<span class="fc" id="L381">                          .setCause(ex)</span>
-<span class="fc" id="L382">                          .log(&quot;Failed to sync relational database state in shadow mode&quot;);</span>
-<span class="nc" id="L383">                }</span>
-<span class="fc" id="L384">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
-<span class="fc" id="L385">            } catch (SQLException ex) {</span>
-<span class="fc" id="L386">                auditLogService.recordBestEffort(</span>
+<span class="fc" id="L389">                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">                            dataSource, payload, !snapshot.exists());</span>
+<span class="fc" id="L391">                } catch (Exception ex) {</span>
+<span class="fc" id="L392">                    LOGGER.atError()</span>
+<span class="fc" id="L393">                          .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L394">                          .addKeyValue(&quot;operation&quot;, &quot;state_update&quot;)</span>
+<span class="fc" id="L395">                          .setCause(ex)</span>
+<span class="fc" id="L396">                          .log(&quot;Failed to sync relational database state in shadow mode&quot;);</span>
+<span class="fc" id="L397">                }</span>
+<span class="fc" id="L398">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
+<span class="fc" id="L399">            } catch (SQLException ex) {</span>
+<span class="fc" id="L400">                auditLogService.recordBestEffort(</span>
                         null, AuditAction.STATE_UPDATE_REJECTED, &quot;APP_STATE&quot;, &quot;1&quot;, false,
-<span class="fc" id="L388">                        ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;persistence_error&quot;)</span>
+<span class="fc" id="L402">                        ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;persistence_error&quot;)</span>
                 );
-<span class="fc" id="L390">                LOGGER.atError()</span>
-<span class="fc" id="L391">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
-<span class="fc" id="L392">                      .addKeyValue(&quot;operation&quot;, &quot;state_update&quot;)</span>
-<span class="fc" id="L393">                      .setCause(ex)</span>
-<span class="fc" id="L394">                      .log(&quot;Failed to save app state&quot;);</span>
-<span class="fc" id="L395">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
-<span class="fc" id="L396">            }</span>
-<span class="fc" id="L397">        });</span>
-<span class="fc" id="L398">    }</span>
+<span class="fc" id="L404">                LOGGER.atError()</span>
+<span class="fc" id="L405">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L406">                      .addKeyValue(&quot;operation&quot;, &quot;state_update&quot;)</span>
+<span class="fc" id="L407">                      .setCause(ex)</span>
+<span class="fc" id="L408">                      .log(&quot;Failed to save app state&quot;);</span>
+<span class="fc" id="L409">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
+<span class="fc" id="L410">            }</span>
+<span class="fc" id="L411">        });</span>
+<span class="fc" id="L412">    }</span>
 
     private static String readState(HikariDataSource dataSource) throws SQLException {
-<span class="fc" id="L401">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
-<span class="fc" id="L402">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L403">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L404">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L405" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
-<span class="fc" id="L406">            return null;</span>
-<span class="pc bpc" id="L407" title="3 of 6 branches missed.">        }</span>
+<span class="fc" id="L415">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L416">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L417">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L418">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
+<span class="fc" id="L420">            return null;</span>
+<span class="pc bpc" id="L421" title="3 of 6 branches missed.">        }</span>
     }
 
     private static StateSnapshot readStateSnapshot(HikariDataSource dataSource) throws SQLException {
-<span class="fc" id="L411">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
-<span class="fc" id="L412">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L413">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L414">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L415" title="All 2 branches covered.">            if (!resultSet.next()) return new StateSnapshot(false, null);</span>
-<span class="fc" id="L416">            return new StateSnapshot(true, resultSet.getString(1));</span>
-<span class="pc bpc" id="L417" title="3 of 6 branches missed.">        }</span>
+<span class="fc" id="L425">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L426">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L427">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L428">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            if (!resultSet.next()) return new StateSnapshot(false, null);</span>
+<span class="fc" id="L430">            return new StateSnapshot(true, resultSet.getString(1));</span>
+<span class="pc bpc" id="L431" title="3 of 6 branches missed.">        }</span>
     }
 
     private static void saveState(Connection connection, String payload) throws SQLException {
-<span class="fc" id="L421">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L435">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO app_state (id, data, updated_at)
                 VALUES (1, ?::jsonb, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE
                 SET data = EXCLUDED.data,
                     updated_at = CURRENT_TIMESTAMP
                 &quot;&quot;&quot;;
-<span class="fc" id="L428">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L429">            statement.setString(1, payload);</span>
-<span class="fc" id="L430">            statement.executeUpdate();</span>
+<span class="fc" id="L442">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L443">            statement.setString(1, payload);</span>
+<span class="fc" id="L444">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L432">    }</span>
+<span class="fc" id="L446">    }</span>
 
     private static List&lt;String&gt; changedSections(String previousPayload, String nextPayload) {
-<span class="fc" id="L435">        List&lt;String&gt; changed = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L449">        List&lt;String&gt; changed = new ArrayList&lt;&gt;();</span>
         try {
-<span class="fc bfc" id="L437" title="All 2 branches covered.">            com.fasterxml.jackson.databind.JsonNode previous = previousPayload == null</span>
-<span class="fc" id="L438">                    ? MAPPER.createObjectNode()</span>
-<span class="fc" id="L439">                    : MAPPER.readTree(previousPayload);</span>
-<span class="fc" id="L440">            com.fasterxml.jackson.databind.JsonNode next = MAPPER.readTree(nextPayload);</span>
-<span class="fc bfc" id="L441" title="All 2 branches covered.">            for (String section : List.of(&quot;users&quot;, &quot;boardGames&quot;, &quot;sessions&quot;, &quot;events&quot;)) {</span>
-<span class="fc bfc" id="L442" title="All 2 branches covered.">                if (!java.util.Objects.equals(previous.get(section), next.get(section))) {</span>
-<span class="fc" id="L443">                    changed.add(section);</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">            com.fasterxml.jackson.databind.JsonNode previous = previousPayload == null</span>
+<span class="fc" id="L452">                    ? MAPPER.createObjectNode()</span>
+<span class="fc" id="L453">                    : MAPPER.readTree(previousPayload);</span>
+<span class="fc" id="L454">            com.fasterxml.jackson.databind.JsonNode next = MAPPER.readTree(nextPayload);</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">            for (String section : List.of(&quot;users&quot;, &quot;boardGames&quot;, &quot;sessions&quot;, &quot;events&quot;)) {</span>
+<span class="fc bfc" id="L456" title="All 2 branches covered.">                if (!java.util.Objects.equals(previous.get(section), next.get(section))) {</span>
+<span class="fc" id="L457">                    changed.add(section);</span>
                 }
-<span class="fc" id="L445">            }</span>
-<span class="nc" id="L446">        } catch (Exception ignored) {</span>
+<span class="fc" id="L459">            }</span>
+<span class="nc" id="L460">        } catch (Exception ignored) {</span>
             // The existing persistence path remains responsible for invalid JSON.
-<span class="fc" id="L448">        }</span>
-<span class="fc" id="L449">        return changed;</span>
+<span class="fc" id="L462">        }</span>
+<span class="fc" id="L463">        return changed;</span>
     }
 
-    private static String overlayRelationalEvents(HikariDataSource dataSource, String legacyPayload)
+    private static String overlayRelationalSlices(HikariDataSource dataSource, String legacyPayload)
             throws SQLException {
         try {
-<span class="fc" id="L455">            com.fasterxml.jackson.databind.JsonNode legacy = MAPPER.readTree(legacyPayload);</span>
-<span class="pc bpc" id="L456" title="1 of 4 branches missed.">            if (!legacy.isObject() || !legacy.path(&quot;events&quot;).isArray()) return legacyPayload;</span>
-<span class="fc" id="L457">            com.fasterxml.jackson.databind.JsonNode events = relationalEvents(dataSource);</span>
-<span class="fc" id="L458">            ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)</span>
-<span class="fc" id="L459">                    .set(&quot;events&quot;, events);</span>
-<span class="fc" id="L460">            return MAPPER.writeValueAsString(legacy);</span>
-<span class="fc" id="L461">        } catch (Exception ex) {</span>
-<span class="fc" id="L462">            throw new SQLException(&quot;Failed to overlay relational events&quot;, ex);</span>
+<span class="fc" id="L469">            com.fasterxml.jackson.databind.JsonNode legacy = MAPPER.readTree(legacyPayload);</span>
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">            if (!legacy.isObject()) return legacyPayload;</span>
+<span class="fc bfc" id="L471" title="All 2 branches covered.">            if (legacy.path(&quot;events&quot;).isArray()) {</span>
+<span class="fc" id="L472">                ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)</span>
+<span class="fc" id="L473">                        .set(&quot;events&quot;, relationalEvents(dataSource));</span>
+            }
+            try {
+<span class="fc" id="L476">                ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)</span>
+<span class="fc" id="L477">                        .set(&quot;sessions&quot;, relationalSessions(dataSource));</span>
+<span class="fc" id="L478">            } catch (Exception ex) {</span>
+<span class="fc" id="L479">                LOGGER.atWarn().addKeyValue(&quot;operation&quot;, &quot;session_projection&quot;)</span>
+<span class="fc" id="L480">                        .log(&quot;Relational session projection unavailable; preserving legacy slice&quot;);</span>
+<span class="fc" id="L481">            }</span>
+<span class="fc" id="L482">            return MAPPER.writeValueAsString(legacy);</span>
+<span class="fc" id="L483">        } catch (Exception ex) {</span>
+<span class="fc" id="L484">            throw new SQLException(&quot;Failed to overlay relational events&quot;, ex);</span>
+        }
+    }
+
+    private static String protectRelationalSessions(HikariDataSource dataSource, String previousPayload,
+                                                    String candidatePayload)
+            throws SQLException, SessionSliceConflictException {
+        try {
+<span class="fc" id="L492">            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);</span>
+<span class="fc" id="L493">            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);</span>
+<span class="pc bpc" id="L494" title="2 of 4 branches missed.">            if (!previous.isObject() || !candidate.isObject()) throw new SessionSliceConflictException();</span>
+<span class="fc" id="L495">            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get(&quot;sessions&quot;);</span>
+<span class="fc bfc" id="L496" title="All 2 branches covered.">            if (java.util.Objects.equals(previous.get(&quot;sessions&quot;), supplied)) {</span>
+<span class="fc" id="L497">                return MAPPER.writeValueAsString(candidate);</span>
+            }
+<span class="fc" id="L499">            com.fasterxml.jackson.databind.JsonNode authoritative = relationalSessions(dataSource);</span>
+<span class="pc bpc" id="L500" title="2 of 4 branches missed.">            if (supplied != null &amp;&amp; !supplied.equals(authoritative)) throw new SessionSliceConflictException();</span>
+<span class="nc" id="L501">            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)</span>
+<span class="nc" id="L502">                    .set(&quot;sessions&quot;, authoritative.deepCopy());</span>
+<span class="nc" id="L503">            return MAPPER.writeValueAsString(candidate);</span>
+<span class="fc" id="L504">        } catch (SessionSliceConflictException ex) {</span>
+<span class="fc" id="L505">            throw ex;</span>
+<span class="nc" id="L506">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
+<span class="nc" id="L507">            throw new SessionSliceConflictException();</span>
+<span class="nc" id="L508">        } catch (Exception ex) {</span>
+<span class="nc" id="L509">            throw new SQLException(&quot;Failed to protect relational sessions&quot;, ex);</span>
         }
     }
 
@@ -467,65 +514,96 @@ public class StateController {
                                                     String candidatePayload)
             throws SQLException, EventSliceConflictException {
         try {
-<span class="fc" id="L470">            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);</span>
-<span class="fc" id="L471">            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);</span>
-<span class="pc bpc" id="L472" title="2 of 4 branches missed.">            if (!previous.isObject() || !candidate.isObject()) {</span>
-<span class="nc" id="L473">                throw new EventSliceConflictException();</span>
+<span class="fc" id="L517">            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);</span>
+<span class="fc" id="L518">            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);</span>
+<span class="pc bpc" id="L519" title="2 of 4 branches missed.">            if (!previous.isObject() || !candidate.isObject()) {</span>
+<span class="nc" id="L520">                throw new EventSliceConflictException();</span>
             }
-<span class="fc" id="L475">            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get(&quot;events&quot;);</span>
-<span class="fc bfc" id="L476" title="All 2 branches covered.">            if (java.util.Objects.equals(previous.get(&quot;events&quot;), supplied)) {</span>
-<span class="fc" id="L477">                return MAPPER.writeValueAsString(candidate);</span>
+<span class="fc" id="L522">            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get(&quot;events&quot;);</span>
+<span class="fc bfc" id="L523" title="All 2 branches covered.">            if (java.util.Objects.equals(previous.get(&quot;events&quot;), supplied)) {</span>
+<span class="fc" id="L524">                return MAPPER.writeValueAsString(candidate);</span>
             }
-<span class="fc" id="L479">            com.fasterxml.jackson.databind.JsonNode authoritative = relationalEvents(dataSource);</span>
-<span class="pc bpc" id="L480" title="2 of 4 branches missed.">            if (supplied != null &amp;&amp; !supplied.equals(authoritative)) {</span>
-<span class="fc" id="L481">                throw new EventSliceConflictException();</span>
+<span class="fc" id="L526">            com.fasterxml.jackson.databind.JsonNode authoritative = relationalEvents(dataSource);</span>
+<span class="pc bpc" id="L527" title="2 of 4 branches missed.">            if (supplied != null &amp;&amp; !supplied.equals(authoritative)) {</span>
+<span class="fc" id="L528">                throw new EventSliceConflictException();</span>
             }
-<span class="nc" id="L483">            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)</span>
-<span class="nc" id="L484">                    .set(&quot;events&quot;, authoritative.deepCopy());</span>
-<span class="nc" id="L485">            return MAPPER.writeValueAsString(candidate);</span>
-<span class="fc" id="L486">        } catch (EventSliceConflictException ex) {</span>
-<span class="fc" id="L487">            throw ex;</span>
-<span class="nc" id="L488">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
-<span class="nc" id="L489">            throw new EventSliceConflictException();</span>
-<span class="nc" id="L490">        } catch (Exception ex) {</span>
-<span class="nc" id="L491">            throw new SQLException(&quot;Failed to protect relational events&quot;, ex);</span>
+<span class="nc" id="L530">            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)</span>
+<span class="nc" id="L531">                    .set(&quot;events&quot;, authoritative.deepCopy());</span>
+<span class="nc" id="L532">            return MAPPER.writeValueAsString(candidate);</span>
+<span class="fc" id="L533">        } catch (EventSliceConflictException ex) {</span>
+<span class="fc" id="L534">            throw ex;</span>
+<span class="nc" id="L535">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
+<span class="nc" id="L536">            throw new EventSliceConflictException();</span>
+<span class="nc" id="L537">        } catch (Exception ex) {</span>
+<span class="nc" id="L538">            throw new SQLException(&quot;Failed to protect relational events&quot;, ex);</span>
         }
     }
 
     private static String ensureEventsSection(String previousPayload, String candidatePayload)
             throws EventSliceConflictException {
         try {
-<span class="fc" id="L498">            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);</span>
-<span class="fc" id="L499">            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);</span>
-<span class="pc bpc" id="L500" title="2 of 4 branches missed.">            if (!previous.isObject() || !candidate.isObject()) throw new EventSliceConflictException();</span>
-<span class="pc bpc" id="L501" title="1 of 2 branches missed.">            if (!candidate.has(&quot;events&quot;)) {</span>
-<span class="nc" id="L502">                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)</span>
-<span class="nc" id="L503">                        .set(&quot;events&quot;, previous.path(&quot;events&quot;).deepCopy());</span>
+<span class="fc" id="L545">            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);</span>
+<span class="fc" id="L546">            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);</span>
+<span class="pc bpc" id="L547" title="2 of 4 branches missed.">            if (!previous.isObject() || !candidate.isObject()) throw new EventSliceConflictException();</span>
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">            if (!candidate.has(&quot;events&quot;)) {</span>
+<span class="nc" id="L549">                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)</span>
+<span class="nc" id="L550">                        .set(&quot;events&quot;, previous.path(&quot;events&quot;).deepCopy());</span>
             }
-<span class="fc" id="L505">            return MAPPER.writeValueAsString(candidate);</span>
-<span class="nc" id="L506">        } catch (EventSliceConflictException ex) {</span>
-<span class="nc" id="L507">            throw ex;</span>
-<span class="nc" id="L508">        } catch (Exception ex) {</span>
-<span class="nc" id="L509">            throw new EventSliceConflictException();</span>
+<span class="fc" id="L552">            return MAPPER.writeValueAsString(candidate);</span>
+<span class="nc" id="L553">        } catch (EventSliceConflictException ex) {</span>
+<span class="nc" id="L554">            throw ex;</span>
+<span class="nc" id="L555">        } catch (Exception ex) {</span>
+<span class="nc" id="L556">            throw new EventSliceConflictException();</span>
+        }
+    }
+
+    private static String ensureSessionsSection(String previousPayload, String candidatePayload)
+            throws SessionSliceConflictException {
+        try {
+<span class="fc" id="L563">            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);</span>
+<span class="fc" id="L564">            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);</span>
+<span class="pc bpc" id="L565" title="2 of 4 branches missed.">            if (!previous.isObject() || !candidate.isObject()) throw new SessionSliceConflictException();</span>
+<span class="fc bfc" id="L566" title="All 2 branches covered.">            if (!candidate.has(&quot;sessions&quot;)) {</span>
+<span class="fc" id="L567">                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)</span>
+<span class="fc" id="L568">                        .set(&quot;sessions&quot;, previous.path(&quot;sessions&quot;).deepCopy());</span>
+            }
+<span class="fc" id="L570">            return MAPPER.writeValueAsString(candidate);</span>
+<span class="nc" id="L571">        } catch (SessionSliceConflictException ex) {</span>
+<span class="nc" id="L572">            throw ex;</span>
+<span class="nc" id="L573">        } catch (Exception ex) {</span>
+<span class="nc" id="L574">            throw new SessionSliceConflictException();</span>
         }
     }
 
     private static com.fasterxml.jackson.databind.node.ArrayNode relationalEvents(HikariDataSource dataSource)
             throws SQLException {
         try {
-<span class="fc" id="L516">            com.fasterxml.jackson.databind.JsonNode events = MAPPER.readTree(</span>
-<span class="fc" id="L517">                    new EventRepository(dataSource).findAllAsStateJson());</span>
-<span class="pc bpc" id="L518" title="1 of 2 branches missed.">            if (!events.isArray()) throw new SQLException(&quot;Relational events projection is not an array&quot;);</span>
-<span class="fc" id="L519">            return (com.fasterxml.jackson.databind.node.ArrayNode) events;</span>
-<span class="nc" id="L520">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
-<span class="nc" id="L521">            throw new SQLException(&quot;Failed to parse relational events projection&quot;, ex);</span>
+<span class="fc" id="L581">            com.fasterxml.jackson.databind.JsonNode events = MAPPER.readTree(</span>
+<span class="fc" id="L582">                    new EventRepository(dataSource).findAllAsStateJson());</span>
+<span class="pc bpc" id="L583" title="1 of 2 branches missed.">            if (!events.isArray()) throw new SQLException(&quot;Relational events projection is not an array&quot;);</span>
+<span class="fc" id="L584">            return (com.fasterxml.jackson.databind.node.ArrayNode) events;</span>
+<span class="nc" id="L585">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
+<span class="nc" id="L586">            throw new SQLException(&quot;Failed to parse relational events projection&quot;, ex);</span>
         }
     }
 
-<span class="fc" id="L525">    private record StateSnapshot(boolean exists, String payload) {</span>
+    private static com.fasterxml.jackson.databind.node.ArrayNode relationalSessions(HikariDataSource dataSource)
+            throws Exception {
+<span class="fc" id="L592">        com.fasterxml.jackson.databind.JsonNode state = MAPPER.readTree(</span>
+<span class="fc" id="L593">                br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource));</span>
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">        if (!state.path(&quot;sessions&quot;).isArray()) {</span>
+<span class="nc" id="L595">            throw new SQLException(&quot;Relational sessions projection is not an array&quot;);</span>
+        }
+<span class="fc" id="L597">        return (com.fasterxml.jackson.databind.node.ArrayNode) state.path(&quot;sessions&quot;);</span>
+    }
+
+<span class="fc" id="L600">    private record StateSnapshot(boolean exists, String payload) {</span>
     }
 
     private static final class EventSliceConflictException extends RuntimeException {
+    }
+
+    private static final class SessionSliceConflictException extends RuntimeException {
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

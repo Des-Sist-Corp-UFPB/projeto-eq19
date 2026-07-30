@@ -52,11 +52,11 @@ public final class EventController {
 <span class="pc" id="L52">        app.post(&quot;/events/{id}/cancel&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt;</span>
 <span class="nc" id="L53">                ctx.json(EventResponse.from(service.cancel(</span>
 <span class="nc" id="L54">                        principal, ctx.pathParam(&quot;id&quot;), metadata(ctx))))));</span>
-<span class="pc" id="L55">        app.post(&quot;/events/{id}/complete&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
-<span class="nc" id="L56">            CompleteRequest request = body(ctx, CompleteRequest.class);</span>
-<span class="nc" id="L57">            ctx.json(EventResponse.from(service.complete(</span>
-<span class="nc" id="L58">                    principal, ctx.pathParam(&quot;id&quot;), request.toInput(), metadata(ctx))));</span>
-<span class="nc" id="L59">        }));</span>
+<span class="fc" id="L55">        app.post(&quot;/events/{id}/complete&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
+<span class="fc" id="L56">            CompleteRequest request = body(ctx, CompleteRequest.class);</span>
+<span class="fc" id="L57">            ctx.json(EventResponse.from(service.complete(</span>
+<span class="fc" id="L58">                    principal, ctx.pathParam(&quot;id&quot;), request.toInput(), metadata(ctx))));</span>
+<span class="fc" id="L59">        }));</span>
 <span class="fc" id="L60">    }</span>
 
     private static void withPrincipal(Context ctx, AuthenticatedUserService auth, EventService service,
@@ -72,10 +72,10 @@ public final class EventController {
 <span class="fc" id="L72">        } catch (InvalidBodyException ex) {</span>
 <span class="fc" id="L73">            ctx.status(422).json(Map.of(&quot;error&quot;, &quot;Payload inválido.&quot;));</span>
 <span class="fc" id="L74">        } catch (EventException ex) {</span>
-<span class="pc bpc" id="L75" title="3 of 4 branches missed.">            int status = switch (ex.kind()) {</span>
+<span class="pc bpc" id="L75" title="2 of 4 branches missed.">            int status = switch (ex.kind()) {</span>
 <span class="nc" id="L76">                case FORBIDDEN -&gt; 403;</span>
 <span class="fc" id="L77">                case NOT_FOUND -&gt; 404;</span>
-<span class="nc" id="L78">                case CONFLICT -&gt; 409;</span>
+<span class="fc" id="L78">                case CONFLICT -&gt; 409;</span>
 <span class="pc" id="L79">                case INVALID -&gt; 422;</span>
             };
 <span class="fc" id="L81">            service.auditRejected(principal.get(), ctx.pathParamMap().get(&quot;id&quot;), ex.reason(), metadata(ctx));</span>
@@ -84,10 +84,10 @@ public final class EventController {
 <span class="fc" id="L84">    }</span>
 
     private static String publicMessage(EventException.Kind kind) {
-<span class="pc bpc" id="L87" title="3 of 4 branches missed.">        return switch (kind) {</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">        return switch (kind) {</span>
 <span class="nc" id="L88">            case FORBIDDEN -&gt; &quot;Operação não permitida.&quot;;</span>
 <span class="fc" id="L89">            case NOT_FOUND -&gt; &quot;Evento não encontrado.&quot;;</span>
-<span class="nc" id="L90">            case CONFLICT -&gt; &quot;A operação conflita com o estado atual do evento.&quot;;</span>
+<span class="fc" id="L90">            case CONFLICT -&gt; &quot;A operação conflita com o estado atual do evento.&quot;;</span>
 <span class="nc" id="L91">            case INVALID -&gt; &quot;Dados ou transição inválidos.&quot;;</span>
         };
     }
@@ -111,10 +111,10 @@ public final class EventController {
         }
     }
 
-<span class="nc" id="L114">    private record CompleteRequest(String winnerId, int duration, String notes,</span>
+<span class="fc" id="L114">    private record CompleteRequest(String winnerId, int duration, String notes,</span>
                                    String initialComment, String photoUrl) {
         CompletionInput toInput() {
-<span class="nc" id="L117">            return new CompletionInput(winnerId, duration, notes, initialComment, photoUrl);</span>
+<span class="fc" id="L117">            return new CompletionInput(winnerId, duration, notes, initialComment, photoUrl);</span>
         }
     }
 

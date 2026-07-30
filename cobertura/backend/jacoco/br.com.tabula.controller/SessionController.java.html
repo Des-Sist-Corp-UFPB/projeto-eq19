@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">SessionController.java</span></div><h1>SessionController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.SessionRepository;
+import br.com.tabula.repository.SessionRepository.SessionData;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
+import br.com.tabula.service.SessionService;
+import br.com.tabula.service.SessionService.RequestMetadata;
+import br.com.tabula.service.SessionService.SessionException;
+import br.com.tabula.service.SessionService.SessionInput;
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+public final class SessionController {
+    private SessionController() {}
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L25">        AuthenticatedUserService auth = new AuthenticatedUserService(dataSource);</span>
+<span class="fc" id="L26">        SessionService service = new SessionService(dataSource, new SessionRepository(dataSource),</span>
+                new AuditLogService(dataSource));
+
+<span class="fc" id="L29">        app.get(&quot;/sessions&quot;, ctx -&gt; authenticated(ctx, auth, service, principal -&gt;</span>
+<span class="fc" id="L30">                ctx.json(service.list().stream().map(SessionResponse::from).toList())));</span>
+<span class="fc" id="L31">        app.get(&quot;/sessions/{id}&quot;, ctx -&gt; authenticated(ctx, auth, service, principal -&gt;</span>
+<span class="fc" id="L32">                ctx.json(SessionResponse.from(service.get(ctx.pathParam(&quot;id&quot;))))));</span>
+<span class="fc" id="L33">        app.post(&quot;/sessions&quot;, ctx -&gt; authenticated(ctx, auth, service, principal -&gt; {</span>
+            SessionRequest request;
+<span class="fc" id="L35">            try { request = ctx.bodyAsClass(SessionRequest.class); }</span>
+<span class="fc" id="L36">            catch (Exception ex) { throw SessionException.invalid(&quot;invalid_payload&quot;); }</span>
+<span class="fc" id="L37">            SessionData created = service.create(principal, request.toInput(), metadata(ctx));</span>
+<span class="fc" id="L38">            ctx.status(201).json(SessionResponse.from(created));</span>
+<span class="fc" id="L39">        }));</span>
+<span class="fc" id="L40">        app.delete(&quot;/sessions/{id}&quot;, ctx -&gt; authenticated(ctx, auth, service, principal -&gt; {</span>
+<span class="fc" id="L41">            service.delete(principal, ctx.pathParam(&quot;id&quot;), metadata(ctx));</span>
+<span class="fc" id="L42">            ctx.status(204);</span>
+<span class="fc" id="L43">        }));</span>
+<span class="fc" id="L44">    }</span>
+
+    private static void authenticated(Context ctx, AuthenticatedUserService auth, SessionService service,
+                                      Handler handler) throws Exception {
+<span class="fc" id="L48">        Optional&lt;AuthenticatedPrincipal&gt; principal = auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (principal.isEmpty()) {</span>
+<span class="fc" id="L50">            ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="fc" id="L51">            return;</span>
+        }
+        try {
+<span class="fc" id="L54">            handler.handle(principal.get());</span>
+<span class="fc" id="L55">        } catch (SessionException ex) {</span>
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">            int status = switch (ex.kind()) {</span>
+<span class="nc" id="L57">                case FORBIDDEN -&gt; 403;</span>
+<span class="fc" id="L58">                case NOT_FOUND -&gt; 404;</span>
+<span class="nc" id="L59">                case CONFLICT -&gt; 409;</span>
+<span class="fc" id="L60">                case INVALID -&gt; 422;</span>
+            };
+<span class="fc" id="L62">            service.auditRejected(principal.get(), ctx.pathParamMap().get(&quot;id&quot;), ex.reason(), metadata(ctx));</span>
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">            ctx.status(status).json(Map.of(&quot;error&quot;, switch (ex.kind()) {</span>
+<span class="nc" id="L64">                case FORBIDDEN -&gt; &quot;Operação não permitida.&quot;;</span>
+<span class="fc" id="L65">                case NOT_FOUND -&gt; &quot;Partida ou recurso relacionado não encontrado.&quot;;</span>
+<span class="nc" id="L66">                case CONFLICT -&gt; &quot;A operação conflita com o estado atual da partida.&quot;;</span>
+<span class="fc" id="L67">                case INVALID -&gt; &quot;Dados da partida inválidos.&quot;;</span>
+            }));
+<span class="fc" id="L69">        }</span>
+<span class="fc" id="L70">    }</span>
+
+    private static RequestMetadata metadata(Context ctx) {
+<span class="fc" id="L73">        return new RequestMetadata(ctx.ip(), ctx.userAgent());</span>
+    }
+
+<span class="fc" id="L76">    private record SessionRequest(String gameId, String date, String location,</span>
+                                  List&lt;String&gt; participantIds, String winnerId,
+                                  int duration, String notes) {
+        SessionInput toInput() {
+<span class="fc" id="L80">            return new SessionInput(gameId, date, location, participantIds, winnerId, duration, notes);</span>
+        }
+    }
+
+<span class="fc" id="L84">    private record SessionResponse(String id, String gameId, String date, String location,</span>
+                                   String organizerId, List&lt;String&gt; participantIds,
+                                   String winnerId, int duration, String notes,
+                                   List&lt;String&gt; photos, List&lt;CommentResponse&gt; comments) {
+        static SessionResponse from(SessionData session) {
+<span class="fc" id="L89">            return new SessionResponse(session.externalId(), session.gameId(),</span>
+<span class="fc" id="L90">                    session.dateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),</span>
+<span class="fc" id="L91">                    session.location(), session.organizerId(), session.participantIds(),</span>
+<span class="fc" id="L92">                    session.winnerId(), session.duration(),</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">                    session.notes() == null ? &quot;&quot; : session.notes(), session.photos(),</span>
+<span class="fc" id="L94">                    session.comments().stream().map(CommentResponse::from).toList());</span>
+        }
+    }
+
+<span class="nc" id="L98">    private record CommentResponse(String id, String userId, String userName,</span>
+                                   String userAvatar, String content, String createdAt) {
+        static CommentResponse from(SessionRepository.CommentData comment) {
+<span class="nc" id="L101">            return new CommentResponse(comment.id(),</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">                    comment.userId() == null ? &quot;system&quot; : comment.userId(),</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                    comment.userName() == null ? &quot;Sistema&quot; : comment.userName(),</span>
+<span class="nc" id="L104">                    &quot;🎲&quot;, comment.content(),</span>
+<span class="nc" id="L105">                    comment.createdAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));</span>
+        }
+    }
+
+    @FunctionalInterface
+    private interface Handler {
+        void handle(AuthenticatedPrincipal principal) throws Exception;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

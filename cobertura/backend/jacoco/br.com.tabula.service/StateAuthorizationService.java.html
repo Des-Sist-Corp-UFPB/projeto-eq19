@@ -147,8 +147,8 @@ import java.util.Set;
 <span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (!Objects.equals(oldSession.get(&quot;organizerId&quot;), newSession.get(&quot;organizerId&quot;))) {</span>
 <span class="nc" id="L148">                return denied(AuditAction.STATE_UPDATE_REJECTED, &quot;SESSION&quot;, &quot;organizer_identity&quot;);</span>
             }
-<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            if (actorId.equals(oldSession.path(&quot;organizerId&quot;).asText())) {</span>
-<span class="nc bnc" id="L151" title="All 2 branches missed.">                if (!commentsAuthorized(oldSession.path(&quot;comments&quot;), newSession.path(&quot;comments&quot;),</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (actorId.equals(oldSession.path(&quot;organizerId&quot;).asText())) {</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                if (!commentsAuthorized(oldSession.path(&quot;comments&quot;), newSession.path(&quot;comments&quot;),</span>
                         actorId, requested)) {
 <span class="nc" id="L153">                    return denied(AuditAction.STATE_UPDATE_REJECTED, &quot;COMMENT&quot;, &quot;comment_author_mismatch&quot;);</span>
                 }

@@ -136,87 +136,96 @@ public final class EventService {
 <span class="fc bfc" id="L136" title="All 2 branches covered.">                    &amp;&amp; (winnerId == null || !event.participantIds().contains(input.winnerId()))) {</span>
 <span class="fc" id="L137">                throw EventException.invalid(&quot;invalid_winner&quot;);</span>
             }
-<span class="fc" id="L139">            repository.createSession(connection, event, &quot;s_&quot; + UUID.randomUUID(), winnerId,</span>
-<span class="fc" id="L140">                    input.duration(), clean(input.notes()), clean(input.initialComment()), clean(input.photoUrl()));</span>
-<span class="fc" id="L141">            repository.updateStatus(connection, event.databaseId(), &quot;completed&quot;);</span>
-<span class="fc" id="L142">            record(connection, actor, AuditAction.EVENT_COMPLETED, id, true, null, metadata);</span>
-<span class="fc" id="L143">            return repository.findByExternalId(connection, id, false).orElseThrow();</span>
+<span class="fc" id="L139">            String sessionExternalId = &quot;s_&quot; + UUID.randomUUID();</span>
+<span class="fc" id="L140">            repository.createSession(connection, event, sessionExternalId, winnerId,</span>
+<span class="fc" id="L141">                    input.duration(), clean(input.notes()), clean(input.initialComment()), clean(input.photoUrl()));</span>
+<span class="fc" id="L142">            repository.updateStatus(connection, event.databaseId(), &quot;completed&quot;);</span>
+<span class="fc" id="L143">            audit.record(connection, actor, AuditAction.SESSION_CREATED, &quot;SESSION&quot;, sessionExternalId, true,</span>
+<span class="fc" id="L144">                    metadata.ipAddress(), metadata.userAgent(), Map.of());</span>
+<span class="fc" id="L145">            record(connection, actor, AuditAction.EVENT_COMPLETED, id, true, null, metadata);</span>
+<span class="fc" id="L146">            return repository.findByExternalId(connection, id, false).orElseThrow();</span>
         });
     }
 
     public void auditRejected(AuthenticatedPrincipal actor, String id, String reason, RequestMetadata metadata) {
-<span class="fc" id="L148">        audit.recordBestEffort(actor, AuditAction.EVENT_OPERATION_REJECTED, &quot;EVENT&quot;, id, false,</span>
-<span class="fc" id="L149">                metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;reason&quot;, reason));</span>
-<span class="fc" id="L150">    }</span>
+<span class="fc" id="L151">        audit.recordBestEffort(actor, AuditAction.EVENT_OPERATION_REJECTED, &quot;EVENT&quot;, id, false,</span>
+<span class="fc" id="L152">                metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;reason&quot;, reason));</span>
+<span class="fc" id="L153">    }</span>
 
     private long gameId(Connection connection, String externalId) throws EventException, SQLException {
         try {
-<span class="fc" id="L154">            return repository.requireGameId(connection, externalId);</span>
-<span class="fc" id="L155">        } catch (SQLException ex) {</span>
-<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            if (&quot;game_not_found&quot;.equals(ex.getMessage())) throw EventException.invalid(&quot;game_not_found&quot;);</span>
-<span class="nc" id="L157">            throw ex;</span>
+<span class="fc" id="L157">            return repository.requireGameId(connection, externalId);</span>
+<span class="fc" id="L158">        } catch (SQLException ex) {</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">            if (&quot;game_not_found&quot;.equals(ex.getMessage())) throw EventException.invalid(&quot;game_not_found&quot;);</span>
+<span class="nc" id="L160">            throw ex;</span>
         }
     }
 
     private EventData locked(Connection connection, String id) throws SQLException, EventException {
-<span class="fc" id="L162">        return repository.findByExternalId(connection, id, true)</span>
-<span class="pc" id="L163">                .orElseThrow(() -&gt; EventException.notFound(&quot;event_not_found&quot;));</span>
+<span class="fc" id="L165">        return repository.findByExternalId(connection, id, true)</span>
+<span class="pc" id="L166">                .orElseThrow(() -&gt; EventException.notFound(&quot;event_not_found&quot;));</span>
     }
 
     private static void requireOrganizer(AuthenticatedPrincipal actor, EventData event) throws EventException {
-<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (event.organizerDatabaseId() != actor.getDatabaseId()) throw EventException.forbidden(&quot;not_organizer&quot;);</span>
-<span class="fc" id="L168">    }</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (event.organizerDatabaseId() != actor.getDatabaseId()) throw EventException.forbidden(&quot;not_organizer&quot;);</span>
+<span class="fc" id="L171">    }</span>
 
     private static void requireActive(EventData event) throws EventException {
-<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (!&quot;active&quot;.equals(event.status())) throw EventException.conflict(&quot;event_not_active&quot;);</span>
-<span class="fc" id="L172">    }</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (!&quot;active&quot;.equals(event.status())) throw EventException.conflict(&quot;event_not_active&quot;);</span>
+<span class="fc" id="L175">    }</span>
 
     private static void validate(EventInput input) throws EventException {
-<span class="pc bpc" id="L175" title="4 of 8 branches missed.">        if (input == null || blank(input.gameId()) || blank(input.date()) || blank(input.time())</span>
-<span class="pc bpc" id="L176" title="2 of 6 branches missed.">                || blank(input.location()) || input.maxParticipants() &lt; 1 || input.maxParticipants() &gt; 100</span>
-<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                || input.location().trim().length() &gt; 512</span>
-<span class="pc bpc" id="L178" title="2 of 4 branches missed.">                || (input.description() != null &amp;&amp; input.description().length() &gt; 4000)) {</span>
-<span class="fc" id="L179">            throw EventException.invalid(&quot;invalid_event&quot;);</span>
+<span class="pc bpc" id="L178" title="4 of 8 branches missed.">        if (input == null || blank(input.gameId()) || blank(input.date()) || blank(input.time())</span>
+<span class="pc bpc" id="L179" title="2 of 6 branches missed.">                || blank(input.location()) || input.maxParticipants() &lt; 1 || input.maxParticipants() &gt; 100</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                || input.location().trim().length() &gt; 512</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">                || (input.description() != null &amp;&amp; input.description().length() &gt; 4000)) {</span>
+<span class="fc" id="L182">            throw EventException.invalid(&quot;invalid_event&quot;);</span>
         }
-<span class="fc" id="L181">        dateTime(input.date(), input.time());</span>
-<span class="fc" id="L182">    }</span>
+<span class="fc" id="L184">        dateTime(input.date(), input.time());</span>
+<span class="fc" id="L185">    }</span>
 
     private static LocalDateTime dateTime(String date, String time) throws EventException {
         try {
-<span class="fc" id="L186">            return LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time));</span>
-<span class="nc" id="L187">        } catch (DateTimeException ex) {</span>
-<span class="nc" id="L188">            throw EventException.invalid(&quot;invalid_date_time&quot;);</span>
+<span class="fc" id="L189">            return LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time));</span>
+<span class="nc" id="L190">        } catch (DateTimeException ex) {</span>
+<span class="nc" id="L191">            throw EventException.invalid(&quot;invalid_date_time&quot;);</span>
         }
     }
 
     private static boolean blank(String value) {
-<span class="pc bpc" id="L193" title="2 of 4 branches missed.">        return value == null || value.isBlank();</span>
+<span class="pc bpc" id="L196" title="2 of 4 branches missed.">        return value == null || value.isBlank();</span>
     }
 
     private static String clean(String value) {
-<span class="pc bpc" id="L197" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.trim();</span>
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.trim();</span>
     }
 
     private void record(Connection connection, AuthenticatedPrincipal actor, AuditAction action,
                         String id, boolean success, String reason, RequestMetadata metadata) throws SQLException {
-<span class="fc" id="L202">        audit.record(connection, actor, action, &quot;EVENT&quot;, id, success,</span>
-<span class="fc" id="L203">                metadata.ipAddress(), metadata.userAgent(),</span>
-<span class="pc bpc" id="L204" title="1 of 2 branches missed.">                reason == null ? Map.of() : Map.of(&quot;reason&quot;, reason));</span>
-<span class="fc" id="L205">    }</span>
+<span class="fc" id="L205">        audit.record(connection, actor, action, &quot;EVENT&quot;, id, success,</span>
+<span class="fc" id="L206">                metadata.ipAddress(), metadata.userAgent(),</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">                reason == null ? Map.of() : Map.of(&quot;reason&quot;, reason));</span>
+<span class="fc" id="L208">    }</span>
 
     private &lt;T&gt; T transaction(TransactionWork&lt;T&gt; work) throws SQLException, EventException {
-<span class="fc" id="L208">        try (Connection connection = dataSource.getConnection()) {</span>
-<span class="fc" id="L209">            connection.setAutoCommit(false);</span>
+<span class="fc" id="L211">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L212">            connection.setAutoCommit(false);</span>
             try {
-<span class="fc" id="L211">                T result = work.run(connection);</span>
-<span class="fc" id="L212">                connection.commit();</span>
-<span class="fc" id="L213">                return result;</span>
-<span class="fc" id="L214">            } catch (EventException | SQLException ex) {</span>
-<span class="fc" id="L215">                connection.rollback();</span>
-<span class="fc" id="L216">                throw ex;</span>
-<span class="nc" id="L217">            } catch (Exception ex) {</span>
-<span class="nc" id="L218">                connection.rollback();</span>
-<span class="nc" id="L219">                throw new SQLException(&quot;event_transaction_failed&quot;, ex);</span>
+<span class="fc" id="L214">                T result = work.run(connection);</span>
+<span class="fc" id="L215">                connection.commit();</span>
+<span class="fc" id="L216">                return result;</span>
+<span class="fc" id="L217">            } catch (EventException ex) {</span>
+<span class="fc" id="L218">                connection.rollback();</span>
+<span class="fc" id="L219">                throw ex;</span>
+<span class="nc" id="L220">            } catch (SQLException ex) {</span>
+<span class="nc" id="L221">                connection.rollback();</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">                if (&quot;23505&quot;.equals(ex.getSQLState())) {</span>
+<span class="nc" id="L223">                    throw EventException.conflict(&quot;duplicate_event_resource&quot;);</span>
+                }
+<span class="nc" id="L225">                throw ex;</span>
+<span class="nc" id="L226">            } catch (Exception ex) {</span>
+<span class="nc" id="L227">                connection.rollback();</span>
+<span class="nc" id="L228">                throw new SQLException(&quot;event_transaction_failed&quot;, ex);</span>
             }
         }
     }
@@ -226,31 +235,31 @@ public final class EventService {
         T run(Connection connection) throws Exception;
     }
 
-<span class="fc" id="L229">    public record EventInput(String gameId, String date, String time, String location,</span>
+<span class="fc" id="L238">    public record EventInput(String gameId, String date, String time, String location,</span>
                              int maxParticipants, String description) {}
-<span class="fc" id="L231">    public record CompletionInput(String winnerId, int duration, String notes,</span>
+<span class="fc" id="L240">    public record CompletionInput(String winnerId, int duration, String notes,</span>
                                   String initialComment, String photoUrl) {}
-<span class="fc" id="L233">    public record RequestMetadata(String ipAddress, String userAgent) {}</span>
-<span class="fc" id="L234">    public record JoinResult(EventData event, boolean waitlisted) {}</span>
-<span class="fc" id="L235">    public record LeaveResult(EventData event, boolean promoted) {}</span>
+<span class="fc" id="L242">    public record RequestMetadata(String ipAddress, String userAgent) {}</span>
+<span class="fc" id="L243">    public record JoinResult(EventData event, boolean waitlisted) {}</span>
+<span class="fc" id="L244">    public record LeaveResult(EventData event, boolean promoted) {}</span>
 
     public static final class EventException extends Exception {
-<span class="fc" id="L238">        public enum Kind { FORBIDDEN, NOT_FOUND, CONFLICT, INVALID }</span>
+<span class="fc" id="L247">        public enum Kind { FORBIDDEN, NOT_FOUND, CONFLICT, INVALID }</span>
         private final Kind kind;
         private final String reason;
 
         private EventException(Kind kind, String reason) {
-<span class="fc" id="L243">            super(reason);</span>
-<span class="fc" id="L244">            this.kind = kind;</span>
-<span class="fc" id="L245">            this.reason = reason;</span>
-<span class="fc" id="L246">        }</span>
+<span class="fc" id="L252">            super(reason);</span>
+<span class="fc" id="L253">            this.kind = kind;</span>
+<span class="fc" id="L254">            this.reason = reason;</span>
+<span class="fc" id="L255">        }</span>
 
-<span class="fc" id="L248">        public Kind kind() { return kind; }</span>
-<span class="fc" id="L249">        public String reason() { return reason; }</span>
-<span class="fc" id="L250">        public static EventException forbidden(String reason) { return new EventException(Kind.FORBIDDEN, reason); }</span>
-<span class="fc" id="L251">        public static EventException notFound(String reason) { return new EventException(Kind.NOT_FOUND, reason); }</span>
-<span class="fc" id="L252">        public static EventException conflict(String reason) { return new EventException(Kind.CONFLICT, reason); }</span>
-<span class="fc" id="L253">        public static EventException invalid(String reason) { return new EventException(Kind.INVALID, reason); }</span>
+<span class="fc" id="L257">        public Kind kind() { return kind; }</span>
+<span class="fc" id="L258">        public String reason() { return reason; }</span>
+<span class="fc" id="L259">        public static EventException forbidden(String reason) { return new EventException(Kind.FORBIDDEN, reason); }</span>
+<span class="fc" id="L260">        public static EventException notFound(String reason) { return new EventException(Kind.NOT_FOUND, reason); }</span>
+<span class="fc" id="L261">        public static EventException conflict(String reason) { return new EventException(Kind.CONFLICT, reason); }</span>
+<span class="fc" id="L262">        public static EventException invalid(String reason) { return new EventException(Kind.INVALID, reason); }</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

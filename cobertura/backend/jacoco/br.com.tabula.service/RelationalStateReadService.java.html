@@ -112,31 +112,31 @@ public class RelationalStateReadService {
 <span class="fc" id="L112">                    gameNode.put(&quot;name&quot;, rs.getString(&quot;nome&quot;));</span>
                     
 <span class="fc" id="L114">                    String desc = rs.getString(&quot;descricao&quot;);</span>
-<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                    gameNode.put(&quot;description&quot;, desc != null ? desc : &quot;&quot;);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                    gameNode.put(&quot;description&quot;, desc != null ? desc : &quot;&quot;);</span>
                     
 <span class="fc" id="L117">                    String cover = rs.getString(&quot;cover_url&quot;);</span>
-<span class="pc bpc" id="L118" title="2 of 4 branches missed.">                    gameNode.put(&quot;coverUrl&quot;, cover != null &amp;&amp; !cover.isBlank() ? cover : &quot;/images/tabletop-placeholder.svg&quot;);</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">                    gameNode.put(&quot;coverUrl&quot;, cover != null &amp;&amp; !cover.isBlank() ? cover : &quot;/images/tabletop-placeholder.svg&quot;);</span>
                     
 <span class="fc" id="L120">                    String cat = rs.getString(&quot;categoria&quot;);</span>
-<span class="pc bpc" id="L121" title="2 of 4 branches missed.">                    gameNode.put(&quot;category&quot;, cat != null &amp;&amp; !cat.isBlank() ? cat : &quot;Geral&quot;);</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">                    gameNode.put(&quot;category&quot;, cat != null &amp;&amp; !cat.isBlank() ? cat : &quot;Geral&quot;);</span>
                     
 <span class="fc" id="L123">                    int min = rs.getInt(&quot;min_players&quot;);</span>
-<span class="pc bpc" id="L124" title="2 of 4 branches missed.">                    if (rs.wasNull() || min &lt;= 0) {</span>
-<span class="nc" id="L125">                        min = 1;</span>
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">                    if (rs.wasNull() || min &lt;= 0) {</span>
+<span class="fc" id="L125">                        min = 1;</span>
                     }
 <span class="fc" id="L127">                    gameNode.put(&quot;minPlayers&quot;, min);</span>
                     
 <span class="fc" id="L129">                    int max = rs.getInt(&quot;max_players&quot;);</span>
-<span class="pc bpc" id="L130" title="2 of 4 branches missed.">                    if (rs.wasNull() || max &lt;= 0) {</span>
-<span class="nc" id="L131">                        max = min;</span>
+<span class="pc bpc" id="L130" title="1 of 4 branches missed.">                    if (rs.wasNull() || max &lt;= 0) {</span>
+<span class="fc" id="L131">                        max = min;</span>
                     }
 <span class="fc" id="L133">                    gameNode.put(&quot;maxPlayers&quot;, max);</span>
                     
 <span class="fc" id="L135">                    int avg = rs.getInt(&quot;avg_play_time&quot;);</span>
-<span class="pc bpc" id="L136" title="1 of 2 branches missed.">                    gameNode.put(&quot;avgPlayTime&quot;, rs.wasNull() ? 0 : avg);</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                    gameNode.put(&quot;avgPlayTime&quot;, rs.wasNull() ? 0 : avg);</span>
                     
 <span class="fc" id="L138">                    double comp = rs.getDouble(&quot;complexity&quot;);</span>
-<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                    gameNode.put(&quot;complexity&quot;, rs.wasNull() ? 1.0 : comp);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                    gameNode.put(&quot;complexity&quot;, rs.wasNull() ? 1.0 : comp);</span>
 
 <span class="fc" id="L141">                    boardGamesArray.add(gameNode);</span>
 <span class="fc" id="L142">                }</span>

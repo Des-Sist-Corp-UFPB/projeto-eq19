@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SessionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">SessionService.java</span></div><h1>SessionService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.SessionRepository;
+import br.com.tabula.repository.SessionRepository.SessionData;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+public final class SessionService {
+    private final HikariDataSource dataSource;
+    private final SessionRepository repository;
+    private final AuditLogService audit;
+
+<span class="fc" id="L24">    public SessionService(HikariDataSource dataSource, SessionRepository repository, AuditLogService audit) {</span>
+<span class="fc" id="L25">        this.dataSource = dataSource;</span>
+<span class="fc" id="L26">        this.repository = repository;</span>
+<span class="fc" id="L27">        this.audit = audit;</span>
+<span class="fc" id="L28">    }</span>
+
+<span class="fc" id="L30">    public List&lt;SessionData&gt; list() throws SQLException { return repository.findAll(); }</span>
+
+    public SessionData get(String id) throws SQLException, SessionException {
+<span class="fc" id="L33">        return repository.findByExternalId(id)</span>
+<span class="fc" id="L34">                .orElseThrow(() -&gt; SessionException.notFound(&quot;session_not_found&quot;));</span>
+    }
+
+    public SessionData create(AuthenticatedPrincipal actor, SessionInput input, RequestMetadata metadata)
+            throws SQLException, SessionException {
+<span class="fc" id="L39">        validate(input);</span>
+<span class="fc" id="L40">        return transaction(connection -&gt; {</span>
+<span class="fc" id="L41">            long gameId = required(() -&gt; repository.requireGameId(connection, input.gameId()));</span>
+<span class="fc" id="L42">            LinkedHashSet&lt;String&gt; externalParticipants = new LinkedHashSet&lt;&gt;(input.participantIds());</span>
+<span class="fc" id="L43">            externalParticipants.add(actor.getExternalId());</span>
+<span class="fc" id="L44">            List&lt;Long&gt; participants = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            for (String participant : externalParticipants) {</span>
+<span class="fc" id="L46">                participants.add(required(() -&gt; repository.requireUserId(connection, participant)));</span>
+<span class="fc" id="L47">            }</span>
+<span class="fc" id="L48">            Long winnerId = null;</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">            if (input.winnerId() != null &amp;&amp; !input.winnerId().isBlank()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                if (!externalParticipants.contains(input.winnerId())) {</span>
+<span class="fc" id="L51">                    throw SessionException.invalid(&quot;winner_not_participant&quot;);</span>
+                }
+<span class="fc" id="L53">                winnerId = required(() -&gt; repository.requireUserId(connection, input.winnerId()));</span>
+            }
+<span class="fc" id="L55">            String externalId = &quot;s_&quot; + UUID.randomUUID();</span>
+<span class="fc" id="L56">            SessionData created = repository.insert(connection, externalId, gameId, parseDate(input.date()),</span>
+<span class="fc" id="L57">                    input.location().trim(), actor.getDatabaseId(), winnerId, input.duration(),</span>
+<span class="fc" id="L58">                    clean(input.notes()), participants);</span>
+<span class="fc" id="L59">            audit.record(connection, actor, AuditAction.SESSION_CREATED, &quot;SESSION&quot;, externalId, true,</span>
+<span class="fc" id="L60">                    metadata.ipAddress(), metadata.userAgent(), Map.of());</span>
+<span class="fc" id="L61">            return created;</span>
+        });
+    }
+
+    public void delete(AuthenticatedPrincipal actor, String id, RequestMetadata metadata)
+            throws SQLException, SessionException {
+<span class="fc" id="L67">        transaction(connection -&gt; {</span>
+<span class="fc" id="L68">            SessionData session = repository.findByExternalId(connection, id, true)</span>
+<span class="pc" id="L69">                    .orElseThrow(() -&gt; SessionException.notFound(&quot;session_not_found&quot;));</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">            if (session.organizerDatabaseId() != actor.getDatabaseId() &amp;&amp; !actor.isAdmin()) {</span>
+<span class="fc" id="L71">                throw SessionException.forbidden(&quot;not_session_owner&quot;);</span>
+            }
+<span class="fc" id="L73">            repository.delete(connection, session.databaseId());</span>
+<span class="fc" id="L74">            audit.record(connection, actor, AuditAction.SESSION_DELETED, &quot;SESSION&quot;, id, true,</span>
+<span class="fc" id="L75">                    metadata.ipAddress(), metadata.userAgent(), Map.of());</span>
+<span class="fc" id="L76">            return null;</span>
+        });
+<span class="fc" id="L78">    }</span>
+
+    public void auditRejected(AuthenticatedPrincipal actor, String id, String reason, RequestMetadata metadata) {
+<span class="fc" id="L81">        audit.recordBestEffort(actor, AuditAction.SESSION_OPERATION_REJECTED, &quot;SESSION&quot;, id, false,</span>
+<span class="fc" id="L82">                metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;reason&quot;, reason));</span>
+<span class="fc" id="L83">    }</span>
+
+    private static void validate(SessionInput input) throws SessionException {
+<span class="pc bpc" id="L86" title="4 of 8 branches missed.">        if (input == null || blank(input.gameId()) || blank(input.date()) || blank(input.location())</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">                || input.participantIds() == null || input.participantIds().isEmpty()</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                || input.participantIds().stream().anyMatch(SessionService::blank)</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                || new LinkedHashSet&lt;&gt;(input.participantIds()).size() != input.participantIds().size()</span>
+<span class="pc bpc" id="L90" title="2 of 6 branches missed.">                || input.duration() &lt; 0 || input.duration() &gt; 1440 || input.location().length() &gt; 512) {</span>
+<span class="fc" id="L91">            throw SessionException.invalid(&quot;invalid_session&quot;);</span>
+        }
+<span class="fc" id="L93">        parseDate(input.date());</span>
+<span class="fc" id="L94">    }</span>
+
+    private static LocalDateTime parseDate(String value) throws SessionException {
+<span class="fc" id="L97">        try { return LocalDateTime.parse(value); }</span>
+<span class="fc" id="L98">        catch (DateTimeParseException ex) { throw SessionException.invalid(&quot;invalid_date&quot;); }</span>
+    }
+
+    private long required(SqlLong work) throws SQLException, SessionException {
+<span class="fc" id="L102">        try { return work.get(); }</span>
+<span class="fc" id="L103">        catch (SQLException ex) {</span>
+<span class="pc bpc" id="L104" title="1 of 4 branches missed.">            if (&quot;game_not_found&quot;.equals(ex.getMessage()) || &quot;user_not_found&quot;.equals(ex.getMessage())) {</span>
+<span class="fc" id="L105">                throw SessionException.notFound(ex.getMessage());</span>
+            }
+<span class="nc" id="L107">            throw ex;</span>
+        }
+    }
+
+    private &lt;T&gt; T transaction(Work&lt;T&gt; work) throws SQLException, SessionException {
+<span class="fc" id="L112">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L113">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L115">                T result = work.run(connection);</span>
+<span class="fc" id="L116">                connection.commit();</span>
+<span class="fc" id="L117">                return result;</span>
+<span class="fc" id="L118">            } catch (Exception ex) {</span>
+<span class="fc" id="L119">                connection.rollback();</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">                if (ex instanceof SessionException sessionException) throw sessionException;</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">                if (ex instanceof SQLException sqlException) {</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">                    if (&quot;23505&quot;.equals(sqlException.getSQLState())) throw SessionException.conflict(&quot;duplicate_session&quot;);</span>
+<span class="nc" id="L123">                    throw sqlException;</span>
+                }
+<span class="nc" id="L125">                throw new SQLException(&quot;Session transaction failed&quot;, ex);</span>
+            }
+        }
+    }
+
+<span class="pc bpc" id="L130" title="2 of 4 branches missed.">    private static boolean blank(String value) { return value == null || value.isBlank(); }</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">    private static String clean(String value) { return blank(value) ? null : value.trim(); }</span>
+
+<span class="fc" id="L133">    public record SessionInput(String gameId, String date, String location, List&lt;String&gt; participantIds,</span>
+                               String winnerId, int duration, String notes) {}
+<span class="fc" id="L135">    public record RequestMetadata(String ipAddress, String userAgent) {}</span>
+    @FunctionalInterface private interface Work&lt;T&gt; { T run(Connection connection) throws Exception; }
+    @FunctionalInterface private interface SqlLong { long get() throws SQLException; }
+
+    public static final class SessionException extends Exception {
+<span class="fc" id="L140">        public enum Kind { FORBIDDEN, NOT_FOUND, CONFLICT, INVALID }</span>
+        private final Kind kind;
+        private final String reason;
+<span class="fc" id="L143">        private SessionException(Kind kind, String reason) { this.kind = kind; this.reason = reason; }</span>
+<span class="fc" id="L144">        public Kind kind() { return kind; }</span>
+<span class="fc" id="L145">        public String reason() { return reason; }</span>
+<span class="fc" id="L146">        public static SessionException forbidden(String reason) { return new SessionException(Kind.FORBIDDEN, reason); }</span>
+<span class="fc" id="L147">        public static SessionException notFound(String reason) { return new SessionException(Kind.NOT_FOUND, reason); }</span>
+<span class="nc" id="L148">        public static SessionException conflict(String reason) { return new SessionException(Kind.CONFLICT, reason); }</span>
+<span class="fc" id="L149">        public static SessionException invalid(String reason) { return new SessionException(Kind.INVALID, reason); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

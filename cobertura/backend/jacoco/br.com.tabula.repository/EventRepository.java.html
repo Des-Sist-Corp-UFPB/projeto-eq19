@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.repository</a> &gt; <span class="el_source">EventRepository.java</span></div><h1>EventRepository.java</h1><pre class="source lang-java linenums">package br.com.tabula.repository;
 
 import br.com.tabula.model.AuthenticatedPrincipal;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.Connection;
@@ -13,25 +12,23 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 public final class EventRepository {
-<span class="fc" id="L20">    private static final ObjectMapper JSON = new ObjectMapper();</span>
     private final HikariDataSource dataSource;
 
-<span class="fc" id="L23">    public EventRepository(HikariDataSource dataSource) {</span>
-<span class="fc" id="L24">        this.dataSource = dataSource;</span>
-<span class="fc" id="L25">    }</span>
+<span class="fc" id="L20">    public EventRepository(HikariDataSource dataSource) {</span>
+<span class="fc" id="L21">        this.dataSource = dataSource;</span>
+<span class="fc" id="L22">    }</span>
 
     public List&lt;EventData&gt; findAll() throws SQLException {
-<span class="fc" id="L28">        try (Connection connection = dataSource.getConnection()) {</span>
-<span class="fc" id="L29">            return findAll(connection);</span>
+<span class="fc" id="L25">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L26">            return findAll(connection);</span>
         }
     }
 
     public String findAllAsStateJson() throws SQLException {
-<span class="fc" id="L34">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L31">        String sql = &quot;&quot;&quot;</span>
                 SELECT COALESCE(jsonb_agg(event_json ORDER BY event_time, event_id), '[]'::jsonb)::text
                 FROM (
                     SELECT e.id AS event_id, e.data_hora AS event_time,
@@ -63,47 +60,47 @@ public final class EventRepository {
                     JOIN usuarios organizer ON organizer.id = e.organizador_id
                 ) projected
                 &quot;&quot;&quot;;
-<span class="fc" id="L66">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L67">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L68">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L69" title="All 2 branches covered.">            return resultSet.next() ? resultSet.getString(1) : &quot;[]&quot;;</span>
+<span class="fc" id="L63">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L64">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L65">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            return resultSet.next() ? resultSet.getString(1) : &quot;[]&quot;;</span>
         }
     }
 
     public List&lt;EventData&gt; findAll(Connection connection) throws SQLException {
-<span class="fc" id="L74">        String sql = baseSelect() + &quot; ORDER BY e.data_hora, e.id&quot;;</span>
-<span class="fc" id="L75">        try (PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L76">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L77">            List&lt;EventData&gt; events = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L78" title="All 2 branches covered.">            while (resultSet.next()) events.add(map(connection, resultSet));</span>
-<span class="fc" id="L79">            return events;</span>
+<span class="fc" id="L71">        String sql = baseSelect() + &quot; ORDER BY e.data_hora, e.id&quot;;</span>
+<span class="fc" id="L72">        try (PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L73">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L74">            List&lt;EventData&gt; events = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            while (resultSet.next()) events.add(map(connection, resultSet));</span>
+<span class="fc" id="L76">            return events;</span>
         }
     }
 
     public Optional&lt;EventData&gt; findByExternalId(String externalId) throws SQLException {
-<span class="fc" id="L84">        try (Connection connection = dataSource.getConnection()) {</span>
-<span class="fc" id="L85">            return findByExternalId(connection, externalId, false);</span>
+<span class="fc" id="L81">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L82">            return findByExternalId(connection, externalId, false);</span>
         }
     }
 
     public Optional&lt;EventData&gt; findByExternalId(Connection connection, String externalId, boolean forUpdate)
             throws SQLException {
-<span class="fc bfc" id="L91" title="All 2 branches covered.">        String sql = baseSelect() + &quot; WHERE e.external_id = ?&quot; + (forUpdate ? &quot; FOR UPDATE OF e&quot; : &quot;&quot;);</span>
-<span class="fc" id="L92">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L93">            statement.setString(1, externalId);</span>
-<span class="fc" id="L94">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L95" title="All 2 branches covered.">                return resultSet.next() ? Optional.of(map(connection, resultSet)) : Optional.empty();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        String sql = baseSelect() + &quot; WHERE e.external_id = ?&quot; + (forUpdate ? &quot; FOR UPDATE OF e&quot; : &quot;&quot;);</span>
+<span class="fc" id="L89">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L90">            statement.setString(1, externalId);</span>
+<span class="fc" id="L91">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                return resultSet.next() ? Optional.of(map(connection, resultSet)) : Optional.empty();</span>
             }
         }
     }
 
     public long requireGameId(Connection connection, String externalId) throws SQLException {
-<span class="fc" id="L101">        try (PreparedStatement statement =</span>
-<span class="fc" id="L102">                     connection.prepareStatement(&quot;SELECT id FROM jogos WHERE external_id = ?&quot;)) {</span>
-<span class="fc" id="L103">            statement.setString(1, externalId);</span>
-<span class="fc" id="L104">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L105" title="All 2 branches covered.">                if (!resultSet.next()) throw new SQLException(&quot;game_not_found&quot;);</span>
-<span class="fc" id="L106">                return resultSet.getLong(1);</span>
+<span class="fc" id="L98">        try (PreparedStatement statement =</span>
+<span class="fc" id="L99">                     connection.prepareStatement(&quot;SELECT id FROM jogos WHERE external_id = ?&quot;)) {</span>
+<span class="fc" id="L100">            statement.setString(1, externalId);</span>
+<span class="fc" id="L101">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (!resultSet.next()) throw new SQLException(&quot;game_not_found&quot;);</span>
+<span class="fc" id="L103">                return resultSet.getLong(1);</span>
             }
         }
     }
@@ -111,294 +108,231 @@ public final class EventRepository {
     public EventData insert(Connection connection, String externalId, long gameId, LocalDateTime dateTime,
                             String location, String description, int maxParticipants,
                             AuthenticatedPrincipal organizer) throws SQLException {
-<span class="fc" id="L114">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L111">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO eventos
                     (external_id, jogo_id, data_hora, local, descricao, max_participantes,
                      status, organizador_id, criado_em, atualizado_em)
                 VALUES (?, ?, ?, ?, ?, ?, 'active', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 &quot;&quot;&quot;;
         long eventId;
-<span class="fc" id="L121">        try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {</span>
-<span class="fc" id="L122">            statement.setString(1, externalId);</span>
-<span class="fc" id="L123">            statement.setLong(2, gameId);</span>
-<span class="fc" id="L124">            statement.setTimestamp(3, Timestamp.valueOf(dateTime));</span>
-<span class="fc" id="L125">            statement.setString(4, location);</span>
-<span class="fc" id="L126">            statement.setString(5, description);</span>
-<span class="fc" id="L127">            statement.setInt(6, maxParticipants);</span>
-<span class="fc" id="L128">            statement.setLong(7, organizer.getDatabaseId());</span>
-<span class="fc" id="L129">            statement.executeUpdate();</span>
-<span class="fc" id="L130">            try (ResultSet keys = statement.getGeneratedKeys()) {</span>
-<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (!keys.next()) throw new SQLException(&quot;event_insert_failed&quot;);</span>
-<span class="fc" id="L132">                eventId = keys.getLong(1);</span>
+<span class="fc" id="L118">        try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {</span>
+<span class="fc" id="L119">            statement.setString(1, externalId);</span>
+<span class="fc" id="L120">            statement.setLong(2, gameId);</span>
+<span class="fc" id="L121">            statement.setTimestamp(3, Timestamp.valueOf(dateTime));</span>
+<span class="fc" id="L122">            statement.setString(4, location);</span>
+<span class="fc" id="L123">            statement.setString(5, description);</span>
+<span class="fc" id="L124">            statement.setInt(6, maxParticipants);</span>
+<span class="fc" id="L125">            statement.setLong(7, organizer.getDatabaseId());</span>
+<span class="fc" id="L126">            statement.executeUpdate();</span>
+<span class="fc" id="L127">            try (ResultSet keys = statement.getGeneratedKeys()) {</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                if (!keys.next()) throw new SQLException(&quot;event_insert_failed&quot;);</span>
+<span class="fc" id="L129">                eventId = keys.getLong(1);</span>
             }
         }
-<span class="fc" id="L135">        insertMembership(connection, eventId, organizer.getDatabaseId(), &quot;PARTICIPANT&quot;, null);</span>
-<span class="fc" id="L136">        return findByExternalId(connection, externalId, false).orElseThrow();</span>
+<span class="fc" id="L132">        insertMembership(connection, eventId, organizer.getDatabaseId(), &quot;PARTICIPANT&quot;, null);</span>
+<span class="fc" id="L133">        return findByExternalId(connection, externalId, false).orElseThrow();</span>
     }
 
     public void update(Connection connection, long eventId, long gameId, LocalDateTime dateTime,
                        String location, String description, int maxParticipants) throws SQLException {
-<span class="fc" id="L141">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L138">        String sql = &quot;&quot;&quot;</span>
                 UPDATE eventos SET jogo_id = ?, data_hora = ?, local = ?, descricao = ?,
                     max_participantes = ?, atualizado_em = CURRENT_TIMESTAMP
                 WHERE id = ?
                 &quot;&quot;&quot;;
-<span class="fc" id="L146">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L147">            statement.setLong(1, gameId);</span>
-<span class="fc" id="L148">            statement.setTimestamp(2, Timestamp.valueOf(dateTime));</span>
-<span class="fc" id="L149">            statement.setString(3, location);</span>
-<span class="fc" id="L150">            statement.setString(4, description);</span>
-<span class="fc" id="L151">            statement.setInt(5, maxParticipants);</span>
-<span class="fc" id="L152">            statement.setLong(6, eventId);</span>
-<span class="fc" id="L153">            statement.executeUpdate();</span>
+<span class="fc" id="L143">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L144">            statement.setLong(1, gameId);</span>
+<span class="fc" id="L145">            statement.setTimestamp(2, Timestamp.valueOf(dateTime));</span>
+<span class="fc" id="L146">            statement.setString(3, location);</span>
+<span class="fc" id="L147">            statement.setString(4, description);</span>
+<span class="fc" id="L148">            statement.setInt(5, maxParticipants);</span>
+<span class="fc" id="L149">            statement.setLong(6, eventId);</span>
+<span class="fc" id="L150">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L155">    }</span>
+<span class="fc" id="L152">    }</span>
 
     public void updateStatus(Connection connection, long eventId, String status) throws SQLException {
-<span class="fc" id="L158">        try (PreparedStatement statement = connection.prepareStatement(</span>
+<span class="fc" id="L155">        try (PreparedStatement statement = connection.prepareStatement(</span>
                 &quot;UPDATE eventos SET status = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;)) {
-<span class="fc" id="L160">            statement.setString(1, status);</span>
-<span class="fc" id="L161">            statement.setLong(2, eventId);</span>
-<span class="fc" id="L162">            statement.executeUpdate();</span>
+<span class="fc" id="L157">            statement.setString(1, status);</span>
+<span class="fc" id="L158">            statement.setLong(2, eventId);</span>
+<span class="fc" id="L159">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L164">    }</span>
+<span class="fc" id="L161">    }</span>
 
     public boolean hasMembership(Connection connection, long eventId, long userId) throws SQLException {
-<span class="fc" id="L167">        try (PreparedStatement statement = connection.prepareStatement(</span>
+<span class="fc" id="L164">        try (PreparedStatement statement = connection.prepareStatement(</span>
                 &quot;SELECT 1 FROM evento_participantes WHERE evento_id = ? AND usuario_id = ?&quot;)) {
-<span class="fc" id="L169">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L170">            statement.setLong(2, userId);</span>
-<span class="fc" id="L171">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L172">                return resultSet.next();</span>
+<span class="fc" id="L166">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L167">            statement.setLong(2, userId);</span>
+<span class="fc" id="L168">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L169">                return resultSet.next();</span>
             }
         }
     }
 
     public int participantCount(Connection connection, long eventId) throws SQLException {
-<span class="fc" id="L178">        try (PreparedStatement statement = connection.prepareStatement(</span>
+<span class="fc" id="L175">        try (PreparedStatement statement = connection.prepareStatement(</span>
                 &quot;SELECT COUNT(*) FROM evento_participantes WHERE evento_id = ? AND tipo = 'PARTICIPANT'&quot;)) {
-<span class="fc" id="L180">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L181">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L182">                resultSet.next();</span>
-<span class="fc" id="L183">                return resultSet.getInt(1);</span>
+<span class="fc" id="L177">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L178">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L179">                resultSet.next();</span>
+<span class="fc" id="L180">                return resultSet.getInt(1);</span>
             }
         }
     }
 
     public void insertMembership(Connection connection, long eventId, long userId, String type, Long queueOrder)
             throws SQLException {
-<span class="fc" id="L190">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L187">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO evento_participantes (evento_id, usuario_id, tipo, ordem_fila)
                 VALUES (?, ?, ?, ?)
                 &quot;&quot;&quot;;
-<span class="fc" id="L194">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L195">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L196">            statement.setLong(2, userId);</span>
-<span class="fc" id="L197">            statement.setString(3, type);</span>
-<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (queueOrder == null) statement.setNull(4, java.sql.Types.BIGINT);</span>
-<span class="fc" id="L199">            else statement.setLong(4, queueOrder);</span>
-<span class="fc" id="L200">            statement.executeUpdate();</span>
+<span class="fc" id="L191">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L192">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L193">            statement.setLong(2, userId);</span>
+<span class="fc" id="L194">            statement.setString(3, type);</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (queueOrder == null) statement.setNull(4, java.sql.Types.BIGINT);</span>
+<span class="fc" id="L196">            else statement.setLong(4, queueOrder);</span>
+<span class="fc" id="L197">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L202">    }</span>
+<span class="fc" id="L199">    }</span>
 
     public long nextQueueOrder(Connection connection, long eventId) throws SQLException {
-<span class="fc" id="L205">        try (PreparedStatement statement = connection.prepareStatement(</span>
+<span class="fc" id="L202">        try (PreparedStatement statement = connection.prepareStatement(</span>
                 &quot;SELECT COALESCE(MAX(ordem_fila), 0) + 1 FROM evento_participantes WHERE evento_id = ?&quot;)) {
-<span class="fc" id="L207">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L208">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L209">                resultSet.next();</span>
-<span class="fc" id="L210">                return resultSet.getLong(1);</span>
+<span class="fc" id="L204">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L205">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L206">                resultSet.next();</span>
+<span class="fc" id="L207">                return resultSet.getLong(1);</span>
             }
         }
     }
 
     public Optional&lt;Membership&gt; membership(Connection connection, long eventId, long userId) throws SQLException {
-<span class="fc" id="L216">        try (PreparedStatement statement = connection.prepareStatement(</span>
+<span class="fc" id="L213">        try (PreparedStatement statement = connection.prepareStatement(</span>
                 &quot;SELECT tipo, ordem_fila FROM evento_participantes WHERE evento_id = ? AND usuario_id = ?&quot;)) {
-<span class="fc" id="L218">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L219">            statement.setLong(2, userId);</span>
-<span class="fc" id="L220">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                return resultSet.next()</span>
-<span class="fc" id="L222">                        ? Optional.of(new Membership(resultSet.getString(1), (Long) resultSet.getObject(2)))</span>
-<span class="pc" id="L223">                        : Optional.empty();</span>
+<span class="fc" id="L215">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L216">            statement.setLong(2, userId);</span>
+<span class="fc" id="L217">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                return resultSet.next()</span>
+<span class="fc" id="L219">                        ? Optional.of(new Membership(resultSet.getString(1), (Long) resultSet.getObject(2)))</span>
+<span class="pc" id="L220">                        : Optional.empty();</span>
             }
         }
     }
 
     public void deleteMembership(Connection connection, long eventId, long userId) throws SQLException {
-<span class="fc" id="L229">        try (PreparedStatement statement = connection.prepareStatement(</span>
+<span class="fc" id="L226">        try (PreparedStatement statement = connection.prepareStatement(</span>
                 &quot;DELETE FROM evento_participantes WHERE evento_id = ? AND usuario_id = ?&quot;)) {
-<span class="fc" id="L231">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L232">            statement.setLong(2, userId);</span>
-<span class="fc" id="L233">            statement.executeUpdate();</span>
+<span class="fc" id="L228">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L229">            statement.setLong(2, userId);</span>
+<span class="fc" id="L230">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L235">    }</span>
+<span class="fc" id="L232">    }</span>
 
     public Optional&lt;Long&gt; promoteFirstWaiting(Connection connection, long eventId) throws SQLException {
-<span class="fc" id="L238">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L235">        String sql = &quot;&quot;&quot;</span>
                 SELECT usuario_id FROM evento_participantes
                 WHERE evento_id = ? AND tipo = 'WAITING'
                 ORDER BY ordem_fila, inscrito_em, usuario_id
                 LIMIT 1 FOR UPDATE
                 &quot;&quot;&quot;;
-<span class="fc" id="L244">        Long userId = null;</span>
-<span class="fc" id="L245">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L246">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L247">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="pc bpc" id="L248" title="1 of 2 branches missed.">                if (resultSet.next()) userId = resultSet.getLong(1);</span>
+<span class="fc" id="L241">        Long userId = null;</span>
+<span class="fc" id="L242">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L243">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L244">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                if (resultSet.next()) userId = resultSet.getLong(1);</span>
             }
         }
-<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        if (userId == null) return Optional.empty();</span>
-<span class="fc" id="L252">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (userId == null) return Optional.empty();</span>
+<span class="fc" id="L249">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
                 UPDATE evento_participantes SET tipo = 'PARTICIPANT', ordem_fila = NULL
                 WHERE evento_id = ? AND usuario_id = ?
                 &quot;&quot;&quot;)) {
-<span class="fc" id="L256">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L257">            statement.setLong(2, userId);</span>
-<span class="fc" id="L258">            statement.executeUpdate();</span>
+<span class="fc" id="L253">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L254">            statement.setLong(2, userId);</span>
+<span class="fc" id="L255">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L260">        return Optional.of(userId);</span>
+<span class="fc" id="L257">        return Optional.of(userId);</span>
     }
 
     public void createSession(Connection connection, EventData event, String sessionExternalId,
                               Long winnerDatabaseId, int duration, String notes,
                               String initialComment, String photoUrl) throws SQLException {
         long sessionId;
-<span class="fc" id="L267">        String insert = &quot;&quot;&quot;</span>
+<span class="fc" id="L264">        String insert = &quot;&quot;&quot;</span>
                 INSERT INTO partidas
                     (external_id, jogo_id, evento_id, data_hora, local, organizador_id,
                      vencedor_id, duracao_minutos, notas, criado_em, atualizado_em)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 &quot;&quot;&quot;;
-<span class="fc" id="L273">        try (PreparedStatement statement = connection.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {</span>
-<span class="fc" id="L274">            statement.setString(1, sessionExternalId);</span>
-<span class="fc" id="L275">            statement.setLong(2, event.gameDatabaseId());</span>
-<span class="fc" id="L276">            statement.setLong(3, event.databaseId());</span>
-<span class="fc" id="L277">            statement.setTimestamp(4, Timestamp.valueOf(event.dateTime()));</span>
-<span class="fc" id="L278">            statement.setString(5, event.location());</span>
-<span class="fc" id="L279">            statement.setLong(6, event.organizerDatabaseId());</span>
-<span class="pc bpc" id="L280" title="1 of 2 branches missed.">            if (winnerDatabaseId == null) statement.setNull(7, java.sql.Types.BIGINT);</span>
-<span class="fc" id="L281">            else statement.setLong(7, winnerDatabaseId);</span>
-<span class="fc" id="L282">            statement.setInt(8, duration);</span>
-<span class="fc" id="L283">            statement.setString(9, notes);</span>
-<span class="fc" id="L284">            statement.executeUpdate();</span>
-<span class="fc" id="L285">            try (ResultSet keys = statement.getGeneratedKeys()) {</span>
-<span class="pc bpc" id="L286" title="1 of 2 branches missed.">                if (!keys.next()) throw new SQLException(&quot;session_insert_failed&quot;);</span>
-<span class="fc" id="L287">                sessionId = keys.getLong(1);</span>
+<span class="fc" id="L270">        try (PreparedStatement statement = connection.prepareStatement(insert, Statement.RETURN_GENERATED_KEYS)) {</span>
+<span class="fc" id="L271">            statement.setString(1, sessionExternalId);</span>
+<span class="fc" id="L272">            statement.setLong(2, event.gameDatabaseId());</span>
+<span class="fc" id="L273">            statement.setLong(3, event.databaseId());</span>
+<span class="fc" id="L274">            statement.setTimestamp(4, Timestamp.valueOf(event.dateTime()));</span>
+<span class="fc" id="L275">            statement.setString(5, event.location());</span>
+<span class="fc" id="L276">            statement.setLong(6, event.organizerDatabaseId());</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (winnerDatabaseId == null) statement.setNull(7, java.sql.Types.BIGINT);</span>
+<span class="fc" id="L278">            else statement.setLong(7, winnerDatabaseId);</span>
+<span class="fc" id="L279">            statement.setInt(8, duration);</span>
+<span class="fc" id="L280">            statement.setString(9, notes);</span>
+<span class="fc" id="L281">            statement.executeUpdate();</span>
+<span class="fc" id="L282">            try (ResultSet keys = statement.getGeneratedKeys()) {</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">                if (!keys.next()) throw new SQLException(&quot;session_insert_failed&quot;);</span>
+<span class="fc" id="L284">                sessionId = keys.getLong(1);</span>
             }
         }
-<span class="fc" id="L290">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+<span class="fc" id="L287">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
                 INSERT INTO partida_participantes (partida_id, usuario_id)
                 SELECT ?, usuario_id FROM evento_participantes
                 WHERE evento_id = ? AND tipo = 'PARTICIPANT'
                 &quot;&quot;&quot;)) {
-<span class="fc" id="L295">            statement.setLong(1, sessionId);</span>
-<span class="fc" id="L296">            statement.setLong(2, event.databaseId());</span>
-<span class="fc" id="L297">            statement.executeUpdate();</span>
+<span class="fc" id="L292">            statement.setLong(1, sessionId);</span>
+<span class="fc" id="L293">            statement.setLong(2, event.databaseId());</span>
+<span class="fc" id="L294">            statement.executeUpdate();</span>
         }
-<span class="pc bpc" id="L299" title="2 of 4 branches missed.">        if (initialComment != null &amp;&amp; !initialComment.isBlank()) {</span>
-<span class="fc" id="L300">            try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+<span class="pc bpc" id="L296" title="1 of 4 branches missed.">        if (initialComment != null &amp;&amp; !initialComment.isBlank()) {</span>
+<span class="fc" id="L297">            try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
                     INSERT INTO comentarios (external_id, partida_id, usuario_id, conteudo, criado_em)
                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                     &quot;&quot;&quot;)) {
-<span class="fc" id="L304">                statement.setString(1, &quot;c_&quot; + java.util.UUID.randomUUID());</span>
-<span class="fc" id="L305">                statement.setLong(2, sessionId);</span>
-<span class="fc" id="L306">                statement.setLong(3, event.organizerDatabaseId());</span>
-<span class="fc" id="L307">                statement.setString(4, initialComment);</span>
-<span class="fc" id="L308">                statement.executeUpdate();</span>
+<span class="fc" id="L301">                statement.setString(1, &quot;c_&quot; + java.util.UUID.randomUUID());</span>
+<span class="fc" id="L302">                statement.setLong(2, sessionId);</span>
+<span class="fc" id="L303">                statement.setLong(3, event.organizerDatabaseId());</span>
+<span class="fc" id="L304">                statement.setString(4, initialComment);</span>
+<span class="fc" id="L305">                statement.executeUpdate();</span>
             }
         }
-<span class="pc bpc" id="L311" title="2 of 4 branches missed.">        if (photoUrl != null &amp;&amp; !photoUrl.isBlank()) {</span>
-<span class="fc" id="L312">            try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+<span class="pc bpc" id="L308" title="1 of 4 branches missed.">        if (photoUrl != null &amp;&amp; !photoUrl.isBlank()) {</span>
+<span class="fc" id="L309">            try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
                     INSERT INTO partida_fotos (partida_id, url, ordem, criado_em)
                     VALUES (?, ?, 1, CURRENT_TIMESTAMP)
                     &quot;&quot;&quot;)) {
-<span class="fc" id="L316">                statement.setLong(1, sessionId);</span>
-<span class="fc" id="L317">                statement.setString(2, photoUrl);</span>
-<span class="fc" id="L318">                statement.executeUpdate();</span>
+<span class="fc" id="L313">                statement.setLong(1, sessionId);</span>
+<span class="fc" id="L314">                statement.setString(2, photoUrl);</span>
+<span class="fc" id="L315">                statement.executeUpdate();</span>
             }
         }
-<span class="fc" id="L321">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
-                UPDATE app_state
-                SET data = jsonb_set(
-                    data,
-                    '{sessions}',
-                    jsonb_build_array(jsonb_build_object(
-                        'id', ?,
-                        'gameId', ?,
-                        'date', to_char(?::timestamp, 'YYYY-MM-DD&quot;T&quot;HH24:MI:SS'),
-                        'location', ?,
-                        'organizerId', ?,
-                        'participantIds', to_jsonb(?::text[]),
-                        'winnerId', ?,
-                        'duration', ?,
-                        'notes', COALESCE(?, ''),
-                        'photos', to_jsonb(?::text[]),
-                        'comments', ?::jsonb
-                    )) || COALESCE(data-&gt;'sessions', '[]'::jsonb),
-                    true
-                ),
-                updated_at = CURRENT_TIMESTAMP
-                WHERE id = 1
-                &quot;&quot;&quot;)) {
-<span class="fc" id="L344">            statement.setString(1, sessionExternalId);</span>
-<span class="fc" id="L345">            statement.setString(2, event.gameExternalId());</span>
-<span class="fc" id="L346">            statement.setTimestamp(3, Timestamp.valueOf(event.dateTime()));</span>
-<span class="fc" id="L347">            statement.setString(4, event.location());</span>
-<span class="fc" id="L348">            statement.setString(5, event.organizerExternalId());</span>
-<span class="fc" id="L349">            statement.setArray(6, connection.createArrayOf(&quot;text&quot;, event.participantIds().toArray()));</span>
-<span class="pc bpc" id="L350" title="1 of 2 branches missed.">            statement.setString(7, winnerDatabaseId == null ? null : externalUserId(connection, winnerDatabaseId));</span>
-<span class="fc" id="L351">            statement.setInt(8, duration);</span>
-<span class="fc" id="L352">            statement.setString(9, notes);</span>
-<span class="fc" id="L353">            statement.setArray(10, connection.createArrayOf(&quot;text&quot;,</span>
-<span class="pc bpc" id="L354" title="2 of 4 branches missed.">                    photoUrl == null || photoUrl.isBlank() ? new String[0] : new String[]{photoUrl}));</span>
-<span class="fc" id="L355">            statement.setString(11, legacyCommentsJson(event, initialComment));</span>
-<span class="fc" id="L356">            statement.executeUpdate();</span>
-        }
-<span class="fc" id="L358">    }</span>
-
-    private String externalUserId(Connection connection, long databaseId) throws SQLException {
-<span class="fc" id="L361">        try (PreparedStatement statement =</span>
-<span class="fc" id="L362">                     connection.prepareStatement(&quot;SELECT external_id FROM usuarios WHERE id = ?&quot;)) {</span>
-<span class="fc" id="L363">            statement.setLong(1, databaseId);</span>
-<span class="fc" id="L364">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="pc bpc" id="L365" title="1 of 2 branches missed.">                return resultSet.next() ? resultSet.getString(1) : null;</span>
-            }
-        }
-    }
-
-    private static String legacyCommentsJson(EventData event, String comment) {
-<span class="pc bpc" id="L371" title="2 of 4 branches missed.">        if (comment == null || comment.isBlank()) return &quot;[]&quot;;</span>
-        try {
-<span class="fc" id="L373">            return JSON.writeValueAsString(List.of(Map.of(</span>
-<span class="fc" id="L374">                    &quot;id&quot;, &quot;c_&quot; + java.util.UUID.randomUUID(),</span>
-<span class="fc" id="L375">                    &quot;userId&quot;, event.organizerExternalId(),</span>
-                    &quot;userName&quot;, &quot;&quot;,
-                    &quot;userAvatar&quot;, &quot;&quot;,
-                    &quot;content&quot;, comment,
-<span class="fc" id="L379">                    &quot;createdAt&quot;, java.time.Instant.now().toString()</span>
-            )));
-<span class="nc" id="L381">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
-<span class="nc" id="L382">            return &quot;[]&quot;;</span>
-        }
-    }
+<span class="fc" id="L318">    }</span>
 
     public Long findUserDatabaseId(Connection connection, String externalId) throws SQLException {
-<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (externalId == null) return null;</span>
-<span class="fc" id="L388">        try (PreparedStatement statement =</span>
-<span class="fc" id="L389">                     connection.prepareStatement(&quot;SELECT id FROM usuarios WHERE external_id = ?&quot;)) {</span>
-<span class="fc" id="L390">            statement.setString(1, externalId);</span>
-<span class="fc" id="L391">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="pc bpc" id="L392" title="1 of 2 branches missed.">                return resultSet.next() ? resultSet.getLong(1) : null;</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">        if (externalId == null) return null;</span>
+<span class="fc" id="L322">        try (PreparedStatement statement =</span>
+<span class="fc" id="L323">                     connection.prepareStatement(&quot;SELECT id FROM usuarios WHERE external_id = ?&quot;)) {</span>
+<span class="fc" id="L324">            statement.setString(1, externalId);</span>
+<span class="fc" id="L325">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                return resultSet.next() ? resultSet.getLong(1) : null;</span>
             }
         }
     }
 
     private EventData map(Connection connection, ResultSet resultSet) throws SQLException {
-<span class="fc" id="L398">        long eventId = resultSet.getLong(&quot;id&quot;);</span>
-<span class="fc" id="L399">        List&lt;String&gt; participants = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L400">        List&lt;String&gt; waiting = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L401">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
+<span class="fc" id="L332">        long eventId = resultSet.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L333">        List&lt;String&gt; participants = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L334">        List&lt;String&gt; waiting = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L335">        try (PreparedStatement statement = connection.prepareStatement(&quot;&quot;&quot;</span>
                 SELECT u.external_id, ep.tipo
                 FROM evento_participantes ep
                 JOIN usuarios u ON u.id = ep.usuario_id
@@ -406,25 +340,25 @@ public final class EventRepository {
                 ORDER BY CASE ep.tipo WHEN 'PARTICIPANT' THEN 0 ELSE 1 END,
                          ep.ordem_fila NULLS FIRST, ep.inscrito_em, ep.usuario_id
                 &quot;&quot;&quot;)) {
-<span class="fc" id="L409">            statement.setLong(1, eventId);</span>
-<span class="fc" id="L410">            try (ResultSet members = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L411" title="All 2 branches covered.">                while (members.next()) {</span>
-<span class="fc bfc" id="L412" title="All 2 branches covered.">                    if (&quot;WAITING&quot;.equals(members.getString(&quot;tipo&quot;))) waiting.add(members.getString(&quot;external_id&quot;));</span>
-<span class="fc" id="L413">                    else participants.add(members.getString(&quot;external_id&quot;));</span>
+<span class="fc" id="L343">            statement.setLong(1, eventId);</span>
+<span class="fc" id="L344">            try (ResultSet members = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L345" title="All 2 branches covered.">                while (members.next()) {</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">                    if (&quot;WAITING&quot;.equals(members.getString(&quot;tipo&quot;))) waiting.add(members.getString(&quot;external_id&quot;));</span>
+<span class="fc" id="L347">                    else participants.add(members.getString(&quot;external_id&quot;));</span>
                 }
             }
         }
-<span class="fc" id="L417">        return new EventData(eventId, resultSet.getString(&quot;external_id&quot;),</span>
-<span class="fc" id="L418">                resultSet.getLong(&quot;jogo_id&quot;), resultSet.getString(&quot;game_external_id&quot;),</span>
-<span class="fc" id="L419">                resultSet.getTimestamp(&quot;data_hora&quot;).toLocalDateTime(),</span>
-<span class="fc" id="L420">                resultSet.getString(&quot;local&quot;), resultSet.getString(&quot;descricao&quot;),</span>
-<span class="fc" id="L421">                resultSet.getInt(&quot;max_participantes&quot;), resultSet.getString(&quot;status&quot;),</span>
-<span class="fc" id="L422">                resultSet.getLong(&quot;organizador_id&quot;), resultSet.getString(&quot;organizer_external_id&quot;),</span>
+<span class="fc" id="L351">        return new EventData(eventId, resultSet.getString(&quot;external_id&quot;),</span>
+<span class="fc" id="L352">                resultSet.getLong(&quot;jogo_id&quot;), resultSet.getString(&quot;game_external_id&quot;),</span>
+<span class="fc" id="L353">                resultSet.getTimestamp(&quot;data_hora&quot;).toLocalDateTime(),</span>
+<span class="fc" id="L354">                resultSet.getString(&quot;local&quot;), resultSet.getString(&quot;descricao&quot;),</span>
+<span class="fc" id="L355">                resultSet.getInt(&quot;max_participantes&quot;), resultSet.getString(&quot;status&quot;),</span>
+<span class="fc" id="L356">                resultSet.getLong(&quot;organizador_id&quot;), resultSet.getString(&quot;organizer_external_id&quot;),</span>
                 participants, waiting);
     }
 
     private static String baseSelect() {
-<span class="fc" id="L427">        return &quot;&quot;&quot;</span>
+<span class="fc" id="L361">        return &quot;&quot;&quot;</span>
                 SELECT e.id, e.external_id, e.jogo_id, j.external_id AS game_external_id,
                        e.data_hora, e.local, e.descricao, e.max_participantes, e.status,
                        e.organizador_id, u.external_id AS organizer_external_id
@@ -434,9 +368,9 @@ public final class EventRepository {
                 &quot;&quot;&quot;;
     }
 
-<span class="fc" id="L437">    public record Membership(String type, Long queueOrder) {}</span>
+<span class="fc" id="L371">    public record Membership(String type, Long queueOrder) {}</span>
 
-<span class="fc" id="L439">    public record EventData(</span>
+<span class="fc" id="L373">    public record EventData(</span>
             long databaseId,
             String externalId,
             long gameDatabaseId,
