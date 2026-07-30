@@ -1,5 +1,5 @@
-import type { DatabaseState, ActivityLog } from '../types';
-import { INITIAL_USERS, INITIAL_GAMES, INITIAL_SESSIONS, INITIAL_EVENTS, INITIAL_LOGS } from './initialData';
+import type { DatabaseState } from '../types';
+import { INITIAL_USERS, INITIAL_GAMES, INITIAL_SESSIONS, INITIAL_EVENTS } from './initialData';
 
 const LEGACY_GAME_NAMES = ['Catan', 'Ticket to Ride', 'Carcassonne', 'Dixit', 'Terraforming Mars'];
 
@@ -23,8 +23,7 @@ export const getDefaultDatabaseState = (): DatabaseState => {
       coverUrl: normalizeGameCoverUrl(game.name, game.coverUrl),
     })),
     sessions: INITIAL_SESSIONS,
-    events: INITIAL_EVENTS,
-    logs: INITIAL_LOGS
+    events: INITIAL_EVENTS
   };
 
   return syncDatabaseCalculations(defaultState);
@@ -32,7 +31,7 @@ export const getDefaultDatabaseState = (): DatabaseState => {
 
 export const sanitizeDatabaseState = (state: DatabaseState): DatabaseState => {
   const hasLegacyCatalog = state.boardGames?.some(game => LEGACY_GAME_NAMES.includes(game.name));
-  if (!state.users || !state.boardGames || !state.sessions || !state.events || !state.logs || hasLegacyCatalog) {
+  if (!state.users || !state.boardGames || !state.sessions || !state.events || hasLegacyCatalog) {
     return getDefaultDatabaseState();
   }
 
@@ -47,9 +46,10 @@ export const sanitizeDatabaseState = (state: DatabaseState): DatabaseState => {
   }));
 
   return syncDatabaseCalculations({
-    ...state,
     users,
     boardGames,
+    sessions: state.sessions,
+    events: state.events,
   });
 };
 
@@ -85,20 +85,4 @@ export const syncDatabaseCalculations = (state: DatabaseState): DatabaseState =>
     ...state,
     users: updatedUsers
   };
-};
-
-export const createLog = (
-  state: DatabaseState,
-  userId: string,
-  userName: string,
-  action: string
-): ActivityLog[] => {
-  const newLog: ActivityLog = {
-    id: `l_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-    userId,
-    userName,
-    action,
-    timestamp: new Date().toISOString()
-  };
-  return [newLog, ...state.logs].slice(0, 50);
 };

@@ -37,6 +37,8 @@ export const PlayerProfile: React.FC = () => {
   // Sync avatarUrl state when user changes
   useEffect(() => {
     if (user) {
+      // The local draft must reset when navigation selects another player.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAvatarUrl(user.avatarUrl || '');
     }
   }, [user]);

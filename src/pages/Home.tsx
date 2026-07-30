@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useDatabase } from '../context/DatabaseContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { DiceIcon, CalendarIcon, TrophyIcon, ChessPieceIcon, CardsIcon, MapPinIcon, ClockIcon, UserIcon, UsersIcon, CloseIcon, PlusIcon, CrownIcon, ZapIcon, InfoIcon } from '../components/Icons';
+import { DiceIcon, CalendarIcon, TrophyIcon, ChessPieceIcon, CardsIcon, MapPinIcon, ClockIcon, UserIcon, UsersIcon, CloseIcon, PlusIcon, CrownIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
 
 export const Home: React.FC = () => {
@@ -133,7 +133,7 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Main Grid: Left (Upcoming Events & Popular Games), Right (Recent Sessions & Logs) */}
+      {/* Main Grid: Left (Upcoming Events & Popular Games), Right (Recent Sessions) */}
       <section className="container" style={mainGridStyle}>
         
         {/* Left Side */}
@@ -305,69 +305,12 @@ export const Home: React.FC = () => {
             )}
           </div>
 
-          {/* Activity Log */}
-          <div style={{ ...sectionHeaderContainerStyle, marginTop: '40px' }}>
-            <h2 style={{ ...sectionTitleStyle, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ZapIcon size={20} style={{ color: 'var(--color-primary)' }} />
-              <span>Atividades do Clube</span>
-            </h2>
-          </div>
-          
-          <div className="card" style={logsCardStyle}>
-            {state.logs.slice(0, 5).map(log => {
-              const user = state.users.find(u => u.id === log.userId);
-              return (
-                <div key={log.id} style={logItemStyle}>
-                  <span style={logAvatarStyle}>
-                    {user ? (
-                      user.avatar
-                    ) : (
-                      <InfoIcon size={16} style={{ color: 'var(--color-secondary)' }} />
-                    )}
-                  </span>
-                  <div style={logContentStyle}>
-                    <p style={logTextStyle}>
-                      <strong>{log.userName}</strong> {log.action}
-                    </p>
-                    <span style={logTimeStyle}>
-                      {new Date(log.timestamp).toLocaleRelativeString()}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
         </div>
 
       </section>
     </div>
   );
 };
-
-// Relative date helper custom to pt-BR
-// Added to prototype for visual polish
-if (typeof Date.prototype.toLocaleRelativeString === 'undefined') {
-  Date.prototype.toLocaleRelativeString = function() {
-    const diffMs = new Date().getTime() - this.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDays = Math.floor(diffHr / 24);
-
-    if (diffSec < 60) return 'Agora mesmo';
-    if (diffMin < 60) return `Há ${diffMin} min`;
-    if (diffHr < 24) return `Há ${diffHr} h`;
-    if (diffDays === 1) return 'Ontem';
-    return `Há ${diffDays} dias`;
-  };
-}
-
-declare global {
-  interface Date {
-    toLocaleRelativeString(): string;
-  }
-}
 
 // Home styling definitions
 const pageStyle: React.CSSProperties = {
@@ -713,48 +656,6 @@ const sessionWinnerStyle: React.CSSProperties = {
   marginTop: '4px',
   borderTop: '1px dashed var(--color-border)',
   paddingTop: '8px',
-};
-
-const logsCardStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-const logItemStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '12px',
-  padding: '12px 0',
-  borderBottom: '1px solid #ECEBE6',
-};
-
-const logAvatarStyle: React.CSSProperties = {
-  fontSize: '1.4rem',
-  width: '32px',
-  height: '32px',
-  borderRadius: '50%',
-  backgroundColor: 'var(--color-secondary-light)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-};
-
-const logContentStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '2px',
-};
-
-const logTextStyle: React.CSSProperties = {
-  fontSize: '0.85rem',
-  color: 'var(--color-text-main)',
-  lineHeight: '1.4',
-};
-
-const logTimeStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
-  color: 'var(--color-text-light)',
 };
 
 // Add responsive and animation styles

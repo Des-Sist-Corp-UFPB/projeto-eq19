@@ -64,18 +64,9 @@ export interface Event {
   status: 'active' | 'completed' | 'cancelled';
 }
 
-export interface ActivityLog {
-  id: string;
-  userId: string;
-  userName: string;
-  action: string;
-  timestamp: string; // ISO date string
-}
-
 export interface DatabaseState {
   users: User[];
   boardGames: BoardGame[];
   sessions: Session[];
   events: Event[];
-  logs: ActivityLog[];
 }

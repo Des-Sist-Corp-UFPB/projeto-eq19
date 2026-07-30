@@ -1,4 +1,4 @@
-import type { User, BoardGame, Session, Event, ActivityLog } from '../types';
+import type { User, BoardGame, Session, Event } from '../types';
 
 export const INITIAL_USERS: User[] = [
   {
@@ -218,36 +218,5 @@ export const INITIAL_EVENTS: Event[] = [
     description: 'Treino de Xadrez para o campeonato interno do clube. Iniciantes são bem-vindos para assistir ou jogar se sobrar vaga!',
     organizerId: 'u1',
     status: 'active'
-  }
-];
-
-export const INITIAL_LOGS: ActivityLog[] = [
-  {
-    id: 'l1',
-    userId: 'u1',
-    userName: 'Cauã Botelho',
-    action: 'criou um novo evento para Magic: The Gathering no Laboratório de Design',
-    timestamp: '2026-06-08T10:00:00Z'
-  },
-  {
-    id: 'l2',
-    userId: 'u3',
-    userName: 'Lucas Lima',
-    action: 'registrou a vitória na sessão de Xadrez na Vivência do Bloco C',
-    timestamp: '2026-05-15T21:05:00Z'
-  },
-  {
-    id: 'l3',
-    userId: 'u2',
-    userName: 'Mariana Souza',
-    action: 'comentou na partida de Xadrez gravada em 15/05/2026',
-    timestamp: '2026-05-15T21:30:00Z'
-  },
-  {
-    id: 'l4',
-    userId: 'u4',
-    userName: 'Beatriz Santos',
-    action: 'registrou a vitória na sessão de Magic: The Gathering na Biblioteca',
-    timestamp: '2026-05-28T20:10:00Z'
   }
 ];

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { DatabaseState, BoardGame, Session, Event, Comment, User, UserRole } from '../types';
-import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, createLog, normalizeGameCoverUrl } from '../db/database';
+import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
 import { getServerState, saveServerState } from '../services/api';
 import { useToast } from './ToastContext';
 
@@ -106,8 +106,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setState(prev => {
       const updated = {
         ...prev,
-        boardGames: [...prev.boardGames, newGame],
-        logs: createLog(prev, 'system', 'Administração', `adicionou o jogo "${game.name}" ao acervo`)
+        boardGames: [...prev.boardGames, newGame]
       };
       return syncDatabaseCalculations(updated);
     });
@@ -122,15 +121,13 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const updated = {
         ...prev,
-        boardGames: prev.boardGames.map(g => g.id === sanitizedGame.id ? sanitizedGame : g),
-        logs: createLog(prev, 'system', 'Administração', `editou as informações do jogo "${updatedGame.name}"`)
+        boardGames: prev.boardGames.map(g => g.id === sanitizedGame.id ? sanitizedGame : g)
       };
       return syncDatabaseCalculations(updated);
     });
   };
 
   const deleteGame = (gameId: string) => {
-    const game = state.boardGames.find(g => g.id === gameId);
     const hasLinkedRecords = state.sessions.some(s => s.gameId === gameId) || state.events.some(e => e.gameId === gameId);
 
     if (hasLinkedRecords) {
@@ -141,8 +138,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setState(prev => {
       const updated = {
         ...prev,
-        boardGames: prev.boardGames.filter(g => g.id !== gameId),
-        logs: createLog(prev, 'system', 'Administração', `removeu o jogo "${game?.name || 'Desconhecido'}" do acervo`)
+        boardGames: prev.boardGames.filter(g => g.id !== gameId)
       };
       return syncDatabaseCalculations(updated);
     });
@@ -152,7 +148,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addSession = (sessionData: Omit<Session, 'id' | 'comments'>, initialComment?: string) => {
     const sessionId = generateId('s');
     const organizer = state.users.find(u => u.id === sessionData.organizerId);
-    const game = state.boardGames.find(g => g.id === sessionData.gameId);
     
     const comments: Comment[] = [];
     if (initialComment && organizer) {
@@ -175,21 +170,17 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setState(prev => {
       const updated = {
         ...prev,
-        sessions: [newSession, ...prev.sessions],
-        logs: createLog(prev, sessionData.organizerId, organizer?.name || 'Usuário', `registrou uma partida de "${game?.name || 'um jogo'}" em ${sessionData.location}`)
+        sessions: [newSession, ...prev.sessions]
       };
       return syncDatabaseCalculations(updated);
     });
   };
 
   const deleteSession = (sessionId: string) => {
-    const session = state.sessions.find(s => s.id === sessionId);
-    const game = state.boardGames.find(g => g.id === session?.gameId);
     setState(prev => {
       const updated = {
         ...prev,
-        sessions: prev.sessions.filter(s => s.id !== sessionId),
-        logs: createLog(prev, 'system', 'Administração', `removeu a sessão de "${game?.name || 'Desconhecido'}" jogada em ${session?.date ? new Date(session.date).toLocaleDateString('pt-BR') : ''}`)
+        sessions: prev.sessions.filter(s => s.id !== sessionId)
       };
       return syncDatabaseCalculations(updated);
     });
@@ -217,8 +208,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ...s,
             comments: [...s.comments, newComment]
           };
-        }),
-        logs: createLog(prev, userId, user.name, `comentou na partida registrada de id #${sessionId.substring(2, 6)}`)
+        })
       };
     });
   };
@@ -226,9 +216,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Event actions
   const addEvent = (eventData: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => {
     const eventId = generateId('e');
-    const game = state.boardGames.find(g => g.id === eventData.gameId);
-    const organizer = state.users.find(u => u.id === organizerId);
-
     const newEvent: Event = {
       ...eventData,
       id: eventId,
@@ -241,8 +228,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setState(prev => {
       const updated = {
         ...prev,
-        events: [newEvent, ...prev.events],
-        logs: createLog(prev, organizerId, organizer?.name || 'Organizador', `agendou um evento de "${game?.name || 'Jogo'}" para o dia ${new Date(eventData.date).toLocaleDateString('pt-BR')}`)
+        events: [newEvent, ...prev.events]
       };
       return syncDatabaseCalculations(updated);
     });
@@ -271,10 +257,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updatedWaitingList.push(userId);
       }
 
-      const actionMsg = event.participantIds.length < event.maxParticipants
-        ? `inscreveu-se no evento de "${prev.boardGames.find(g => g.id === event.gameId)?.name || 'Jogo'}"`
-        : `entrou na lista de espera do evento de "${prev.boardGames.find(g => g.id === event.gameId)?.name || 'Jogo'}"`;
-
       const updatedEvents = [...prev.events];
       updatedEvents[eventIndex] = {
         ...event,
@@ -284,8 +266,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       return {
         ...prev,
-        events: updatedEvents,
-        logs: createLog(prev, userId, user.name, actionMsg)
+        events: updatedEvents
       };
     });
   };
@@ -312,8 +293,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const updatedParticipants = event.participantIds.filter(id => id !== userId);
       const updatedWaitingList = event.waitingListIds.filter(id => id !== userId);
-      const logMsg = `cancelou sua participação no evento de "${prev.boardGames.find(g => g.id === event.gameId)?.name || 'Jogo'}"`;
-
       const updatedEvents = [...prev.events];
 
       // If a slot opened in the main participants list and someone was in the waiting list
@@ -331,15 +310,10 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             participantIds: updatedParticipants,
             waitingListIds: promotedWaitingList
           };
-
-          const nextUserData = prev.users.find(u => u.id === nextUser);
-          if (nextUserData) {
-            return {
-              ...prev,
-              events: updatedEvents,
-              logs: createLog(prev, nextUser, nextUserData.name, `saiu da lista de espera e entrou nas vagas principais do evento de "${prev.boardGames.find(g => g.id === event.gameId)?.name || 'Jogo'}"`)
-            };
-          }
+          return {
+            ...prev,
+            events: updatedEvents
+          };
         }
       }
 
@@ -351,8 +325,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       return {
         ...prev,
-        events: updatedEvents,
-        logs: createLog(prev, userId, user.name, logMsg)
+        events: updatedEvents
       };
     });
   };
@@ -369,7 +342,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const event = state.events.find(e => e.id === eventId);
     if (!event || event.status !== 'active') return;
 
-    const game = state.boardGames.find(g => g.id === event.gameId);
     const organizer = state.users.find(u => u.id === event.organizerId);
 
     // 1. Create comments array
@@ -410,13 +382,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const updated = {
         ...prev,
         sessions: [newSession, ...prev.sessions],
-        events: updatedEvents,
-        logs: createLog(
-          prev,
-          event.organizerId,
-          organizer?.name || 'Organizador',
-          `concluiu o evento de "${game?.name || 'Jogo'}" e registrou a partida histórica correspondente`
-        )
+        events: updatedEvents
       };
 
       // Recalculates wins/favorites
@@ -453,8 +419,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setState(prev => ({
       ...prev,
-      users: [...prev.users, newUser],
-      logs: createLog(prev, 'system', 'Administração', `criou a conta de "${newUser.name}"`)
+      users: [...prev.users, newUser]
     }));
 
     return newUser;
@@ -462,12 +427,10 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // User Administration
   const deleteUser = (userId: string) => {
-    const user = state.users.find(u => u.id === userId);
     setState(prev => {
       const updated = {
         ...prev,
-        users: prev.users.filter(u => u.id !== userId),
-        logs: createLog(prev, 'system', 'Administração', `removeu o perfil do estudante "${user?.name || 'Desconhecido'}"`)
+        users: prev.users.filter(u => u.id !== userId)
       };
       return syncDatabaseCalculations(updated);
     });
@@ -475,11 +438,9 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const editUser = (userId: string, updates: Partial<User>) => {
     setState(prev => {
-      const target = prev.users.find(u => u.id === userId);
       const updated = {
         ...prev,
-        users: prev.users.map(u => u.id === userId ? { ...u, ...updates } : u),
-        logs: createLog(prev, 'system', 'Administração', `atualizou o perfil de "${target?.name || 'Usuário'}"`)
+        users: prev.users.map(u => u.id === userId ? { ...u, ...updates } : u)
       };
       return syncDatabaseCalculations(updated);
     });
@@ -489,15 +450,13 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setState(prev => {
       const user = prev.users.find(u => u.id === userId);
       const newRole: UserRole = user?.role === 'admin' ? 'student' : 'admin';
-      const actionName = newRole === 'admin' ? 'promoveu a Administrador' : 'rebaixou a Estudante';
       
       const updated = {
         ...prev,
         users: prev.users.map(u => {
           if (u.id !== userId) return u;
           return { ...u, role: newRole };
-        }),
-        logs: createLog(prev, 'system', 'Administração', `${actionName} o estudante "${user?.name || 'Desconhecido'}"`)
+        })
       };
       return syncDatabaseCalculations(updated);
     });

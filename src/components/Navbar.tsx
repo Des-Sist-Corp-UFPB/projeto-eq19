@@ -38,6 +38,11 @@ export const Navbar: React.FC = () => {
             <Link to="/events" style={isActive('/events') ? activeLinkStyle : navLinkStyle}>Agenda</Link>
             <Link to="/players" style={isActive('/players') ? activeLinkStyle : navLinkStyle}>Jogadores</Link>
             <Link to="/stats" style={isActive('/stats') ? activeLinkStyle : navLinkStyle}>Estatísticas</Link>
+            {isAdmin && (
+              <Link to="/audit-logs" style={isActive('/audit-logs') ? activeLinkStyle : navLinkStyle}>
+                Auditoria
+              </Link>
+            )}
           </nav>
 
           {/* Right Section Actions */}

@@ -19,6 +19,7 @@ import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResendVerification } from './pages/ResendVerification';
 import { VerifyEmail } from './pages/VerifyEmail';
+import { AuditLogs } from './pages/AuditLogs';
 
 // Components
 import { Navbar } from './components/Navbar';
@@ -52,6 +53,7 @@ function App() {
                   <Route path="/players" element={<ProtectedRoute><Players /></ProtectedRoute>} />
                   <Route path="/players/:id" element={<ProtectedRoute><PlayerProfile /></ProtectedRoute>} />
                   <Route path="/stats" element={<ProtectedRoute><Stats /></ProtectedRoute>} />
+                  <Route path="/audit-logs" element={<ProtectedRoute adminOnly><AuditLogs /></ProtectedRoute>} />
                 </Routes>
               </main>
 

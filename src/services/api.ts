@@ -15,6 +15,39 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface AuditLogEntry {
+  id: number;
+  userId: string | null;
+  action: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  details: Record<string, unknown>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  success: boolean;
+  traceId: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface AuditLogFilters {
+  page?: number;
+  pageSize?: number;
+  action?: string;
+  userId?: string;
+  resourceType?: string;
+  resourceId?: string;
+  success?: boolean;
+  startDate?: string;
+  endDate?: string;
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
 
 const getAuthToken = () => {
@@ -61,9 +94,16 @@ export async function getServerState(): Promise<DatabaseState | null> {
 }
 
 export async function saveServerState(state: DatabaseState): Promise<void> {
+  const payload: DatabaseState = {
+    users: state.users,
+    boardGames: state.boardGames,
+    sessions: state.sessions,
+    events: state.events,
+  };
+
   await requestJson<{ ok: boolean }>('/state', {
     method: 'PUT',
-    body: JSON.stringify(state),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -110,6 +150,20 @@ export async function verifyEmailCode(email: string, code: string): Promise<{ ok
   return requestJson<{ ok: boolean; message: string }>('/auth/verify-email', {
     method: 'POST',
     body: JSON.stringify({ email, code }),
+  });
+}
+
+export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+  const suffix = query.size > 0 ? `?${query.toString()}` : '';
+  return requestJson<AuditLogPage>(`/audit-logs${suffix}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
   });
 }
 
