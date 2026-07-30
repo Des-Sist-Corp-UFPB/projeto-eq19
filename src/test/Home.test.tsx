@@ -21,6 +21,7 @@ describe('Home page', () => {
     expect(screen.getByText(/^Partidas Registradas$/i, { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText(/^Jogadores Ativos$/i, { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText(/^Jogos no Acervo$/i, { selector: 'span' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Atividades do Clube/i })).not.toBeInTheDocument();
   });
 
   it('lets an authenticated user join and leave an event', async () => {

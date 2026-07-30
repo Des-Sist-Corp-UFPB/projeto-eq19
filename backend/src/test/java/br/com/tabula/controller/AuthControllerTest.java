@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthControllerTest {
@@ -172,7 +174,7 @@ class AuthControllerTest {
         try {
             HttpResponse<String> response = sendJson(app, "/auth/resend-verification", "{\"email\":\"grace@example.com\"}");
             assertEquals(400, response.statusCode());
-            assertTrue(response.body().contains("já está verificado"));
+            assertTrue(response.body().contains("já está verificado"), response.body());
         } finally {
             app.stop();
         }
@@ -422,7 +424,7 @@ class AuthControllerTest {
         try {
             HttpResponse<String> response = sendJson(app, "/auth/verify-email", "{\"email\":\"cara@example.com\",\"code\":\"123456\"}");
             assertEquals(400, response.statusCode());
-            assertTrue(response.body().contains("já está verificado"));
+            assertTrue(response.body().contains("e-mail") && response.body().contains("verificado"), response.body());
         } finally {
             app.stop();
         }
@@ -683,6 +685,15 @@ class AuthControllerTest {
 
             org.mockito.Mockito.verify(ctx).status(201);
             assertEquals(1, mockedEmailService.constructed().size());
+            br.com.tabula.service.EmailService emailService = mockedEmailService.constructed().get(0);
+            org.mockito.InOrder order = org.mockito.Mockito.inOrder(connection, emailService);
+            order.verify(connection).commit();
+            order.verify(emailService).sendVerificationCode(
+                    org.mockito.Mockito.eq("bob@example.com"),
+                    org.mockito.Mockito.eq("Bob"),
+                    org.mockito.Mockito.anyString(),
+                    org.mockito.Mockito.eq("u_10")
+            );
         }
     }
 
@@ -745,7 +756,7 @@ class AuthControllerTest {
         try {
             HttpResponse<String> response = sendJson(app, "/auth/verify-email", "{\"email\":\"cara@example.com\",\"code\":\"123456\"}");
             assertEquals(400, response.statusCode());
-            assertTrue(response.body().contains("código de verificação expirou"));
+            assertTrue(response.body().contains("expirou"), response.body());
         } finally {
             app.stop();
         }
@@ -840,6 +851,15 @@ class AuthControllerTest {
             resendHandler.handle(ctx);
 
             assertEquals(1, mockedEmailService.constructed().size());
+            br.com.tabula.service.EmailService emailService = mockedEmailService.constructed().get(0);
+            org.mockito.InOrder order = org.mockito.Mockito.inOrder(connection, emailService);
+            order.verify(connection).commit();
+            order.verify(emailService).sendVerificationCode(
+                    org.mockito.Mockito.eq("dana@example.com"),
+                    org.mockito.Mockito.eq("Dana"),
+                    org.mockito.Mockito.anyString(),
+                    org.mockito.Mockito.eq("u_13")
+            );
         }
     }
 
@@ -851,8 +871,8 @@ class AuthControllerTest {
         Javalin app = startAuthApp(dataSource);
         try {
             HttpResponse<String> response = sendJson(app, "/auth/resend-verification", "{\"email\":\"dana@example.com\"}");
-            assertEquals(400, response.statusCode());
-            assertTrue(response.body().contains("Dados inválidos para reenvio"));
+            assertEquals(500, response.statusCode());
+            assertTrue(response.body().contains("Não foi possível reenviar"));
         } finally {
             app.stop();
         }
@@ -935,6 +955,83 @@ class AuthControllerTest {
         UserAccount singleCharName = new UserAccount(1L, "u_1", "  X  ", "email@example.com", "hash", "USER", true);
         Map<String, Object> user2 = (Map<String, Object>) method.invoke(null, singleCharName);
         assertEquals("X", user2.get("avatar"));
+    }
+
+    @Test
+    void shouldRollbackLoginWhenTransactionalAuditInsertFails() throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement findUserStatement = mock(PreparedStatement.class);
+        PreparedStatement createTokenStatement = mock(PreparedStatement.class);
+        PreparedStatement auditStatement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("FROM usuarios")) return findUserStatement;
+            if (sql.contains("INSERT INTO auth_tokens")) return createTokenStatement;
+            if (sql.contains("INSERT INTO audit_logs")) return auditStatement;
+            throw new AssertionError("Unexpected SQL: " + sql);
+        });
+        when(findUserStatement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(true, false);
+        when(resultSet.getLong("id")).thenReturn(7L);
+        when(resultSet.getString("external_id")).thenReturn("u_7");
+        when(resultSet.getString("nome")).thenReturn("Alice");
+        when(resultSet.getString("email")).thenReturn("alice@example.com");
+        when(resultSet.getString("senha_hash")).thenReturn(sha256("secret123"));
+        when(resultSet.getString("role")).thenReturn("USER");
+        when(resultSet.getBoolean("email_verificado")).thenReturn(true);
+        when(createTokenStatement.executeUpdate()).thenReturn(1);
+        when(auditStatement.executeUpdate()).thenThrow(new SQLException("audit insert failed"));
+
+        Javalin app = startAuthApp(dataSource);
+        try {
+            HttpResponse<String> response = sendJson(
+                    app, "/auth/login",
+                    "{\"email\":\"alice@example.com\",\"password\":\"secret123\"}"
+            );
+
+            assertEquals(500, response.statusCode(), response.body());
+            verify(connection).rollback();
+            verify(connection, never()).commit();
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldKeepUnauthorizedResponseWhenRejectedLoginAuditFailsBestEffort() throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement findUserStatement = mock(PreparedStatement.class);
+        PreparedStatement auditStatement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("FROM usuarios")) return findUserStatement;
+            if (sql.contains("INSERT INTO audit_logs")) return auditStatement;
+            throw new AssertionError("Unexpected SQL: " + sql);
+        });
+        when(findUserStatement.executeQuery()).thenReturn(resultSet);
+        when(resultSet.next()).thenReturn(false);
+        when(auditStatement.executeUpdate()).thenThrow(new SQLException("audit unavailable"));
+
+        Javalin app = startAuthApp(dataSource);
+        try {
+            HttpResponse<String> response = sendJson(
+                    app, "/auth/login",
+                    "{\"email\":\"missing@example.com\",\"password\":\"secret123\"}"
+            );
+
+            assertEquals(401, response.statusCode(), response.body());
+            assertTrue(response.body().contains("Credenciais"), response.body());
+        } finally {
+            app.stop();
+        }
     }
 
     private static Javalin startAuthApp(HikariDataSource dataSource) {

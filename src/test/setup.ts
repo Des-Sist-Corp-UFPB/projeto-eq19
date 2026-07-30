@@ -14,6 +14,7 @@ vi.mock('../services/api', async () => {
     changePasswordBackend: vi.fn(),
     resendVerificationBackend: vi.fn(),
     verifyEmailCode: vi.fn(),
+    getAuditLogs: vi.fn(),
   };
 });
 

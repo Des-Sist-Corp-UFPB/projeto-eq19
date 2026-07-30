@@ -3,6 +3,7 @@ package br.com.tabula.controller;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class StateControllerTest {
@@ -267,6 +270,106 @@ class StateControllerTest {
             HttpResponse<String> response = sendPut(app, "/state", "{\"value\":1}", "Bearer abc");
             assertEquals(200, response.statusCode());
             assertTrue(response.body().contains("\"ok\":true"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldRecordAuthenticatedStateUpdateWithChangedSections() throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection snapshotConnection = mock(Connection.class);
+        Connection authConnection = mock(Connection.class);
+        Connection transactionConnection = mock(Connection.class);
+        PreparedStatement snapshotStatement = mock(PreparedStatement.class);
+        PreparedStatement authStatement = mock(PreparedStatement.class);
+        PreparedStatement saveStatement = mock(PreparedStatement.class);
+        PreparedStatement auditStatement = mock(PreparedStatement.class);
+        ResultSet snapshotResult = mock(ResultSet.class);
+        ResultSet authResult = mock(ResultSet.class);
+
+        when(dataSource.getConnection())
+                .thenReturn(snapshotConnection, authConnection, transactionConnection)
+                .thenThrow(new SQLException("shadow sync unavailable"));
+        when(snapshotConnection.prepareStatement(anyString())).thenReturn(snapshotStatement);
+        when(snapshotStatement.executeQuery()).thenReturn(snapshotResult);
+        when(snapshotResult.next()).thenReturn(true, false);
+        when(snapshotResult.getString(1)).thenReturn(
+                "{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}"
+        );
+        when(authConnection.prepareStatement(anyString())).thenReturn(authStatement);
+        when(authStatement.executeQuery()).thenReturn(authResult);
+        when(authResult.next()).thenReturn(true, false);
+        when(authResult.getLong("id")).thenReturn(7L);
+        when(authResult.getString("external_id")).thenReturn("u_7");
+        when(authResult.getString("role")).thenReturn("ADMIN");
+        when(transactionConnection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("INSERT INTO app_state")) return saveStatement;
+            if (sql.contains("INSERT INTO audit_logs")) return auditStatement;
+            throw new AssertionError("Unexpected SQL: " + sql);
+        });
+        when(saveStatement.executeUpdate()).thenReturn(1);
+        when(auditStatement.executeUpdate()).thenReturn(1);
+        String payload = "{\"users\":[{\"id\":\"u_8\"}],\"boardGames\":[],"
+                + "\"sessions\":[],\"events\":[],\"logs\":[{\"description\":\"legacy\"}]}";
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendPut(app, "/state", payload, "Bearer admin-token");
+
+            assertEquals(200, response.statusCode(), response.body());
+            verify(transactionConnection).commit();
+            verify(auditStatement).setLong(1, 7L);
+            verify(auditStatement).setString(2, "u_7");
+            verify(auditStatement).setString(3, "STATE_UPDATED");
+            ArgumentCaptor<String> details = ArgumentCaptor.forClass(String.class);
+            verify(auditStatement).setString(org.mockito.ArgumentMatchers.eq(6), details.capture());
+            assertTrue(details.getValue().contains("\"changedSections\":[\"users\"]"), details.getValue());
+            assertFalse(details.getValue().contains("legacy"), details.getValue());
+            assertFalse(details.getValue().contains("\"logs\""), details.getValue());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldRollbackStateChangeWhenTransactionalAuditFails() throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection snapshotConnection = mock(Connection.class);
+        Connection transactionConnection = mock(Connection.class);
+        Connection bestEffortConnection = mock(Connection.class);
+        PreparedStatement snapshotStatement = mock(PreparedStatement.class);
+        PreparedStatement saveStatement = mock(PreparedStatement.class);
+        PreparedStatement auditStatement = mock(PreparedStatement.class);
+        PreparedStatement bestEffortAuditStatement = mock(PreparedStatement.class);
+        ResultSet snapshotResult = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(
+                snapshotConnection, transactionConnection, bestEffortConnection
+        );
+        when(snapshotConnection.prepareStatement(anyString())).thenReturn(snapshotStatement);
+        when(snapshotStatement.executeQuery()).thenReturn(snapshotResult);
+        when(snapshotResult.next()).thenReturn(false);
+        when(transactionConnection.prepareStatement(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            return sql.contains("app_state") ? saveStatement : auditStatement;
+        });
+        when(saveStatement.executeUpdate()).thenReturn(1);
+        when(auditStatement.executeUpdate()).thenThrow(new SQLException("audit insert failed"));
+        when(bestEffortConnection.prepareStatement(anyString())).thenReturn(bestEffortAuditStatement);
+        when(bestEffortAuditStatement.executeUpdate()).thenReturn(1);
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response = sendPut(
+                    app, "/state",
+                    "{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}"
+            );
+
+            assertEquals(500, response.statusCode(), response.body());
+            verify(transactionConnection).rollback();
+            verify(transactionConnection, never()).commit();
         } finally {
             app.stop();
         }

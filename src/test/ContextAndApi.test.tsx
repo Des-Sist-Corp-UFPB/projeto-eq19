@@ -1,12 +1,12 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { DatabaseProvider, useDatabase } from '../context/DatabaseContext';
 import { ToastProvider } from '../context/ToastContext';
 import * as api from '../services/api';
-import { getDefaultDatabaseState, syncDatabaseCalculations } from '../db/database';
-import type { BoardGame, Event } from '../types';
+import { getDefaultDatabaseState } from '../db/database';
+import type { BoardGame } from '../types';
 
 function AuthHarness() {
   const { currentUser, isAdmin, login, register, logout, resetPassword, changePassword, resendVerification, verifyEmailCode, availableUsers } = useAuth();
@@ -28,7 +28,7 @@ function AuthHarness() {
 }
 
 function DatabaseHarness() {
-  const { state, addGame, editGame, deleteGame, addSession, deleteSession, addComment, addEvent, joinEvent, leaveEvent, completeEvent, addUser, deleteUser, promoteUser, editUser } = useDatabase();
+  const { state, addGame, editGame, deleteGame, addSession, addComment, addEvent, joinEvent, leaveEvent, completeEvent, addUser, deleteUser, promoteUser, editUser } = useDatabase();
 
   return (
     <div>

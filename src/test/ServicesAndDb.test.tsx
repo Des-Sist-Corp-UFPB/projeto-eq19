@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUTH_TOKEN_KEY } from '../services/api';
-import { createLog, getDefaultDatabaseState, normalizeGameCoverUrl, sanitizeDatabaseState } from '../db/database';
+import { getDefaultDatabaseState, normalizeGameCoverUrl, sanitizeDatabaseState } from '../db/database';
 import type { DatabaseState } from '../types';
 
 describe('API helpers and database utilities', () => {
@@ -67,6 +67,65 @@ describe('API helpers and database utilities', () => {
     await expect(actualApi.getServerState()).rejects.toThrow('API request failed (400): bad request');
   });
 
+  it('requests the official audit endpoint with filters and bearer authentication', async () => {
+    const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ items: [], page: 2, pageSize: 25, total: 0 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(AUTH_TOKEN_KEY, 'admin-token');
+
+    await actualApi.getAuditLogs({
+      page: 2,
+      pageSize: 25,
+      action: 'STATE_UPDATED',
+      userId: 'u_admin',
+      success: true,
+    });
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain('/audit-logs?');
+    expect(url).toContain('action=STATE_UPDATED');
+    expect(url).toContain('userId=u_admin');
+    expect(url).toContain('success=true');
+    expect(options.headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer admin-token',
+      Accept: 'application/json',
+    }));
+  });
+
+  it('never includes legacy logs in the complete PUT /state payload', async () => {
+    const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stateWithLegacyLogs = {
+      ...getDefaultDatabaseState(),
+      logs: [{ id: 'legacy-log' }],
+    };
+
+    await actualApi.saveServerState(stateWithLegacyLogs);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    const payload = JSON.parse(String(options.body));
+    expect(url).toContain('/state');
+    expect(options.method).toBe('PUT');
+    expect(payload).toEqual({
+      users: stateWithLegacyLogs.users,
+      boardGames: stateWithLegacyLogs.boardGames,
+      sessions: stateWithLegacyLogs.sessions,
+      events: stateWithLegacyLogs.events,
+    });
+    expect(payload).not.toHaveProperty('logs');
+  });
+
   it('normalizes cover URLs and sanitizes legacy database state', () => {
     expect(normalizeGameCoverUrl('Xadrez')).toBe('/images/chess_cover.jpg');
     expect(normalizeGameCoverUrl('Unknown Game', '/images/test.png')).toBe('/images/test.png');
@@ -75,15 +134,12 @@ describe('API helpers and database utilities', () => {
     const baseState = getDefaultDatabaseState();
     const legacyState = {
       ...baseState,
-      boardGames: [{ id: 'g99', name: 'Catan', description: 'Legacy', coverUrl: '', category: 'Estratégia', minPlayers: 2, maxPlayers: 4, avgPlayTime: 60, complexity: 2 }]
-    } as DatabaseState;
+      logs: [{ id: 'legacy-log' }],
+    } as DatabaseState & { logs: unknown[] };
 
     const sanitized = sanitizeDatabaseState(legacyState);
     expect(sanitized.boardGames[0].coverUrl).toBe('/images/chess_cover.jpg');
     expect(sanitized.boardGames[0].name).toBe('Xadrez');
-
-    const logEntries = createLog(baseState, 'u1', 'Cauã', 'tested the helpers');
-    expect(logEntries[0].action).toContain('tested the helpers');
-    expect(logEntries[0].userId).toBe('u1');
+    expect(sanitized).not.toHaveProperty('logs');
   });
 });

@@ -25,7 +25,6 @@ describe('DatabaseProvider', () => {
     );
 
     expect(screen.getByText('6')).toBeInTheDocument();
-
     await vi.waitFor(() => {
       screen.getByRole('button', { name: /Add user/i }).click();
     });
