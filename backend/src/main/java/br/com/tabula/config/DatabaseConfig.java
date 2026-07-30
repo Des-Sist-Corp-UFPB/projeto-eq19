@@ -17,11 +17,12 @@ public class DatabaseConfig {
         String port = System.getenv().getOrDefault("DB_PORT", "5432");
         String dbName = System.getenv().getOrDefault("DB_NAME", "eq19");
         String user = System.getenv().getOrDefault("DB_USER", "eq19");
+        String password = requiredEnvironmentVariable("DB_PASSWORD");
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + dbName);
         config.setUsername(user);
-        config.setPassword(System.getenv().getOrDefault("DB_PASSWORD", "eq19"));
+        config.setPassword(password);
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(1);
         config.setConnectionTimeout(30000);
@@ -29,6 +30,14 @@ public class DatabaseConfig {
 
         LOGGER.info("Initializing database pool for host {} and database {}", host, dbName);
         return new HikariDataSource(config);
+    }
+
+    private static String requiredEnvironmentVariable(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(name + " must be set");
+        }
+        return value;
     }
 
     public static void runMigrations(HikariDataSource dataSource) {

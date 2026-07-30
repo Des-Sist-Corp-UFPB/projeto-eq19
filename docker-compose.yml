@@ -5,6 +5,14 @@ services:
       dockerfile: docker/Dockerfile
     env_file:
       - .env
+    environment:
+      DB_HOST: "${DB_HOST:-host.docker.internal}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_NAME: "${DB_NAME:-eq19}"
+      DB_USER: "${DB_USER:-eq19}"
+      DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD must be set in .env or the deployment environment}"
+      BACKEND_PORT: "${BACKEND_PORT:-8119}"
+      JAVA_TOOL_OPTIONS: "${JAVA_TOOL_OPTIONS:--javaagent:/app/opentelemetry-javaagent.jar}"
     ports:
       - "127.0.0.1:8119:8080"
     restart: always
