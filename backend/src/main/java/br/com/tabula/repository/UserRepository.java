@@ -17,9 +17,14 @@ public class UserRepository {
     }
 
     public boolean emailExists(String email) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return emailExists(connection, email);
+        }
+    }
+
+    public boolean emailExists(Connection connection, String email) throws SQLException {
         String sql = "SELECT 1 FROM usuarios WHERE lower(email) = lower(?)";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, email);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
@@ -28,13 +33,18 @@ public class UserRepository {
     }
 
     public Optional<UserAccount> findByEmail(String email) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return findByEmail(connection, email);
+        }
+    }
+
+    public Optional<UserAccount> findByEmail(Connection connection, String email) throws SQLException {
         String sql = """
                 SELECT id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role, email_verificado
                 FROM usuarios
                 WHERE lower(email) = lower(?)
                 """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, email);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) return Optional.empty();
@@ -48,13 +58,25 @@ public class UserRepository {
     }
 
     public UserAccount createUser(String externalId, String name, String email, String passwordHash, String role, boolean emailVerificado) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return createUser(connection, externalId, name, email, passwordHash, role, emailVerificado);
+        }
+    }
+
+    public UserAccount createUser(
+            Connection connection,
+            String externalId,
+            String name,
+            String email,
+            String passwordHash,
+            String role,
+            boolean emailVerificado) throws SQLException {
         String sql = """
                 INSERT INTO usuarios (external_id, nome, email, senha_hash, role, email_verificado)
                 VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role, email_verificado
                 """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, externalId);
             statement.setString(2, name);
             statement.setString(3, email);
@@ -71,9 +93,14 @@ public class UserRepository {
     }
 
     public void verifyEmail(long userId) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            verifyEmail(connection, userId);
+        }
+    }
+
+    public void verifyEmail(Connection connection, long userId) throws SQLException {
         String sql = "UPDATE usuarios SET email_verificado = TRUE WHERE id = ?";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, userId);
             statement.executeUpdate();
         }
@@ -81,13 +108,18 @@ public class UserRepository {
 
 
     public String createAuthToken(long userId) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return createAuthToken(connection, userId);
+        }
+    }
+
+    public String createAuthToken(Connection connection, long userId) throws SQLException {
         String token = java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString().replace("-", "");
         String sql = """
                 INSERT INTO auth_tokens (token, usuario_id, expires_at)
                 VALUES (?, ?, CURRENT_TIMESTAMP + INTERVAL '7 days')
                 """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, token);
             statement.setLong(2, userId);
             statement.executeUpdate();
@@ -96,9 +128,14 @@ public class UserRepository {
     }
 
     public void updatePassword(String email, String passwordHash) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            updatePassword(connection, email, passwordHash);
+        }
+    }
+
+    public void updatePassword(Connection connection, String email, String passwordHash) throws SQLException {
         String sql = "UPDATE usuarios SET senha_hash = ? WHERE lower(email) = lower(?)";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, passwordHash);
             statement.setString(2, email);
             int updated = statement.executeUpdate();

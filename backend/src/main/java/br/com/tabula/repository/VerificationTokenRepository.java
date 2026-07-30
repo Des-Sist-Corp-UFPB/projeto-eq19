@@ -17,12 +17,17 @@ public class VerificationTokenRepository {
     }
 
     public void createToken(long userId, String token, Instant expiresAt) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            createToken(connection, userId, token, expiresAt);
+        }
+    }
+
+    public void createToken(Connection connection, long userId, String token, Instant expiresAt) throws SQLException {
         String sql = """
                 INSERT INTO codigos_verificacao (usuario_id, codigo, expiracao, utilizado)
                 VALUES (?, ?, ?, FALSE)
                 """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, userId);
             statement.setString(2, token);
             statement.setTimestamp(3, Timestamp.from(expiresAt));
@@ -51,6 +56,12 @@ public class VerificationTokenRepository {
     }
 
     public Optional<TokenInfo> findCodeForEmail(String email, String code) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            return findCodeForEmail(connection, email, code);
+        }
+    }
+
+    public Optional<TokenInfo> findCodeForEmail(Connection connection, String email, String code) throws SQLException {
         String sql = """
                 SELECT cv.usuario_id, cv.expiracao, cv.utilizado
                 FROM codigos_verificacao cv
@@ -62,8 +73,7 @@ public class VerificationTokenRepository {
                 LIMIT 1
                 """;
 
-        try (Connection connection = dataSource.getConnection();
-            PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, email);
             statement.setString(2, code);
 
@@ -89,9 +99,14 @@ public class VerificationTokenRepository {
     }
 
     public void deleteTokensByUser(long userId) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            deleteTokensByUser(connection, userId);
+        }
+    }
+
+    public void deleteTokensByUser(Connection connection, long userId) throws SQLException {
         String sql = "DELETE FROM codigos_verificacao WHERE usuario_id = ?";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, userId);
             statement.executeUpdate();
         }

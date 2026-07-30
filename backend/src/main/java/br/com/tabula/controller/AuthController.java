@@ -6,10 +6,14 @@ import br.com.tabula.dto.RegisterRequest;
 import br.com.tabula.dto.ResetPasswordRequest;
 import br.com.tabula.dto.ResendVerificationRequest;
 import br.com.tabula.dto.VerifyEmailCodeRequest;
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.model.UserAccount;
 import br.com.tabula.repository.UserRepository;
 import br.com.tabula.repository.VerificationTokenRepository;
 import br.com.tabula.service.EmailService;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
@@ -22,6 +26,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.SQLException;
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -37,6 +42,8 @@ public class AuthController {
 
     public static void register(Javalin app, HikariDataSource dataSource) {
         UserRepository userRepository = new UserRepository(dataSource);
+        AuditLogService auditLogService = new AuditLogService(dataSource);
+        AuthenticatedUserService authenticatedUserService = new AuthenticatedUserService(dataSource);
 
         app.post("/auth/login", ctx -> {
             try {
@@ -45,6 +52,10 @@ public class AuthController {
                 String password = request.getPassword() == null ? "" : request.getPassword();
 
                 if (email.isEmpty() || password.isEmpty()) {
+                    auditLogService.recordBestEffort(
+                            null, AuditAction.LOGIN_REJECTED, "USER", null, false,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of("reason", "invalid_request")
+                    );
                     ctx.status(400).json(Map.of("error", "E-mail e senha são obrigatórios."));
                     return;
                 }
@@ -54,6 +65,10 @@ public class AuthController {
                     LOGGER.atWarn()
                           .addKeyValue("auth_result", "invalid_credentials")
                           .log("Login rejected");
+                    auditLogService.recordBestEffort(
+                            null, AuditAction.LOGIN_REJECTED, "USER", null, false,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of("reason", "invalid_credentials")
+                    );
                     ctx.status(401).json(Map.of("error", "Credenciais inválidas."));
                     return;
                 }
@@ -63,11 +78,24 @@ public class AuthController {
                           .addKeyValue("user_id", account.get().getExternalId())
                           .addKeyValue("auth_result", "unverified_email")
                           .log("Login attempt for unverified email");
+                    auditLogService.recordBestEffort(
+                            null, AuditAction.LOGIN_REJECTED, "USER", account.get().getExternalId(), false,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of("reason", "unverified_email")
+                    );
                     ctx.status(403).json(Map.of("error", "Please verify your email before signing in."));
                     return;
                 }
 
-                String token = userRepository.createAuthToken(account.get().getId());
+                AuthenticatedPrincipal principal = principalFrom(account.get());
+                String token = inTransaction(dataSource, connection -> {
+                    String createdToken = userRepository.createAuthToken(connection, account.get().getId());
+                    auditLogService.record(
+                            connection, principal, AuditAction.LOGIN_SUCCEEDED,
+                            "USER", account.get().getExternalId(), true,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of()
+                    );
+                    return createdToken;
+                });
                 LOGGER.atInfo()
                       .addKeyValue("user_id", account.get().getExternalId())
                       .addKeyValue("auth_result", "success")
@@ -109,26 +137,41 @@ public class AuthController {
                     return;
                 }
 
-                UserAccount account = userRepository.createUser(
-                        "u_" + UUID.randomUUID(),
-                        name,
-                        email,
-                        sha256(password),
-                        "USER",
-                        false // email_verificado = false
-                );
+                String externalId = "u_" + UUID.randomUUID();
+                String passwordHash = sha256(password);
+                String code = generateVerificationCode();
+                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
+                UserAccount account = inTransaction(dataSource, connection -> {
+                    UserAccount created = userRepository.createUser(
+                            connection,
+                            externalId,
+                            name,
+                            email,
+                            passwordHash,
+                            "USER",
+                            false
+                    );
+                    tokenRepository.deleteTokensByUser(connection, created.getId());
+                    tokenRepository.createToken(
+                            connection, created.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES)
+                    );
+                    auditLogService.record(
+                            connection, null, AuditAction.USER_REGISTERED,
+                            "USER", created.getExternalId(), true,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of()
+                    );
+                    auditLogService.record(
+                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,
+                            "USER", created.getExternalId(), true,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of()
+                    );
+                    return created;
+                });
 
                 LOGGER.atInfo()
                       .addKeyValue("user_id", account.getExternalId())
                       .addKeyValue("operation", "user_registration")
                       .log("User registration completed");
-
-                // Generate secure random verification token (UUID)
-                String code = generateVerificationCode();
-                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
-                // Delete previous verification codes first to guarantee only one exists at a time
-                tokenRepository.deleteTokensByUser(account.getId());
-                tokenRepository.createToken(account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES));
 
                 EmailService emailService = new EmailService();
 
@@ -204,7 +247,18 @@ public class AuthController {
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
 
                 try {
-                    verifyUserEmail(userRepository, tokenRepository, account, code, account.getExternalId());
+                    inTransaction(dataSource, connection -> {
+                        verifyUserEmail(
+                                connection, userRepository, tokenRepository,
+                                account, code, account.getExternalId()
+                        );
+                        auditLogService.record(
+                                connection, null, AuditAction.EMAIL_VERIFIED,
+                                "USER", account.getExternalId(), true,
+                                ctx.ip(), ctx.header("User-Agent"), Map.of()
+                        );
+                        return null;
+                    });
 
                     LOGGER.atInfo()
                           .addKeyValue("user_id", account.getExternalId())
@@ -224,6 +278,10 @@ public class AuthController {
                           .addKeyValue("user_id", account.getExternalId())
                           .addKeyValue("verification_result", resultType)
                           .log("User email verification rejected");
+                    auditLogService.recordBestEffort(
+                            null, AuditAction.EMAIL_VERIFIED, "USER", account.getExternalId(), false,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of("reason", resultType)
+                    );
 
                     ctx.status(vex.getStatusCode()).json(Map.of("error", vex.getMessage()));
                 }
@@ -266,13 +324,20 @@ public class AuthController {
                 String code = generateVerificationCode();
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
 
-                // Clean up previous tokens
-                tokenRepository.deleteTokensByUser(account.getId());
+                inTransaction(dataSource, connection -> {
+                    tokenRepository.deleteTokensByUser(connection, account.getId());
+                    tokenRepository.createToken(
+                            connection, account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES)
+                    );
+                    auditLogService.record(
+                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,
+                            "USER", account.getExternalId(), true,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of()
+                    );
+                    return null;
+                });
 
-                // Store new code with 15-minute expiration
-                tokenRepository.createToken(account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES));
-
-                // Send new code via email
+                // External delivery intentionally happens only after the database transaction commits.
                 EmailService emailService = new EmailService();
 
                 try {
@@ -286,6 +351,11 @@ public class AuthController {
                           .log("Verification email delivery failed");
                     ctx.status(500).json(Map.of("error", "Falha ao enviar o código de verificação. Por favor, tente novamente."));
                 }
+            } catch (SQLException ex) {
+                LOGGER.atError()
+                      .setCause(ex)
+                      .log("Failed to persist verification resend");
+                ctx.status(500).json(Map.of("error", "Não foi possível reenviar a verificação no momento."));
             } catch (Exception ex) {
                 LOGGER.atError()
                       .setCause(ex)
@@ -305,12 +375,25 @@ public class AuthController {
                     return;
                 }
 
-                if (userRepository.findByEmail(email).isEmpty()) {
+                Optional<UserAccount> account = userRepository.findByEmail(email);
+                if (account.isEmpty()) {
                     ctx.status(404).json(Map.of("error", "Nenhuma conta encontrada com este e-mail."));
                     return;
                 }
 
-                userRepository.updatePassword(email, sha256(newPassword));
+                String passwordHash = sha256(newPassword);
+                inTransaction(dataSource, connection -> {
+                    userRepository.updatePassword(connection, email, passwordHash);
+                    AuthenticatedPrincipal actor = authenticatedUserService
+                            .resolve(connection, ctx.header("Authorization"))
+                            .orElse(null);
+                    auditLogService.record(
+                            connection, actor, AuditAction.PASSWORD_RESET_COMPLETED,
+                            "USER", account.get().getExternalId(), true,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of()
+                    );
+                    return null;
+                });
                 ctx.json(Map.of("ok", true, "message", "Senha redefinida com sucesso."));
             } catch (SQLException ex) {
                 LOGGER.atError()
@@ -338,7 +421,19 @@ public class AuthController {
                     return;
                 }
 
-                userRepository.updatePassword(email, sha256(newPassword));
+                String passwordHash = sha256(newPassword);
+                inTransaction(dataSource, connection -> {
+                    userRepository.updatePassword(connection, email, passwordHash);
+                    AuthenticatedPrincipal actor = authenticatedUserService
+                            .resolve(connection, ctx.header("Authorization"))
+                            .orElse(null);
+                    auditLogService.record(
+                            connection, actor, AuditAction.PASSWORD_CHANGED,
+                            "USER", account.get().getExternalId(), true,
+                            ctx.ip(), ctx.header("User-Agent"), Map.of()
+                    );
+                    return null;
+                });
                 ctx.json(Map.of("ok", true, "message", "Senha alterada com sucesso."));
             } catch (SQLException ex) {
                 LOGGER.atError()
@@ -347,6 +442,35 @@ public class AuthController {
                 ctx.status(500).json(Map.of("error", "Não foi possível alterar a senha."));
             }
         });
+    }
+
+    private static AuthenticatedPrincipal principalFrom(UserAccount account) {
+        return new AuthenticatedPrincipal(account.getId(), account.getExternalId(), account.getRole());
+    }
+
+    private static <T> T inTransaction(
+            HikariDataSource dataSource,
+            TransactionWork<T> work) throws Exception {
+        try (Connection connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                T result = work.execute(connection);
+                connection.commit();
+                return result;
+            } catch (Exception ex) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackError) {
+                    ex.addSuppressed(rollbackError);
+                }
+                throw ex;
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface TransactionWork<T> {
+        T execute(Connection connection) throws Exception;
     }
 
     private static String normalizeEmail(String email) {
@@ -498,6 +622,7 @@ public class AuthController {
 
     @WithSpan("verify-user-email")
     private static void verifyUserEmail(
+            Connection connection,
             UserRepository userRepository,
             VerificationTokenRepository tokenRepository,
             UserAccount account,
@@ -507,18 +632,20 @@ public class AuthController {
             throw new VerificationException("Este e-mail já está verificado.", 400);
         }
 
-        Optional<VerificationTokenRepository.TokenInfo> tokenInfoOpt = tokenRepository.findCodeForEmail(account.getEmail(), code);
-
+        Optional<VerificationTokenRepository.TokenInfo> tokenInfoOpt =
+                tokenRepository.findCodeForEmail(connection, account.getEmail(), code);
         if (tokenInfoOpt.isEmpty()) {
             throw new VerificationException("Código de verificação inválido ou incorreto.", 400);
         }
 
         VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();
         if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {
-            throw new VerificationException("Este código de verificação expirou. Por favor, solicite um novo.", 400);
+            throw new VerificationException(
+                    "Este código de verificação expirou. Por favor, solicite um novo.", 400
+            );
         }
 
-        userRepository.verifyEmail(tokenInfo.getUserId());
-        tokenRepository.deleteTokensByUser(tokenInfo.getUserId());
+        userRepository.verifyEmail(connection, tokenInfo.getUserId());
+        tokenRepository.deleteTokensByUser(connection, tokenInfo.getUserId());
     }
 }

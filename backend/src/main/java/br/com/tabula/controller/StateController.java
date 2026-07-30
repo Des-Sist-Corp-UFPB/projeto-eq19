@@ -1,5 +1,8 @@
 package br.com.tabula.controller;
 
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.service.AuditLogService;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -10,7 +13,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class StateController {
     private static final Logger LOGGER = LoggerFactory.getLogger(StateController.class);
@@ -51,6 +57,7 @@ public class StateController {
     }
 
     public static void register(Javalin app, HikariDataSource dataSource) {
+        AuditLogService auditLogService = new AuditLogService(dataSource);
         app.post("/state/relational-backfill", ctx -> {
             if (!isRelationalBackfillEnabled()) {
                 ctx.status(404).json(Map.of("error", "Not Found"));
@@ -271,17 +278,57 @@ public class StateController {
         app.put("/state", ctx -> {
             String payload = ctx.body();
             if (payload == null || payload.isBlank()) {
+                auditLogService.recordBestEffort(
+                        null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1", false,
+                        ctx.ip(), ctx.header("User-Agent"), Map.of("reason", "invalid_payload")
+                );
                 ctx.status(400).json(Map.of("error", "Payload vazio."));
                 return;
             }
 
             try {
-                if (stateExists(dataSource) && !hasValidBearerToken(dataSource, ctx)) {
+                StateSnapshot snapshot = readStateSnapshot(dataSource);
+                Optional<AuthenticatedPrincipal> principal = snapshot.exists()
+                        ? resolvePrincipal(dataSource, ctx)
+                        : Optional.empty();
+                if (snapshot.exists() && principal.isEmpty()) {
+                    auditLogService.recordBestEffort(
+                            null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1", false,
+                            ctx.ip(), ctx.header("User-Agent"),
+                            Map.of("reason", "invalid_or_expired_token")
+                    );
                     ctx.status(401).json(Map.of("error", "Sessão inválida ou expirada."));
                     return;
                 }
 
-                saveState(dataSource, payload);
+                List<String> changedSections = changedSections(snapshot.payload(), payload);
+                try (Connection connection = dataSource.getConnection()) {
+                    connection.setAutoCommit(false);
+                    try {
+                        saveState(connection, payload);
+                        auditLogService.record(
+                                connection,
+                                principal.orElse(null),
+                                AuditAction.STATE_UPDATED,
+                                "APP_STATE",
+                                "1",
+                                true,
+                                ctx.ip(),
+                                ctx.header("User-Agent"),
+                                Map.of(
+                                        "changedSections", changedSections,
+                                        "initialization", !snapshot.exists()
+                                )
+                        );
+                        connection.commit();
+                    } catch (Exception ex) {
+                        connection.rollback();
+                        if (ex instanceof SQLException sqlException) {
+                            throw sqlException;
+                        }
+                        throw new SQLException("State transaction failed", ex);
+                    }
+                }
                 try {
                     br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);
                 } catch (Exception ex) {
@@ -293,6 +340,10 @@ public class StateController {
                 }
                 ctx.json(Map.of("ok", true));
             } catch (SQLException ex) {
+                auditLogService.recordBestEffort(
+                        null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1", false,
+                        ctx.ip(), ctx.header("User-Agent"), Map.of("reason", "persistence_error")
+                );
                 LOGGER.atError()
                       .addKeyValue("state_id", 1)
                       .addKeyValue("operation", "state_update")
@@ -313,33 +364,45 @@ public class StateController {
         }
     }
 
-    private static boolean stateExists(HikariDataSource dataSource) throws SQLException {
-        String sql = "SELECT 1 FROM app_state WHERE id = 1";
+    private static StateSnapshot readStateSnapshot(HikariDataSource dataSource) throws SQLException {
+        String sql = "SELECT data::text FROM app_state WHERE id = 1";
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql);
              ResultSet resultSet = statement.executeQuery()) {
-            return resultSet.next();
+            if (!resultSet.next()) return new StateSnapshot(false, null);
+            return new StateSnapshot(true, resultSet.getString(1));
         }
     }
 
-    private static boolean hasValidBearerToken(HikariDataSource dataSource, Context ctx) throws SQLException {
+    private static Optional<AuthenticatedPrincipal> resolvePrincipal(
+            HikariDataSource dataSource,
+            Context ctx) throws SQLException {
         String authorization = ctx.header("Authorization");
-        if (authorization == null || !authorization.startsWith("Bearer ")) return false;
-
+        if (authorization == null || !authorization.startsWith("Bearer ")) return Optional.empty();
         String token = authorization.substring("Bearer ".length()).trim();
-        if (token.isBlank()) return false;
+        if (token.isBlank()) return Optional.empty();
 
-        String sql = "SELECT 1 FROM auth_tokens WHERE token = ? AND expires_at > CURRENT_TIMESTAMP";
+        String sql = """
+                SELECT u.id, u.external_id, u.role
+                FROM auth_tokens t
+                JOIN usuarios u ON u.id = t.usuario_id
+                WHERE t.token = ? AND t.expires_at > CURRENT_TIMESTAMP
+                """;
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, token);
             try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next();
+                if (!resultSet.next()) return Optional.empty();
+                return Optional.of(new AuthenticatedPrincipal(
+                        resultSet.getLong("id"),
+                        resultSet.getString("external_id"),
+                        resultSet.getString("role")
+                ));
             }
         }
     }
 
-    private static void saveState(HikariDataSource dataSource, String payload) throws SQLException {
+    private static void saveState(Connection connection, String payload) throws SQLException {
         String sql = """
                 INSERT INTO app_state (id, data, updated_at)
                 VALUES (1, ?::jsonb, CURRENT_TIMESTAMP)
@@ -347,10 +410,31 @@ public class StateController {
                 SET data = EXCLUDED.data,
                     updated_at = CURRENT_TIMESTAMP
                 """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, payload);
             statement.executeUpdate();
         }
+    }
+
+    private static List<String> changedSections(String previousPayload, String nextPayload) {
+        List<String> changed = new ArrayList<>();
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode previous = previousPayload == null
+                    ? mapper.createObjectNode()
+                    : mapper.readTree(previousPayload);
+            com.fasterxml.jackson.databind.JsonNode next = mapper.readTree(nextPayload);
+            for (String section : List.of("users", "boardGames", "sessions", "events")) {
+                if (!java.util.Objects.equals(previous.get(section), next.get(section))) {
+                    changed.add(section);
+                }
+            }
+        } catch (Exception ignored) {
+            // The existing persistence path remains responsible for invalid JSON.
+        }
+        return changed;
+    }
+
+    private record StateSnapshot(boolean exists, String payload) {
     }
 }
