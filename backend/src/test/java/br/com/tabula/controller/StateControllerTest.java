@@ -124,13 +124,17 @@ class StateControllerTest {
         when(connection.prepareStatement(anyString())).thenReturn(existsStatement, tokenStatement, saveStatement);
         when(existsStatement.executeQuery()).thenReturn(existsResultSet);
         when(existsResultSet.next()).thenReturn(true);
+        when(existsResultSet.getString(1)).thenReturn(emptyState());
         when(tokenStatement.executeQuery()).thenReturn(tokenResultSet);
         when(tokenResultSet.next()).thenReturn(true);
+        when(tokenResultSet.getLong("id")).thenReturn(1L);
+        when(tokenResultSet.getString("external_id")).thenReturn("u1");
+        when(tokenResultSet.getString("role")).thenReturn("USER");
         when(saveStatement.executeUpdate()).thenReturn(1);
 
         Javalin app = startStateApp(dataSource);
         try {
-            HttpResponse<String> response = sendPut(app, "/state", "{\"value\":1}", "Bearer abc");
+            HttpResponse<String> response = sendPut(app, "/state", emptyState(), "Bearer abc");
             assertEquals(200, response.statusCode());
             assertTrue(response.body().contains("\"ok\":true"));
         } finally {
@@ -246,6 +250,7 @@ class StateControllerTest {
         when(connection1.prepareStatement(anyString())).thenReturn(stmt1);
         when(stmt1.executeQuery()).thenReturn(rs1);
         when(rs1.next()).thenReturn(true);
+        when(rs1.getString(1)).thenReturn(emptyState());
 
         Connection connection2 = mock(Connection.class);
         PreparedStatement stmt2 = mock(PreparedStatement.class);
@@ -253,6 +258,9 @@ class StateControllerTest {
         when(connection2.prepareStatement(anyString())).thenReturn(stmt2);
         when(stmt2.executeQuery()).thenReturn(rs2);
         when(rs2.next()).thenReturn(true);
+        when(rs2.getLong("id")).thenReturn(1L);
+        when(rs2.getString("external_id")).thenReturn("u1");
+        when(rs2.getString("role")).thenReturn("USER");
 
         Connection connection3 = mock(Connection.class);
         PreparedStatement stmt3 = mock(PreparedStatement.class);
@@ -267,7 +275,7 @@ class StateControllerTest {
 
         Javalin app = startStateApp(dataSource);
         try {
-            HttpResponse<String> response = sendPut(app, "/state", "{\"value\":1}", "Bearer abc");
+            HttpResponse<String> response = sendPut(app, "/state", emptyState(), "Bearer abc");
             assertEquals(200, response.statusCode());
             assertTrue(response.body().contains("\"ok\":true"));
         } finally {
@@ -311,8 +319,10 @@ class StateControllerTest {
         });
         when(saveStatement.executeUpdate()).thenReturn(1);
         when(auditStatement.executeUpdate()).thenReturn(1);
-        String payload = "{\"users\":[{\"id\":\"u_8\"}],\"boardGames\":[],"
-                + "\"sessions\":[],\"events\":[],\"logs\":[{\"description\":\"legacy\"}]}";
+        String payload = "{\"users\":[{\"id\":\"u_8\",\"name\":\"User 8\",\"email\":\"u8@example.com\","
+                + "\"role\":\"student\",\"course\":\"SI\",\"avatar\":\"U8\",\"winCount\":0,"
+                + "\"favoriteGames\":[],\"joinedAt\":\"2026-01-01\",\"bio\":\"\"}],\"boardGames\":[],"
+                + "\"sessions\":[],\"events\":[],\"logs\":[]}";
 
         Javalin app = startStateApp(dataSource);
         try {
@@ -328,6 +338,59 @@ class StateControllerTest {
             assertTrue(details.getValue().contains("\"changedSections\":[\"users\"]"), details.getValue());
             assertFalse(details.getValue().contains("legacy"), details.getValue());
             assertFalse(details.getValue().contains("\"logs\""), details.getValue());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldRejectUnauthorizedRoleChangeWithoutSavingAndAuditSafely() throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection snapshotConnection = mock(Connection.class);
+        Connection authConnection = mock(Connection.class);
+        Connection auditConnection = mock(Connection.class);
+        PreparedStatement snapshotStatement = mock(PreparedStatement.class);
+        PreparedStatement authStatement = mock(PreparedStatement.class);
+        PreparedStatement auditStatement = mock(PreparedStatement.class);
+        ResultSet snapshotResult = mock(ResultSet.class);
+        ResultSet authResult = mock(ResultSet.class);
+        String current = """
+                {"users":[
+                  {"id":"u1","name":"Ana","email":"ana@example.com","role":"student","course":"SI","avatar":"A","winCount":0,"favoriteGames":[],"joinedAt":"2026-01-01","bio":""},
+                  {"id":"u2","name":"Bruno","email":"bruno@example.com","role":"student","course":"SI","avatar":"B","winCount":0,"favoriteGames":[],"joinedAt":"2026-01-01","bio":""}
+                ],"boardGames":[],"sessions":[],"events":[],"logs":[]}""";
+        String requested = current.replaceFirst("\"role\":\"student\"", "\"role\":\"admin\"");
+
+        when(dataSource.getConnection()).thenReturn(snapshotConnection, authConnection, auditConnection);
+        when(snapshotConnection.prepareStatement(anyString())).thenReturn(snapshotStatement);
+        when(snapshotStatement.executeQuery()).thenReturn(snapshotResult);
+        when(snapshotResult.next()).thenReturn(true);
+        when(snapshotResult.getString(1)).thenReturn(current);
+        when(authConnection.prepareStatement(anyString())).thenReturn(authStatement);
+        when(authStatement.executeQuery()).thenReturn(authResult);
+        when(authResult.next()).thenReturn(true);
+        when(authResult.getLong("id")).thenReturn(1L);
+        when(authResult.getString("external_id")).thenReturn("u1");
+        when(authResult.getString("role")).thenReturn("USER");
+        when(auditConnection.prepareStatement(anyString())).thenReturn(auditStatement);
+        when(auditStatement.executeUpdate()).thenReturn(1);
+
+        Javalin app = startStateApp(dataSource);
+        try {
+            HttpResponse<String> response =
+                    sendPut(app, "/state", requested, "Bearer secret-token");
+
+            assertEquals(403, response.statusCode());
+            verify(snapshotConnection, never()).commit();
+            verify(authConnection, never()).commit();
+            verify(auditConnection, never()).commit();
+            verify(auditStatement).setString(3, "ROLE_CHANGE_REJECTED");
+            verify(auditStatement).setString(4, "USER");
+            ArgumentCaptor<String> details = ArgumentCaptor.forClass(String.class);
+            verify(auditStatement).setString(org.mockito.ArgumentMatchers.eq(6), details.capture());
+            assertTrue(details.getValue().contains("role_change"));
+            assertFalse(details.getValue().contains("secret-token"));
+            assertFalse(details.getValue().contains("ana@example.com"));
         } finally {
             app.stop();
         }
@@ -954,5 +1017,9 @@ class StateControllerTest {
             builder.header("Authorization", authorization);
         }
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static String emptyState() {
+        return "{\"users\":[],\"boardGames\":[],\"sessions\":[],\"events\":[],\"logs\":[]}";
     }
 }

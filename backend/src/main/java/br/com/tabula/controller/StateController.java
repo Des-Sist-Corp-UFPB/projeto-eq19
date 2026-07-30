@@ -3,6 +3,8 @@ package br.com.tabula.controller;
 import br.com.tabula.model.AuditAction;
 import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
+import br.com.tabula.service.StateAuthorizationService;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -58,6 +60,8 @@ public class StateController {
 
     public static void register(Javalin app, HikariDataSource dataSource) {
         AuditLogService auditLogService = new AuditLogService(dataSource);
+        AuthenticatedUserService authenticatedUserService = new AuthenticatedUserService(dataSource);
+        StateAuthorizationService stateAuthorizationService = new StateAuthorizationService();
         app.post("/state/relational-backfill", ctx -> {
             if (!isRelationalBackfillEnabled()) {
                 ctx.status(404).json(Map.of("error", "Not Found"));
@@ -289,7 +293,7 @@ public class StateController {
             try {
                 StateSnapshot snapshot = readStateSnapshot(dataSource);
                 Optional<AuthenticatedPrincipal> principal = snapshot.exists()
-                        ? resolvePrincipal(dataSource, ctx)
+                        ? authenticatedUserService.resolve(ctx.header("Authorization"))
                         : Optional.empty();
                 if (snapshot.exists() && principal.isEmpty()) {
                     auditLogService.recordBestEffort(
@@ -299,6 +303,26 @@ public class StateController {
                     );
                     ctx.status(401).json(Map.of("error", "Sessão inválida ou expirada."));
                     return;
+                }
+
+                if (snapshot.exists()) {
+                    StateAuthorizationService.AuthorizationDecision authorization =
+                            stateAuthorizationService.authorize(
+                                    snapshot.payload(), payload, principal.orElseThrow());
+                    if (!authorization.allowed()) {
+                        auditLogService.recordBestEffort(
+                                principal.orElseThrow(), authorization.auditAction(),
+                                authorization.resourceType(), "1", false,
+                                ctx.ip(), ctx.header("User-Agent"),
+                                Map.of("reason", authorization.reason())
+                        );
+                        if (authorization.invalidPayload()) {
+                            ctx.status(422).json(Map.of("error", "Payload de estado inválido."));
+                        } else {
+                            ctx.status(403).json(Map.of("error", "Operação não permitida."));
+                        }
+                        return;
+                    }
                 }
 
                 List<String> changedSections = changedSections(snapshot.payload(), payload);
@@ -371,34 +395,6 @@ public class StateController {
              ResultSet resultSet = statement.executeQuery()) {
             if (!resultSet.next()) return new StateSnapshot(false, null);
             return new StateSnapshot(true, resultSet.getString(1));
-        }
-    }
-
-    private static Optional<AuthenticatedPrincipal> resolvePrincipal(
-            HikariDataSource dataSource,
-            Context ctx) throws SQLException {
-        String authorization = ctx.header("Authorization");
-        if (authorization == null || !authorization.startsWith("Bearer ")) return Optional.empty();
-        String token = authorization.substring("Bearer ".length()).trim();
-        if (token.isBlank()) return Optional.empty();
-
-        String sql = """
-                SELECT u.id, u.external_id, u.role
-                FROM auth_tokens t
-                JOIN usuarios u ON u.id = t.usuario_id
-                WHERE t.token = ? AND t.expires_at > CURRENT_TIMESTAMP
-                """;
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, token);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) return Optional.empty();
-                return Optional.of(new AuthenticatedPrincipal(
-                        resultSet.getLong("id"),
-                        resultSet.getString("external_id"),
-                        resultSet.getString("role")
-                ));
-            }
         }
     }
 

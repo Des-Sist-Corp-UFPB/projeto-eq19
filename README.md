@@ -237,6 +237,26 @@ No ambiente local, o compose usa um container PostgreSQL próprio e expõe a apl
 Para rodar a aplicação local com coleta de traces via OpenTelemetry, Grafana e Tempo, consulte o guia detalhado:
 - [Guia de Instrumentação OpenTelemetry Local](docs/opentelemetry-local.md)
 
+## Autenticação e autorização
+
+A autenticação é realizada no backend por meio de tokens Bearer persistidos no
+PostgreSQL. Tokens ausentes, inválidos ou expirados retornam HTTP 401.
+
+O backend também aplica autorização granular antes de persistir alterações no
+`app_state`. A identidade do usuário é obtida exclusivamente pelo token validado,
+sem confiar em `userId`, `organizerId` ou `authorId` enviados pelo frontend.
+
+Entre as regras aplicadas:
+
+- usuários alteram somente o próprio perfil e favoritos;
+- organizadores gerenciam apenas os próprios eventos;
+- participantes entram ou saem de eventos somente em nome próprio;
+- comentários são alterados apenas pelo respectivo autor;
+- usuários comuns não podem alterar papéis;
+- logs oficiais não podem ser modificados pelo `PUT /api/state`;
+- operações sem permissão retornam HTTP 403 e são auditadas.
+
+A autorização é executada antes de qualquer gravação no `app_state`.
 
 ## Log de Auditoria
 
