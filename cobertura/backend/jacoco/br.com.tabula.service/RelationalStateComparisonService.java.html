@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationalStateComparisonService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">RelationalStateComparisonService.java</span></div><h1>RelationalStateComparisonService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+public class RelationalStateComparisonService {
+<span class="fc" id="L14">    private static final ObjectMapper MAPPER = new ObjectMapper();</span>
+
+    private RelationalStateComparisonService() {
+    }
+
+    public static String compareStateJson(String legacyJson, String relationalJson) {
+<span class="fc" id="L20">        ObjectNode report = MAPPER.createObjectNode();</span>
+<span class="fc" id="L21">        ObjectNode summary = report.putObject(&quot;summary&quot;);</span>
+<span class="fc" id="L22">        ArrayNode warnings = report.putArray(&quot;warnings&quot;);</span>
+<span class="fc" id="L23">        ArrayNode errors = report.putArray(&quot;errors&quot;);</span>
+<span class="fc" id="L24">        report.put(&quot;ok&quot;, true);</span>
+
+        JsonNode legacyRoot;
+        try {
+<span class="fc" id="L28">            legacyRoot = MAPPER.readTree(legacyJson);</span>
+<span class="fc" id="L29">        } catch (Exception e) {</span>
+<span class="fc" id="L30">            report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L31">            errors.add(&quot;Invalid legacy JSON: &quot; + e.getMessage());</span>
+<span class="fc" id="L32">            return report.toPrettyString();</span>
+<span class="fc" id="L33">        }</span>
+
+        JsonNode relationalRoot;
+        try {
+<span class="fc" id="L37">            relationalRoot = MAPPER.readTree(relationalJson);</span>
+<span class="fc" id="L38">        } catch (Exception e) {</span>
+<span class="fc" id="L39">            report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L40">            errors.add(&quot;Invalid relational JSON: &quot; + e.getMessage());</span>
+<span class="fc" id="L41">            return report.toPrettyString();</span>
+<span class="fc" id="L42">        }</span>
+
+<span class="fc" id="L44">        String[] sections = {&quot;users&quot;, &quot;boardGames&quot;, &quot;sessions&quot;, &quot;events&quot;, &quot;logs&quot;};</span>
+
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (String section : sections) {</span>
+<span class="fc" id="L47">            ObjectNode secSummary = summary.putObject(section);</span>
+<span class="fc" id="L48">            secSummary.put(&quot;legacyCount&quot;, 0);</span>
+<span class="fc" id="L49">            secSummary.put(&quot;relationalCount&quot;, 0);</span>
+<span class="fc" id="L50">            ArrayNode missingInRel = secSummary.putArray(&quot;missingInRelational&quot;);</span>
+<span class="fc" id="L51">            ArrayNode extraInRel = secSummary.putArray(&quot;extraInRelational&quot;);</span>
+
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (!legacyRoot.has(section)) {</span>
+<span class="fc" id="L54">                report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L55">                errors.add(&quot;Missing top-level field in legacy JSON: &quot; + section);</span>
+<span class="fc" id="L56">                continue;</span>
+            }
+<span class="fc" id="L58">            JsonNode legacyArr = legacyRoot.get(section);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            if (!legacyArr.isArray()) {</span>
+<span class="nc" id="L60">                report.put(&quot;ok&quot;, false);</span>
+<span class="nc" id="L61">                errors.add(&quot;Field in legacy JSON is not an array: &quot; + section);</span>
+<span class="nc" id="L62">                continue;</span>
+            }
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (!relationalRoot.has(section)) {</span>
+<span class="fc" id="L66">                report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L67">                errors.add(&quot;Missing top-level field in relational JSON: &quot; + section);</span>
+<span class="fc" id="L68">                continue;</span>
+            }
+<span class="fc" id="L70">            JsonNode relationalArr = relationalRoot.get(section);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if (!relationalArr.isArray()) {</span>
+<span class="nc" id="L72">                report.put(&quot;ok&quot;, false);</span>
+<span class="nc" id="L73">                errors.add(&quot;Field in relational JSON is not an array: &quot; + section);</span>
+<span class="nc" id="L74">                continue;</span>
+            }
+
+<span class="fc" id="L77">            int legacyCount = legacyArr.size();</span>
+<span class="fc" id="L78">            int relationalCount = relationalArr.size();</span>
+
+<span class="fc" id="L80">            secSummary.put(&quot;legacyCount&quot;, legacyCount);</span>
+<span class="fc" id="L81">            secSummary.put(&quot;relationalCount&quot;, relationalCount);</span>
+
+<span class="fc" id="L83">            Map&lt;String, JsonNode&gt; legacyById = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L84">            Set&lt;String&gt; legacyDupIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            for (JsonNode item : legacyArr) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (item.has(&quot;id&quot;)) {</span>
+<span class="fc" id="L87">                    String id = item.get(&quot;id&quot;).asText();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                    if (legacyById.containsKey(id)) {</span>
+<span class="fc" id="L89">                        legacyDupIds.add(id);</span>
+                    } else {
+<span class="fc" id="L91">                        legacyById.put(id, item);</span>
+                    }
+                }
+<span class="fc" id="L94">            }</span>
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            for (String dupId : legacyDupIds) {</span>
+<span class="fc" id="L97">                report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L98">                errors.add(&quot;Duplicate ID detected in legacy &quot; + section + &quot;: &quot; + dupId);</span>
+<span class="fc" id="L99">            }</span>
+
+<span class="fc" id="L101">            Map&lt;String, JsonNode&gt; relationalById = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L102">            Set&lt;String&gt; relationalDupIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            for (JsonNode item : relationalArr) {</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                if (item.has(&quot;id&quot;)) {</span>
+<span class="fc" id="L105">                    String id = item.get(&quot;id&quot;).asText();</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                    if (relationalById.containsKey(id)) {</span>
+<span class="nc" id="L107">                        relationalDupIds.add(id);</span>
+                    } else {
+<span class="fc" id="L109">                        relationalById.put(id, item);</span>
+                    }
+                }
+<span class="fc" id="L112">            }</span>
+
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            for (String dupId : relationalDupIds) {</span>
+<span class="nc" id="L115">                report.put(&quot;ok&quot;, false);</span>
+<span class="nc" id="L116">                errors.add(&quot;Duplicate ID detected in relational &quot; + section + &quot;: &quot; + dupId);</span>
+<span class="nc" id="L117">            }</span>
+
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            for (String id : legacyById.keySet()) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (!relationalById.containsKey(id)) {</span>
+<span class="fc" id="L121">                    missingInRel.add(id);</span>
+<span class="fc" id="L122">                    report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L123">                    errors.add(&quot;ID &quot; + id + &quot; in section &quot; + section + &quot; present in legacy but missing in relational.&quot;);</span>
+                }
+<span class="fc" id="L125">            }</span>
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            for (String id : relationalById.keySet()) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (!legacyById.containsKey(id)) {</span>
+<span class="fc" id="L129">                    extraInRel.add(id);</span>
+<span class="fc" id="L130">                    warnings.add(&quot;ID &quot; + id + &quot; in section &quot; + section + &quot; present in relational but extra (missing in legacy).&quot;);</span>
+                }
+<span class="fc" id="L132">            }</span>
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            for (Map.Entry&lt;String, JsonNode&gt; entry : legacyById.entrySet()) {</span>
+<span class="fc" id="L135">                String id = entry.getKey();</span>
+<span class="fc" id="L136">                JsonNode legItem = entry.getValue();</span>
+<span class="fc" id="L137">                JsonNode relItem = relationalById.get(id);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                if (relItem == null) {</span>
+<span class="fc" id="L139">                    continue;</span>
+                }
+
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                if (&quot;users&quot;.equals(section)) {</span>
+<span class="fc" id="L143">                    compareFields(id, section, legItem, relItem, new String[]{&quot;name&quot;, &quot;email&quot;, &quot;role&quot;}, warnings);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                } else if (&quot;boardGames&quot;.equals(section)) {</span>
+<span class="nc" id="L145">                    compareFields(id, section, legItem, relItem, new String[]{&quot;name&quot;, &quot;category&quot;}, warnings);</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                } else if (&quot;sessions&quot;.equals(section)) {</span>
+<span class="nc" id="L147">                    compareFields(id, section, legItem, relItem, new String[]{&quot;gameId&quot;, &quot;organizerId&quot;, &quot;winnerId&quot;}, warnings);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                } else if (&quot;events&quot;.equals(section)) {</span>
+<span class="nc" id="L149">                    compareFields(id, section, legItem, relItem, new String[]{&quot;gameId&quot;, &quot;organizerId&quot;, &quot;status&quot;}, warnings);</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">                } else if (&quot;logs&quot;.equals(section)) {</span>
+<span class="nc" id="L151">                    compareFields(id, section, legItem, relItem, new String[]{&quot;userId&quot;, &quot;action&quot;}, warnings);</span>
+                }
+<span class="fc" id="L153">            }</span>
+        }
+
+<span class="fc" id="L156">        return report.toPrettyString();</span>
+    }
+
+    private static void compareFields(String id, String section, JsonNode legItem, JsonNode relItem, String[] fields, ArrayNode warnings) {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (String field : fields) {</span>
+<span class="fc" id="L161">            String legVal = getFieldAsString(legItem, field);</span>
+<span class="fc" id="L162">            String relVal = getFieldAsString(relItem, field);</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (!legVal.equalsIgnoreCase(relVal)) {</span>
+<span class="fc" id="L164">                warnings.add(&quot;Field mismatch in &quot; + section + &quot; ID &quot; + id + &quot; field '&quot; + field + &quot;': legacy is '&quot; + legVal + &quot;', relational is '&quot; + relVal + &quot;'&quot;);</span>
+            }
+        }
+<span class="fc" id="L167">    }</span>
+
+    private static String getFieldAsString(JsonNode node, String field) {
+<span class="pc bpc" id="L170" title="2 of 4 branches missed.">        if (!node.has(field) || node.get(field).isNull()) {</span>
+<span class="nc" id="L171">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L173">        return node.get(field).asText().trim();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

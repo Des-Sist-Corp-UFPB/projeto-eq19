@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AiConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.ai</a> &gt; <span class="el_source">AiConfiguration.java</span></div><h1>AiConfiguration.java</h1><pre class="source lang-java linenums">package br.com.tabula.ai;
+
+import java.net.URI;
+import java.time.Duration;
+import java.time.ZoneId;
+import java.util.Map;
+
+<span class="fc" id="L8">public record AiConfiguration(</span>
+        String apiKey, URI baseUrl, String model, Duration timeout, ZoneId timeZone,
+        int maxCompletionTokens, boolean retryEnabled, int maxCandidateGames,
+        int maxRequestsPerUserHour, int maxRequestsPerDay) {
+    public AiConfiguration(String apiKey, URI baseUrl, String model, Duration timeout, ZoneId timeZone) {
+<span class="fc" id="L13">        this(apiKey, baseUrl, model, timeout, timeZone, 300, false, 15, 3, 10);</span>
+<span class="fc" id="L14">    }</span>
+
+<span class="nc" id="L16">    public static AiConfiguration fromEnvironment() { return from(System.getenv()); }</span>
+
+    static AiConfiguration from(Map&lt;String, String&gt; env) {
+<span class="fc" id="L19">        String key = clean(env.get(&quot;LITELLM_API_KEY&quot;));</span>
+<span class="fc" id="L20">        String url = value(env, &quot;LITELLM_BASE_URL&quot;, &quot;https://llm.rodrigor.com&quot;);</span>
+<span class="fc" id="L21">        String model = value(env, &quot;LITELLM_MODEL&quot;, &quot;gpt-4o-mini&quot;);</span>
+<span class="fc" id="L22">        int seconds = integer(env, &quot;AI_REQUEST_TIMEOUT_SECONDS&quot;, 15, 1, 120);</span>
+<span class="fc" id="L23">        int maxTokens = integer(env, &quot;AI_MAX_COMPLETION_TOKENS&quot;, 300, 50, 1000);</span>
+<span class="fc" id="L24">        int maxCandidates = integer(env, &quot;AI_MAX_CANDIDATE_GAMES&quot;, 15, 1, 50);</span>
+<span class="fc" id="L25">        int perUser = integer(env, &quot;AI_MAX_REQUESTS_PER_USER_HOUR&quot;, 3, 1, 1000);</span>
+<span class="fc" id="L26">        int perDay = integer(env, &quot;AI_MAX_REQUESTS_PER_DAY&quot;, 10, 1, 10000);</span>
+<span class="fc" id="L27">        boolean retryEnabled = Boolean.parseBoolean(value(env, &quot;AI_RETRY_ENABLED&quot;, &quot;false&quot;));</span>
+        URI uri;
+        ZoneId zone;
+<span class="fc" id="L30">        try { uri = URI.create(url.replaceAll(&quot;/+$&quot;, &quot;&quot;)); }</span>
+<span class="pc" id="L31">        catch (Exception ex) { throw new IllegalArgumentException(&quot;LITELLM_BASE_URL inválida.&quot;); }</span>
+<span class="pc bpc" id="L32" title="1 of 4 branches missed.">        if (!&quot;http&quot;.equalsIgnoreCase(uri.getScheme()) &amp;&amp; !&quot;https&quot;.equalsIgnoreCase(uri.getScheme()))</span>
+<span class="fc" id="L33">            throw new IllegalArgumentException(&quot;LITELLM_BASE_URL inválida.&quot;);</span>
+<span class="pc bpc" id="L34" title="3 of 6 branches missed.">        if (uri.getHost() == null || uri.getQuery() != null || uri.getFragment() != null)</span>
+<span class="nc" id="L35">            throw new IllegalArgumentException(&quot;LITELLM_BASE_URL inválida.&quot;);</span>
+<span class="fc" id="L36">        try { zone = ZoneId.of(value(env, &quot;APP_TIME_ZONE&quot;, &quot;America/Sao_Paulo&quot;)); }</span>
+<span class="fc" id="L37">        catch (Exception ex) { throw new IllegalArgumentException(&quot;APP_TIME_ZONE inválida.&quot;); }</span>
+<span class="fc" id="L38">        return new AiConfiguration(key, uri, model, Duration.ofSeconds(seconds), zone, maxTokens,</span>
+                retryEnabled, maxCandidates, perUser, perDay);
+    }
+
+<span class="fc bfc" id="L42" title="All 2 branches covered.">    public boolean configured() { return apiKey != null; }</span>
+    private static String value(Map&lt;String,String&gt; env, String key, String fallback) {
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        String value = clean(env.get(key)); return value == null ? fallback : value;</span>
+    }
+    private static String clean(String value) {
+<span class="pc bpc" id="L47" title="1 of 6 branches missed.">        if (value == null || value.isBlank() || value.startsWith(&quot;&lt;&quot;)) return null;</span>
+<span class="fc" id="L48">        return value.trim();</span>
+    }
+    private static int integer(Map&lt;String, String&gt; env, String key, int fallback, int min, int max) {
+        try {
+<span class="fc" id="L52">            int parsed = Integer.parseInt(value(env, key, String.valueOf(fallback)));</span>
+<span class="pc bpc" id="L53" title="1 of 4 branches missed.">            if (parsed &lt; min || parsed &gt; max) throw new NumberFormatException();</span>
+<span class="fc" id="L54">            return parsed;</span>
+<span class="fc" id="L55">        } catch (NumberFormatException ex) {</span>
+<span class="fc" id="L56">            throw new IllegalArgumentException(key + &quot; inválido.&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

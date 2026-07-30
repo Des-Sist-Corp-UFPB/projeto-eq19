@@ -1,27 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PingController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">PingController.java</span></div><h1>PingController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
 
+import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
+import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.Map;
 
 public class PingController {
-<span class="fc" id="L11">    private static final Logger LOGGER = LoggerFactory.getLogger(PingController.class);</span>
+<span class="fc" id="L15">    private static final Logger LOGGER = LoggerFactory.getLogger(PingController.class);</span>
 
     private PingController() {
     }
 
-    public static void register(Javalin app) {
-<span class="fc" id="L17">        app.get(&quot;/ping&quot;, ctx -&gt; {</span>
-<span class="fc" id="L18">            LOGGER.info(&quot;GET /ping requested&quot;);</span>
-<span class="fc" id="L19">            ctx.status(200).json(Map.of(</span>
-                    &quot;status&quot;, &quot;ok&quot;,
-                    &quot;service&quot;, &quot;eq19&quot;,
-<span class="fc" id="L22">                    &quot;timestamp&quot;, Instant.now().toString()</span>
-            ));
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L21">        app.get(&quot;/ping&quot;, ctx -&gt; {</span>
+<span class="fc" id="L22">            LOGGER.info(&quot;GET /ping requested&quot;);</span>
+<span class="fc" id="L23">            checkDatabaseHealth(ctx, dataSource);</span>
 <span class="fc" id="L24">        });</span>
-<span class="fc" id="L25">    }</span>
+
+<span class="fc" id="L26">        app.get(&quot;/api/ping&quot;, ctx -&gt; {</span>
+<span class="fc" id="L27">            LOGGER.info(&quot;GET /api/ping requested&quot;);</span>
+<span class="fc" id="L28">            checkDatabaseHealth(ctx, dataSource);</span>
+<span class="fc" id="L29">        });</span>
+
+<span class="fc" id="L31">        app.get(&quot;/live&quot;, ctx -&gt; {</span>
+<span class="fc" id="L32">            LOGGER.info(&quot;GET /live requested&quot;);</span>
+<span class="fc" id="L33">            ctx.status(200).json(Map.of(</span>
+                    &quot;status&quot;, &quot;alive&quot;
+            ));
+<span class="fc" id="L36">        });</span>
+
+<span class="fc" id="L38">        app.get(&quot;/api/live&quot;, ctx -&gt; {</span>
+<span class="fc" id="L39">            LOGGER.info(&quot;GET /api/live requested&quot;);</span>
+<span class="fc" id="L40">            ctx.status(200).json(Map.of(</span>
+                    &quot;status&quot;, &quot;alive&quot;
+            ));
+<span class="fc" id="L43">        });</span>
+<span class="fc" id="L44">    }</span>
+
+    private static void checkDatabaseHealth(Context ctx, HikariDataSource dataSource) {
+<span class="fc" id="L47">        try (Connection conn = dataSource.getConnection();</span>
+<span class="fc" id="L48">             PreparedStatement stmt = conn.prepareStatement(&quot;SELECT 1&quot;);</span>
+<span class="fc" id="L49">             ResultSet rs = stmt.executeQuery()) {</span>
+
+<span class="fc" id="L51">            ctx.status(200).json(Map.of(</span>
+                    &quot;status&quot;, &quot;ok&quot;,
+                    &quot;database&quot;, &quot;up&quot;
+            ));
+<span class="fc" id="L55">        } catch (Exception e) {</span>
+<span class="fc" id="L56">            LOGGER.error(&quot;Database healthcheck failed&quot;, e);</span>
+<span class="fc" id="L57">            ctx.status(503).json(Map.of(</span>
+                    &quot;status&quot;, &quot;error&quot;,
+                    &quot;database&quot;, &quot;down&quot;,
+                    &quot;error&quot;, &quot;Database unavailable&quot;
+            ));
+<span class="fc" id="L62">        }</span>
+<span class="fc" id="L63">    }</span>
 }
+
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

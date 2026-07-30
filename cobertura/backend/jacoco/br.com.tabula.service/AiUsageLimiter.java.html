@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AiUsageLimiter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">AiUsageLimiter.java</span></div><h1>AiUsageLimiter.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class AiUsageLimiter {
+    private final int perUserHour;
+    private final int globalDay;
+    private final ZoneId zone;
+    private final Clock clock;
+<span class="fc" id="L15">    private final ConcurrentHashMap&lt;String, Integer&gt; userCounts = new ConcurrentHashMap&lt;&gt;();</span>
+    private LocalDate currentDay;
+    private int dayCount;
+
+    public AiUsageLimiter(int perUserHour, int globalDay, ZoneId zone) {
+<span class="fc" id="L20">        this(perUserHour, globalDay, zone, Clock.system(zone));</span>
+<span class="fc" id="L21">    }</span>
+
+<span class="fc" id="L23">    AiUsageLimiter(int perUserHour, int globalDay, ZoneId zone, Clock clock) {</span>
+<span class="fc" id="L24">        this.perUserHour = perUserHour;</span>
+<span class="fc" id="L25">        this.globalDay = globalDay;</span>
+<span class="fc" id="L26">        this.zone = zone;</span>
+<span class="fc" id="L27">        this.clock = clock;</span>
+<span class="fc" id="L28">        this.currentDay = LocalDate.now(clock);</span>
+<span class="fc" id="L29">    }</span>
+
+    public synchronized boolean tryAcquire(String authenticatedUserId) {
+<span class="fc" id="L32">        LocalDate today = LocalDate.now(clock);</span>
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (!today.equals(currentDay)) {</span>
+<span class="nc" id="L34">            currentDay = today;</span>
+<span class="nc" id="L35">            dayCount = 0;</span>
+<span class="nc" id="L36">            userCounts.clear();</span>
+        }
+<span class="fc" id="L38">        String hour = ZonedDateTime.now(clock).withZoneSameInstant(zone)</span>
+<span class="fc" id="L39">                .truncatedTo(ChronoUnit.HOURS).toInstant().toString();</span>
+<span class="fc" id="L40">        String key = authenticatedUserId + &quot;|&quot; + hour;</span>
+<span class="fc" id="L41">        int userCount = userCounts.getOrDefault(key, 0);</span>
+<span class="fc bfc" id="L42" title="All 4 branches covered.">        if (userCount &gt;= perUserHour || dayCount &gt;= globalDay) return false;</span>
+<span class="fc" id="L43">        userCounts.put(key, userCount + 1);</span>
+<span class="fc" id="L44">        dayCount++;</span>
+<span class="fc" id="L45">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

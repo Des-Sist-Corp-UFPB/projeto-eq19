@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AiEventController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">AiEventController.java</span></div><h1>AiEventController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import br.com.tabula.ai.AiConfiguration;
+import br.com.tabula.ai.AiProviderException;
+import br.com.tabula.ai.LiteLlmClient;
+import br.com.tabula.dto.AiEventDraftRequest;
+import br.com.tabula.dto.AiEventDraftResponse;
+import br.com.tabula.dto.AiEventRefinementRequest;
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.service.AiDraftValidationException;
+import br.com.tabula.service.AiEventDraftService;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AiUsageLimiter;
+import br.com.tabula.service.AuthenticatedUserService;
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Map;
+import java.util.Optional;
+
+public final class AiEventController {
+<span class="fc" id="L25">    private static final Logger LOGGER = LoggerFactory.getLogger(AiEventController.class);</span>
+    private AiEventController() {}
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+        AiConfiguration configuration;
+<span class="nc" id="L30">        try { configuration = AiConfiguration.fromEnvironment(); }</span>
+<span class="nc" id="L31">        catch (IllegalArgumentException ex) {</span>
+<span class="nc" id="L32">            LOGGER.atWarn().addKeyValue(&quot;operation&quot;, &quot;ai_configuration&quot;).log(&quot;AI configuration is invalid&quot;);</span>
+<span class="nc" id="L33">            configuration = new AiConfiguration(null, java.net.URI.create(&quot;https://llm.rodrigor.com&quot;),</span>
+<span class="nc" id="L34">                    &quot;gpt-4o-mini&quot;, java.time.Duration.ofSeconds(15), java.time.ZoneId.of(&quot;America/Sao_Paulo&quot;),</span>
+                    300, false, 15, 3, 10);
+<span class="nc" id="L36">        }</span>
+<span class="nc" id="L37">        LiteLlmClient client = new LiteLlmClient(configuration);</span>
+<span class="nc" id="L38">        register(app, new AuthenticatedUserService(dataSource),</span>
+<span class="nc" id="L39">                new AiEventDraftService(client, dataSource, configuration.timeZone(), configuration.maxCandidateGames()),</span>
+<span class="nc" id="L40">                new AuditLogService(dataSource), new AiUsageLimiter(configuration.maxRequestsPerUserHour(),</span>
+<span class="nc" id="L41">                        configuration.maxRequestsPerDay(), configuration.timeZone()),</span>
+<span class="nc" id="L42">                configuration.configured(), configuration.model());</span>
+<span class="nc" id="L43">    }</span>
+
+    static void register(Javalin app, AuthenticatedUserService auth, AiEventDraftService service,
+                         AuditLogService audit, boolean configured, String model) {
+<span class="nc" id="L47">        register(app, auth, service, audit,</span>
+<span class="nc" id="L48">                new AiUsageLimiter(Integer.MAX_VALUE, Integer.MAX_VALUE, java.time.ZoneId.of(&quot;UTC&quot;)),</span>
+                configured, model);
+<span class="nc" id="L50">    }</span>
+
+    static void register(Javalin app, AuthenticatedUserService auth, AiEventDraftService service,
+                         AuditLogService audit, AiUsageLimiter limiter, boolean configured, String model) {
+<span class="fc" id="L54">        app.post(&quot;/ai/event-drafts&quot;, ctx -&gt; {</span>
+<span class="fc" id="L55">            long started = System.nanoTime();</span>
+<span class="fc" id="L56">            LOGGER.atInfo().addKeyValue(&quot;operation&quot;, &quot;ai_event_draft&quot;).addKeyValue(&quot;model&quot;, model)</span>
+<span class="fc" id="L57">                    .log(&quot;AI event draft started&quot;);</span>
+<span class="fc" id="L58">            Optional&lt;AuthenticatedPrincipal&gt; principal = auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            if (principal.isEmpty()) {</span>
+<span class="fc" id="L60">                ctx.status(401).json(error(&quot;UNAUTHORIZED&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="fc" id="L61">                return;</span>
+            }
+            AiEventDraftRequest request;
+<span class="fc" id="L64">            try { request = ctx.bodyAsClass(AiEventDraftRequest.class); }</span>
+<span class="nc" id="L65">            catch (Exception ex) {</span>
+<span class="nc" id="L66">                ctx.status(400).json(error(&quot;INVALID_REQUEST&quot;, &quot;Corpo da requisição inválido.&quot;));</span>
+<span class="nc" id="L67">                return;</span>
+<span class="fc" id="L68">            }</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            int promptLength = request.prompt() == null ? 0 : request.prompt().trim().length();</span>
+            try {
+<span class="fc" id="L71">                AiEventDraftService.validatePrompt(request.prompt());</span>
+<span class="fc" id="L72">            } catch (AiDraftValidationException ex) {</span>
+<span class="fc" id="L73">                long duration = durationMs(started);</span>
+<span class="fc" id="L74">                reject(audit, principal.get(), model, promptLength, &quot;invalid_prompt&quot;, &quot;validation&quot;,</span>
+<span class="fc" id="L75">                        duration, ctx.ip(), ctx.userAgent());</span>
+<span class="fc" id="L76">                log(model, false, started, null, &quot;invalid_prompt&quot;);</span>
+<span class="fc" id="L77">                ctx.status(400).json(error(&quot;INVALID_PROMPT&quot;, ex.getMessage()));</span>
+<span class="fc" id="L78">                return;</span>
+<span class="fc" id="L79">            }</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (!configured) {</span>
+<span class="fc" id="L81">                reject(audit, principal.get(), model, promptLength, &quot;not_configured&quot;, &quot;configuration&quot;,</span>
+<span class="fc" id="L82">                        durationMs(started), ctx.ip(), ctx.userAgent());</span>
+<span class="fc" id="L83">                ctx.status(503).json(error(&quot;AI_NOT_CONFIGURED&quot;, &quot;Assistente de IA não configurado.&quot;));</span>
+<span class="fc" id="L84">                return;</span>
+            }
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (!limiter.tryAcquire(principal.get().getExternalId())) {</span>
+<span class="fc" id="L87">                log(model, false, started, null, &quot;usage_limit&quot;);</span>
+<span class="fc" id="L88">                ctx.status(429).json(Map.of(</span>
+                        &quot;code&quot;, &quot;AI_USAGE_LIMIT_REACHED&quot;,
+                        &quot;message&quot;, &quot;O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde.&quot;
+                ));
+<span class="fc" id="L92">                return;</span>
+            }
+            try {
+<span class="fc" id="L95">                AiEventDraftService.GenerationResult generation = service.generateWithUsage(request.prompt());</span>
+<span class="fc" id="L96">                AiEventDraftResponse response = generation.draft();</span>
+<span class="fc" id="L97">                long duration = durationMs(started);</span>
+<span class="fc" id="L98">                Map&lt;String, Object&gt; auditDetails = usageDetails(model, promptLength, response, duration,</span>
+<span class="fc" id="L99">                        generation.usage(), generation.providerCalls());</span>
+<span class="fc" id="L100">                audit.recordBestEffort(principal.get(), AuditAction.AI_EVENT_DRAFT_GENERATED, &quot;AI_EVENT_DRAFT&quot;,</span>
+<span class="fc" id="L101">                        null, true, ctx.ip(), ctx.userAgent(), auditDetails);</span>
+<span class="fc" id="L102">                log(model, true, started, response.gameId(), null, generation.usage(), generation.providerCalls());</span>
+<span class="fc" id="L103">                ctx.json(response);</span>
+<span class="fc" id="L104">            } catch (AiDraftValidationException ex) {</span>
+<span class="fc" id="L105">                reject(audit, principal.get(), model, promptLength, &quot;invalid_ai_response&quot;, &quot;validation&quot;,</span>
+<span class="fc" id="L106">                        durationMs(started), ctx.ip(), ctx.userAgent());</span>
+<span class="fc" id="L107">                log(model, false, started, null, &quot;invalid_ai_response&quot;);</span>
+<span class="fc" id="L108">                ctx.status(422).json(error(&quot;INVALID_AI_RESPONSE&quot;, &quot;A resposta da IA não pôde ser validada.&quot;));</span>
+<span class="fc" id="L109">            } catch (AiProviderException ex) {</span>
+<span class="fc" id="L110">                int status = providerStatus(ex.category());</span>
+<span class="fc" id="L111">                String category = ex.category().name().toLowerCase(java.util.Locale.ROOT);</span>
+<span class="fc" id="L112">                reject(audit, principal.get(), model, promptLength, &quot;provider_failure&quot;, category,</span>
+<span class="fc" id="L113">                        durationMs(started), ctx.ip(), ctx.userAgent());</span>
+<span class="fc" id="L114">                log(model, false, started, null, category, br.com.tabula.ai.AiUsage.empty(), ex.providerCalls());</span>
+<span class="fc" id="L115">                ctx.status(status).json(error(&quot;AI_PROVIDER_UNAVAILABLE&quot;,</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                        status == 429 ? &quot;O limite de solicitações da IA foi atingido. Tente novamente em instantes.&quot;</span>
+<span class="fc" id="L117">                                : &quot;O assistente de IA está temporariamente indisponível.&quot;));</span>
+<span class="fc" id="L118">            }</span>
+<span class="fc" id="L119">        });</span>
+
+<span class="fc" id="L121">        app.post(&quot;/ai/event-drafts/refine&quot;, ctx -&gt; {</span>
+<span class="fc" id="L122">            long started = System.nanoTime();</span>
+<span class="fc" id="L123">            Optional&lt;AuthenticatedPrincipal&gt; principal = auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            if (principal.isEmpty()) {</span>
+<span class="nc" id="L125">                ctx.status(401).json(error(&quot;UNAUTHORIZED&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="nc" id="L126">                return;</span>
+            }
+            AiEventRefinementRequest request;
+            try {
+<span class="fc" id="L130">                request = ctx.bodyAsClass(AiEventRefinementRequest.class);</span>
+<span class="fc" id="L131">                AiEventDraftService.validateInstruction(request.instruction());</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                if (request.currentDraft() == null)</span>
+<span class="nc" id="L133">                    throw new AiDraftValidationException(&quot;currentDraft é obrigatório.&quot;);</span>
+<span class="nc" id="L134">            } catch (AiDraftValidationException ex) {</span>
+<span class="nc" id="L135">                ctx.status(400).json(error(&quot;INVALID_REFINEMENT&quot;, ex.getMessage()));</span>
+<span class="nc" id="L136">                return;</span>
+<span class="nc" id="L137">            } catch (Exception ex) {</span>
+<span class="nc" id="L138">                ctx.status(400).json(error(&quot;INVALID_REQUEST&quot;, &quot;Corpo da requisição inválido.&quot;));</span>
+<span class="nc" id="L139">                return;</span>
+<span class="fc" id="L140">            }</span>
+<span class="fc" id="L141">            int instructionLength = request.instruction().trim().length();</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">            if (!configured) {</span>
+<span class="nc" id="L143">                ctx.status(503).json(error(&quot;AI_NOT_CONFIGURED&quot;, &quot;Assistente de IA não configurado.&quot;));</span>
+<span class="nc" id="L144">                return;</span>
+            }
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">            if (!limiter.tryAcquire(principal.get().getExternalId())) {</span>
+<span class="fc" id="L147">                logRefinement(model, false, started, null, &quot;usage_limit&quot;,</span>
+<span class="fc" id="L148">                        br.com.tabula.ai.AiUsage.empty(), 0);</span>
+<span class="fc" id="L149">                ctx.status(429).json(Map.of(</span>
+                        &quot;code&quot;, &quot;AI_USAGE_LIMIT_REACHED&quot;,
+                        &quot;message&quot;, &quot;O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde.&quot;
+                ));
+<span class="fc" id="L153">                return;</span>
+            }
+            try {
+<span class="nc" id="L156">                AiEventDraftService.GenerationResult refinement =</span>
+<span class="nc" id="L157">                        service.refineWithUsage(request.instruction(), request.currentDraft());</span>
+<span class="nc" id="L158">                AiEventDraftResponse response = refinement.draft();</span>
+<span class="nc" id="L159">                Map&lt;String, Object&gt; details = usageDetails(model, instructionLength, response,</span>
+<span class="nc" id="L160">                        durationMs(started), refinement.usage(), refinement.providerCalls());</span>
+<span class="nc" id="L161">                audit.recordBestEffort(principal.get(), AuditAction.AI_EVENT_DRAFT_REFINED,</span>
+<span class="nc" id="L162">                        &quot;AI_EVENT_DRAFT&quot;, null, true, ctx.ip(), ctx.userAgent(), details);</span>
+<span class="nc" id="L163">                logRefinement(model, true, started, response.gameId(), null,</span>
+<span class="nc" id="L164">                        refinement.usage(), refinement.providerCalls());</span>
+<span class="nc" id="L165">                ctx.json(response);</span>
+<span class="nc" id="L166">            } catch (AiDraftValidationException ex) {</span>
+<span class="nc" id="L167">                rejectRefinement(audit, principal.get(), model, instructionLength, &quot;invalid_ai_response&quot;,</span>
+<span class="nc" id="L168">                        &quot;validation&quot;, durationMs(started), ctx.ip(), ctx.userAgent());</span>
+<span class="nc" id="L169">                logRefinement(model, false, started, null, &quot;invalid_ai_response&quot;,</span>
+<span class="nc" id="L170">                        br.com.tabula.ai.AiUsage.empty(), 1);</span>
+<span class="nc" id="L171">                ctx.status(422).json(error(&quot;INVALID_AI_RESPONSE&quot;, &quot;A resposta da IA não pôde ser validada.&quot;));</span>
+<span class="nc" id="L172">            } catch (AiProviderException ex) {</span>
+<span class="nc" id="L173">                int status = providerStatus(ex.category());</span>
+<span class="nc" id="L174">                String category = ex.category().name().toLowerCase(java.util.Locale.ROOT);</span>
+<span class="nc" id="L175">                rejectRefinement(audit, principal.get(), model, instructionLength, &quot;provider_failure&quot;,</span>
+<span class="nc" id="L176">                        category, durationMs(started), ctx.ip(), ctx.userAgent());</span>
+<span class="nc" id="L177">                logRefinement(model, false, started, null, category,</span>
+<span class="nc" id="L178">                        br.com.tabula.ai.AiUsage.empty(), ex.providerCalls());</span>
+<span class="nc" id="L179">                ctx.status(status).json(error(&quot;AI_PROVIDER_UNAVAILABLE&quot;,</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">                        status == 429 ? &quot;O limite de solicitações da IA foi atingido. Tente novamente em instantes.&quot;</span>
+<span class="nc" id="L181">                                : &quot;O assistente de IA está temporariamente indisponível.&quot;));</span>
+<span class="nc" id="L182">            }</span>
+<span class="nc" id="L183">        });</span>
+<span class="fc" id="L184">    }</span>
+
+    private static void reject(AuditLogService audit, AuthenticatedPrincipal actor, String model, int promptLength,
+                               String reason, String category, long duration, String ip, String userAgent) {
+<span class="fc" id="L188">        audit.recordBestEffort(actor, AuditAction.AI_EVENT_DRAFT_REJECTED, &quot;AI_EVENT_DRAFT&quot;, null,</span>
+<span class="fc" id="L189">                false, ip, userAgent, Map.of(&quot;model&quot;, model, &quot;promptLength&quot;, promptLength,</span>
+<span class="fc" id="L190">                        &quot;warningCount&quot;, 0, &quot;success&quot;, false, &quot;failureReason&quot;, reason,</span>
+<span class="fc" id="L191">                        &quot;failureCategory&quot;, category, &quot;durationMs&quot;, duration));</span>
+<span class="fc" id="L192">    }</span>
+    private static void log(String model, boolean success, long started, String gameId, String reason) {
+<span class="fc" id="L194">        log(model, success, started, gameId, reason, br.com.tabula.ai.AiUsage.empty(), 0);</span>
+<span class="fc" id="L195">    }</span>
+    private static void log(String model, boolean success, long started, String gameId, String reason,
+                            br.com.tabula.ai.AiUsage usage) {
+<span class="nc" id="L198">        log(model, success, started, gameId, reason, usage, 1);</span>
+<span class="nc" id="L199">    }</span>
+    private static void log(String model, boolean success, long started, String gameId, String reason,
+                            br.com.tabula.ai.AiUsage usage, int providerCalls) {
+<span class="fc" id="L202">        var event = LOGGER.atInfo().addKeyValue(&quot;operation&quot;, &quot;ai_event_draft&quot;).addKeyValue(&quot;model&quot;, model)</span>
+<span class="fc" id="L203">                .addKeyValue(&quot;success&quot;, success).addKeyValue(&quot;duration_ms&quot;, (System.nanoTime()-started)/1_000_000)</span>
+<span class="fc" id="L204">                .addKeyValue(&quot;game_id&quot;, gameId).addKeyValue(&quot;failure_reason&quot;, reason)</span>
+<span class="fc" id="L205">                .addKeyValue(&quot;provider_calls&quot;, providerCalls);</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (usage.promptTokens() != null) event.addKeyValue(&quot;prompt_tokens&quot;, usage.promptTokens());</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (usage.completionTokens() != null) event.addKeyValue(&quot;completion_tokens&quot;, usage.completionTokens());</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (usage.totalTokens() != null) event.addKeyValue(&quot;total_tokens&quot;, usage.totalTokens());</span>
+<span class="fc" id="L209">        event.log(&quot;AI event draft completed&quot;);</span>
+<span class="fc" id="L210">    }</span>
+    private static Map&lt;String, Object&gt; usageDetails(String model, int promptLength,
+                                                     AiEventDraftResponse response, long duration,
+                                                     br.com.tabula.ai.AiUsage usage, int providerCalls) {
+<span class="fc" id="L214">        Map&lt;String, Object&gt; details = new java.util.HashMap&lt;&gt;();</span>
+<span class="fc" id="L215">        details.put(&quot;model&quot;, model);</span>
+<span class="fc" id="L216">        details.put(&quot;promptLength&quot;, promptLength);</span>
+<span class="fc" id="L217">        details.put(&quot;resultGameId&quot;, response.gameId());</span>
+<span class="fc" id="L218">        details.put(&quot;warningCount&quot;, response.warnings().size());</span>
+<span class="fc" id="L219">        details.put(&quot;durationMs&quot;, duration);</span>
+<span class="fc" id="L220">        details.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L221">        details.put(&quot;providerCalls&quot;, providerCalls);</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if (usage.promptTokens() != null) details.put(&quot;promptTokens&quot;, usage.promptTokens());</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        if (usage.completionTokens() != null) details.put(&quot;completionTokens&quot;, usage.completionTokens());</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (usage.totalTokens() != null) details.put(&quot;totalTokens&quot;, usage.totalTokens());</span>
+<span class="fc" id="L225">        return details;</span>
+    }
+    private static void rejectRefinement(AuditLogService audit, AuthenticatedPrincipal actor, String model,
+                                         int instructionLength, String reason, String category, long duration,
+                                         String ip, String userAgent) {
+<span class="nc" id="L230">        audit.recordBestEffort(actor, AuditAction.AI_EVENT_REFINEMENT_REJECTED, &quot;AI_EVENT_DRAFT&quot;, null,</span>
+<span class="nc" id="L231">                false, ip, userAgent, Map.of(&quot;model&quot;, model, &quot;instructionLength&quot;, instructionLength,</span>
+<span class="nc" id="L232">                        &quot;warningCount&quot;, 0, &quot;success&quot;, false, &quot;failureReason&quot;, reason,</span>
+<span class="nc" id="L233">                        &quot;failureCategory&quot;, category, &quot;durationMs&quot;, duration));</span>
+<span class="nc" id="L234">    }</span>
+    private static void logRefinement(String model, boolean success, long started, String gameId, String reason,
+                                      br.com.tabula.ai.AiUsage usage, int providerCalls) {
+<span class="fc" id="L237">        var event = LOGGER.atInfo().addKeyValue(&quot;operation&quot;, &quot;ai_event_refinement&quot;).addKeyValue(&quot;model&quot;, model)</span>
+<span class="fc" id="L238">                .addKeyValue(&quot;success&quot;, success).addKeyValue(&quot;duration_ms&quot;, durationMs(started))</span>
+<span class="fc" id="L239">                .addKeyValue(&quot;game_id&quot;, gameId).addKeyValue(&quot;failure_reason&quot;, reason)</span>
+<span class="fc" id="L240">                .addKeyValue(&quot;provider_calls&quot;, providerCalls);</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        if (usage.promptTokens() != null) event.addKeyValue(&quot;prompt_tokens&quot;, usage.promptTokens());</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (usage.completionTokens() != null) event.addKeyValue(&quot;completion_tokens&quot;, usage.completionTokens());</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (usage.totalTokens() != null) event.addKeyValue(&quot;total_tokens&quot;, usage.totalTokens());</span>
+<span class="fc" id="L244">        event.log(&quot;AI event refinement completed&quot;);</span>
+<span class="fc" id="L245">    }</span>
+<span class="fc" id="L246">    private static long durationMs(long started) { return (System.nanoTime() - started) / 1_000_000; }</span>
+    private static Map&lt;String, String&gt; error(String code, String message) {
+<span class="fc" id="L248">        return Map.of(&quot;code&quot;, code, &quot;error&quot;, message);</span>
+    }
+    private static int providerStatus(AiProviderException.Category category) {
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (category == AiProviderException.Category.RATE_LIMITED) return 429;</span>
+<span class="pc bpc" id="L252" title="8 of 10 branches missed.">        if (category == AiProviderException.Category.NOT_CONFIGURED</span>
+                || category == AiProviderException.Category.TIMEOUT
+                || category == AiProviderException.Category.CONNECTION
+                || category == AiProviderException.Category.SERVER_ERROR
+<span class="fc" id="L256">                || category == AiProviderException.Category.CATALOG_UNAVAILABLE) return 503;</span>
+<span class="nc" id="L257">        return 502;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

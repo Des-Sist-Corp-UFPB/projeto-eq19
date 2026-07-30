@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">StateController.java</span></div><h1>StateController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
 
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.service.AuditLogService;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -10,105 +13,429 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class StateController {
-<span class="fc" id="L16">    private static final Logger LOGGER = LoggerFactory.getLogger(StateController.class);</span>
+<span class="fc" id="L22">    private static final Logger LOGGER = LoggerFactory.getLogger(StateController.class);</span>
 
     private StateController() {
     }
 
-    public static void register(Javalin app, HikariDataSource dataSource) {
-<span class="fc" id="L22">        app.get(&quot;/state&quot;, ctx -&gt; {</span>
-            try {
-<span class="fc" id="L24">                String payload = readState(dataSource);</span>
-<span class="pc bpc" id="L25" title="1 of 4 branches missed.">                if (payload == null || payload.isBlank()) {</span>
-<span class="fc" id="L26">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Estado ainda não inicializado.&quot;));</span>
-<span class="fc" id="L27">                    return;</span>
-                }
-<span class="fc" id="L29">                ctx.contentType(&quot;application/json&quot;).result(payload);</span>
-<span class="fc" id="L30">            } catch (SQLException ex) {</span>
-<span class="fc" id="L31">                LOGGER.error(&quot;Failed to read app state&quot;, ex);</span>
-<span class="fc" id="L32">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível carregar os dados.&quot;));</span>
-<span class="fc" id="L33">            }</span>
-<span class="fc" id="L34">        });</span>
+    private static boolean isRelationalReadEnabled() {
+<span class="fc" id="L28">        String value = System.getenv(&quot;RELATIONAL_STATE_READ_ENABLED&quot;);</span>
+<span class="pc bpc" id="L29" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L30">            value = System.getProperty(&quot;RELATIONAL_STATE_READ_ENABLED&quot;);</span>
+        }
+<span class="fc" id="L32">        return &quot;true&quot;.equalsIgnoreCase(value);</span>
+    }
 
-<span class="fc" id="L36">        app.put(&quot;/state&quot;, ctx -&gt; {</span>
-<span class="fc" id="L37">            String payload = ctx.body();</span>
-<span class="pc bpc" id="L38" title="1 of 4 branches missed.">            if (payload == null || payload.isBlank()) {</span>
-<span class="fc" id="L39">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Payload vazio.&quot;));</span>
-<span class="fc" id="L40">                return;</span>
+    private static boolean isRelationalReadGuardEnabled() {
+<span class="fc" id="L36">        String value = System.getenv(&quot;RELATIONAL_STATE_READ_GUARD_ENABLED&quot;);</span>
+<span class="pc bpc" id="L37" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L38">            value = System.getProperty(&quot;RELATIONAL_STATE_READ_GUARD_ENABLED&quot;);</span>
+        }
+<span class="fc" id="L40">        return &quot;true&quot;.equalsIgnoreCase(value);</span>
+    }
+
+    private static boolean isRelationalComparisonEnabled() {
+<span class="fc" id="L44">        String value = System.getenv(&quot;RELATIONAL_STATE_COMPARISON_ENABLED&quot;);</span>
+<span class="pc bpc" id="L45" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L46">            value = System.getProperty(&quot;RELATIONAL_STATE_COMPARISON_ENABLED&quot;);</span>
+        }
+<span class="fc" id="L48">        return &quot;true&quot;.equalsIgnoreCase(value);</span>
+    }
+
+    private static boolean isRelationalBackfillEnabled() {
+<span class="fc" id="L52">        String value = System.getenv(&quot;RELATIONAL_STATE_BACKFILL_ENABLED&quot;);</span>
+<span class="pc bpc" id="L53" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L54">            value = System.getProperty(&quot;RELATIONAL_STATE_BACKFILL_ENABLED&quot;);</span>
+        }
+<span class="fc" id="L56">        return &quot;true&quot;.equalsIgnoreCase(value);</span>
+    }
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L60">        AuditLogService auditLogService = new AuditLogService(dataSource);</span>
+<span class="fc" id="L61">        app.post(&quot;/state/relational-backfill&quot;, ctx -&gt; {</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (!isRelationalBackfillEnabled()) {</span>
+<span class="fc" id="L63">                ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Not Found&quot;));</span>
+<span class="fc" id="L64">                return;</span>
+            }
+
+<span class="fc" id="L67">            String legacyJson = null;</span>
+            try {
+<span class="fc" id="L69">                legacyJson = readState(dataSource);</span>
+<span class="nc" id="L70">            } catch (SQLException ex) {</span>
+<span class="nc" id="L71">                LOGGER.atError()</span>
+<span class="nc" id="L72">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="nc" id="L73">                      .addKeyValue(&quot;operation&quot;, &quot;relational_backfill&quot;)</span>
+<span class="nc" id="L74">                      .setCause(ex)</span>
+<span class="nc" id="L75">                      .log(&quot;Failed to read legacy state for backfill&quot;);</span>
+<span class="nc" id="L76">                ctx.status(500).json(Map.of(</span>
+<span class="nc" id="L77">                    &quot;ok&quot;, false,</span>
+                    &quot;message&quot;, &quot;Relational backfill failed&quot;,
+<span class="nc" id="L79">                    &quot;errors&quot;, java.util.List.of(&quot;Failed to read legacy state: &quot; + ex.getMessage())</span>
+                ));
+<span class="nc" id="L81">                return;</span>
+<span class="fc" id="L82">            }</span>
+
+<span class="pc bpc" id="L84" title="2 of 4 branches missed.">            if (legacyJson == null || legacyJson.isBlank()) {</span>
+<span class="nc" id="L85">                ctx.status(500).json(Map.of(</span>
+<span class="nc" id="L86">                    &quot;ok&quot;, false,</span>
+                    &quot;message&quot;, &quot;Relational backfill failed&quot;,
+<span class="nc" id="L88">                    &quot;errors&quot;, java.util.List.of(&quot;Legacy state is empty or not initialized.&quot;)</span>
+                ));
+<span class="nc" id="L90">                return;</span>
             }
 
             try {
-<span class="fc bfc" id="L44" title="All 4 branches covered.">                if (stateExists(dataSource) &amp;&amp; !hasValidBearerToken(dataSource, ctx)) {</span>
-<span class="fc" id="L45">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
-<span class="fc" id="L46">                    return;</span>
+<span class="fc" id="L94">                br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson);</span>
+<span class="fc" id="L95">            } catch (Exception ex) {</span>
+<span class="fc" id="L96">                LOGGER.atError()</span>
+<span class="fc" id="L97">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L98">                      .addKeyValue(&quot;operation&quot;, &quot;relational_backfill&quot;)</span>
+<span class="fc" id="L99">                      .setCause(ex)</span>
+<span class="fc" id="L100">                      .log(&quot;Failed to sync legacy state during backfill&quot;);</span>
+<span class="fc" id="L101">                ctx.status(500).json(Map.of(</span>
+<span class="fc" id="L102">                    &quot;ok&quot;, false,</span>
+                    &quot;message&quot;, &quot;Relational backfill failed&quot;,
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">                    &quot;errors&quot;, java.util.List.of(ex.getMessage() != null ? ex.getMessage() : ex.toString())</span>
+                ));
+<span class="fc" id="L106">                return;</span>
+<span class="fc" id="L107">            }</span>
+
+<span class="fc" id="L109">            String relationalJson = null;</span>
+            try {
+<span class="fc" id="L111">                relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);</span>
+<span class="nc" id="L112">            } catch (Exception ex) {</span>
+<span class="nc" id="L113">                LOGGER.atError()</span>
+<span class="nc" id="L114">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="nc" id="L115">                      .addKeyValue(&quot;operation&quot;, &quot;relational_backfill&quot;)</span>
+<span class="nc" id="L116">                      .setCause(ex)</span>
+<span class="nc" id="L117">                      .log(&quot;Failed to read relational state after backfill&quot;);</span>
+<span class="nc" id="L118">                ctx.status(500).json(Map.of(</span>
+<span class="nc" id="L119">                    &quot;ok&quot;, false,</span>
+                    &quot;message&quot;, &quot;Relational backfill failed&quot;,
+<span class="nc" id="L121">                    &quot;errors&quot;, java.util.List.of(&quot;Failed to read relational state after sync: &quot; + ex.getMessage())</span>
+                ));
+<span class="nc" id="L123">                return;</span>
+<span class="fc" id="L124">            }</span>
+
+<span class="fc" id="L126">            String comparisonReport = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);</span>
+
+<span class="fc" id="L128">            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();</span>
+<span class="fc" id="L129">            com.fasterxml.jackson.databind.node.ObjectNode responseNode = mapper.createObjectNode();</span>
+
+            try {
+<span class="fc" id="L132">                com.fasterxml.jackson.databind.JsonNode comparisonNode = mapper.readTree(comparisonReport);</span>
+<span class="pc bpc" id="L133" title="1 of 4 branches missed.">                boolean comparisonOk = comparisonNode.has(&quot;ok&quot;) &amp;&amp; comparisonNode.get(&quot;ok&quot;).asBoolean(false);</span>
+<span class="fc" id="L134">                responseNode.put(&quot;ok&quot;, comparisonOk);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                responseNode.put(&quot;message&quot;, comparisonOk ? &quot;Relational backfill completed&quot; : &quot;Relational backfill completed with validation errors&quot;);</span>
+<span class="fc" id="L136">                responseNode.set(&quot;comparison&quot;, comparisonNode);</span>
+<span class="nc" id="L137">            } catch (Exception ex) {</span>
+<span class="nc" id="L138">                LOGGER.atError()</span>
+<span class="nc" id="L139">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="nc" id="L140">                      .addKeyValue(&quot;operation&quot;, &quot;relational_backfill&quot;)</span>
+<span class="nc" id="L141">                      .setCause(ex)</span>
+<span class="nc" id="L142">                      .log(&quot;Failed to parse comparison report during backfill&quot;);</span>
+<span class="nc" id="L143">                responseNode.put(&quot;ok&quot;, false);</span>
+<span class="nc" id="L144">                responseNode.put(&quot;message&quot;, &quot;Relational backfill completed with validation errors&quot;);</span>
+<span class="nc" id="L145">                responseNode.put(&quot;comparison&quot;, comparisonReport);</span>
+<span class="fc" id="L146">            }</span>
+
+<span class="fc" id="L148">            ctx.contentType(&quot;application/json&quot;).result(responseNode.toPrettyString());</span>
+<span class="fc" id="L149">        });</span>
+
+<span class="fc" id="L151">        app.get(&quot;/state/relational-comparison&quot;, ctx -&gt; {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (!isRelationalComparisonEnabled()) {</span>
+<span class="fc" id="L153">                ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Not Found&quot;));</span>
+<span class="fc" id="L154">                return;</span>
+            }
+
+<span class="fc" id="L157">            String legacyJson = null;</span>
+            try {
+<span class="fc" id="L159">                legacyJson = readState(dataSource);</span>
+<span class="nc" id="L160">            } catch (SQLException ex) {</span>
+<span class="nc" id="L161">                LOGGER.atError()</span>
+<span class="nc" id="L162">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="nc" id="L163">                      .addKeyValue(&quot;operation&quot;, &quot;relational_comparison&quot;)</span>
+<span class="nc" id="L164">                      .setCause(ex)</span>
+<span class="nc" id="L165">                      .log(&quot;Failed to read legacy state for comparison&quot;);</span>
+<span class="nc" id="L166">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Erro ao carregar estado legado.&quot;));</span>
+<span class="nc" id="L167">                return;</span>
+<span class="fc" id="L168">            }</span>
+
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">            if (legacyJson == null) {</span>
+<span class="nc" id="L171">                legacyJson = &quot;{}&quot;;</span>
+            }
+
+<span class="fc" id="L174">            String relationalJson = null;</span>
+<span class="fc" id="L175">            String readError = null;</span>
+            try {
+<span class="fc" id="L177">                relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);</span>
+<span class="fc" id="L178">            } catch (Exception ex) {</span>
+<span class="fc" id="L179">                LOGGER.atError()</span>
+<span class="fc" id="L180">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L181">                      .addKeyValue(&quot;operation&quot;, &quot;relational_comparison&quot;)</span>
+<span class="fc" id="L182">                      .setCause(ex)</span>
+<span class="fc" id="L183">                      .log(&quot;Failed to read relational state for comparison&quot;);</span>
+<span class="fc" id="L184">                readError = ex.getMessage();</span>
+<span class="fc" id="L185">            }</span>
+
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (readError != null) {</span>
+<span class="fc" id="L188">                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();</span>
+<span class="fc" id="L189">                com.fasterxml.jackson.databind.node.ObjectNode report = mapper.createObjectNode();</span>
+<span class="fc" id="L190">                report.put(&quot;ok&quot;, false);</span>
+<span class="fc" id="L191">                report.putObject(&quot;summary&quot;);</span>
+<span class="fc" id="L192">                report.putArray(&quot;warnings&quot;);</span>
+<span class="fc" id="L193">                com.fasterxml.jackson.databind.node.ArrayNode errors = report.putArray(&quot;errors&quot;);</span>
+<span class="fc" id="L194">                errors.add(&quot;Relational read failed: &quot; + readError);</span>
+<span class="fc" id="L195">                ctx.contentType(&quot;application/json&quot;).result(report.toPrettyString());</span>
+<span class="fc" id="L196">                return;</span>
+            }
+
+<span class="fc" id="L199">            String reportJson = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);</span>
+<span class="fc" id="L200">            ctx.contentType(&quot;application/json&quot;).result(reportJson);</span>
+<span class="fc" id="L201">        });</span>
+
+<span class="fc" id="L203">        app.get(&quot;/state&quot;, ctx -&gt; {</span>
+            try {
+<span class="fc" id="L205">                String payload = null;</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                if (isRelationalReadEnabled()) {</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                    if (isRelationalReadGuardEnabled()) {</span>
+<span class="fc" id="L208">                        String legacyJson = null;</span>
+                        try {
+<span class="fc" id="L210">                            legacyJson = readState(dataSource);</span>
+<span class="nc" id="L211">                        } catch (SQLException ex) {</span>
+<span class="nc" id="L212">                            LOGGER.atError()</span>
+<span class="nc" id="L213">                                  .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="nc" id="L214">                                  .addKeyValue(&quot;operation&quot;, &quot;state_read&quot;)</span>
+<span class="nc" id="L215">                                  .setCause(ex)</span>
+<span class="nc" id="L216">                                  .log(&quot;Failed to read legacy state for guard check&quot;);</span>
+<span class="fc" id="L217">                        }</span>
+
+<span class="pc bpc" id="L219" title="2 of 4 branches missed.">                        if (legacyJson != null &amp;&amp; !legacyJson.isBlank()) {</span>
+                            try {
+<span class="fc" id="L221">                                String relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);</span>
+<span class="fc" id="L222">                                String comparisonReport = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);</span>
+
+<span class="fc" id="L224">                                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();</span>
+<span class="fc" id="L225">                                com.fasterxml.jackson.databind.JsonNode comparisonNode = mapper.readTree(comparisonReport);</span>
+<span class="pc bpc" id="L226" title="1 of 4 branches missed.">                                boolean comparisonOk = comparisonNode.has(&quot;ok&quot;) &amp;&amp; comparisonNode.get(&quot;ok&quot;).asBoolean(false);</span>
+
+<span class="fc bfc" id="L228" title="All 2 branches covered.">                                if (comparisonOk) {</span>
+<span class="fc" id="L229">                                    payload = relationalJson;</span>
+                                } else {
+<span class="fc" id="L231">                                    LOGGER.atWarn()</span>
+<span class="fc" id="L232">                                          .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L233">                                          .addKeyValue(&quot;operation&quot;, &quot;state_read&quot;)</span>
+<span class="fc" id="L234">                                          .log(&quot;Relational read guard check failed. Comparison report: {}&quot;, comparisonReport);</span>
+<span class="fc" id="L235">                                    payload = legacyJson;</span>
+                                }
+<span class="fc" id="L237">                            } catch (Exception ex) {</span>
+<span class="fc" id="L238">                                LOGGER.atError()</span>
+<span class="fc" id="L239">                                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L240">                                      .addKeyValue(&quot;operation&quot;, &quot;state_read&quot;)</span>
+<span class="fc" id="L241">                                      .setCause(ex)</span>
+<span class="fc" id="L242">                                      .log(&quot;Failed during relational read guard check, falling back to legacy state&quot;);</span>
+<span class="fc" id="L243">                                payload = legacyJson;</span>
+<span class="fc" id="L244">                            }</span>
+                        }
+<span class="fc" id="L246">                    } else {</span>
+                        try {
+<span class="fc" id="L248">                            payload = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);</span>
+<span class="fc" id="L249">                        } catch (Exception ex) {</span>
+<span class="fc" id="L250">                            LOGGER.atError()</span>
+<span class="fc" id="L251">                                  .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L252">                                  .addKeyValue(&quot;operation&quot;, &quot;state_read&quot;)</span>
+<span class="fc" id="L253">                                  .setCause(ex)</span>
+<span class="fc" id="L254">                                  .log(&quot;Failed to read relational database state, falling back to app_state&quot;);</span>
+<span class="fc" id="L255">                        }</span>
+                    }
                 }
 
-<span class="fc" id="L49">                saveState(dataSource, payload);</span>
+<span class="pc bpc" id="L259" title="1 of 4 branches missed.">                if (payload == null || payload.isBlank()) {</span>
+<span class="fc" id="L260">                    payload = readState(dataSource);</span>
+                }
+
+<span class="pc bpc" id="L263" title="1 of 4 branches missed.">                if (payload == null || payload.isBlank()) {</span>
+<span class="fc" id="L264">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Estado ainda não inicializado.&quot;));</span>
+<span class="fc" id="L265">                    return;</span>
+                }
+<span class="fc" id="L267">                ctx.contentType(&quot;application/json&quot;).result(payload);</span>
+<span class="fc" id="L268">            } catch (SQLException ex) {</span>
+<span class="fc" id="L269">                LOGGER.atError()</span>
+<span class="fc" id="L270">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L271">                      .addKeyValue(&quot;operation&quot;, &quot;state_read&quot;)</span>
+<span class="fc" id="L272">                      .setCause(ex)</span>
+<span class="fc" id="L273">                      .log(&quot;Failed to read app state&quot;);</span>
+<span class="fc" id="L274">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível carregar os dados.&quot;));</span>
+<span class="fc" id="L275">            }</span>
+<span class="fc" id="L276">        });</span>
+
+<span class="fc" id="L278">        app.put(&quot;/state&quot;, ctx -&gt; {</span>
+<span class="fc" id="L279">            String payload = ctx.body();</span>
+<span class="pc bpc" id="L280" title="1 of 4 branches missed.">            if (payload == null || payload.isBlank()) {</span>
+<span class="fc" id="L281">                auditLogService.recordBestEffort(</span>
+                        null, AuditAction.STATE_UPDATE_REJECTED, &quot;APP_STATE&quot;, &quot;1&quot;, false,
+<span class="fc" id="L283">                        ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;invalid_payload&quot;)</span>
+                );
+<span class="fc" id="L285">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Payload vazio.&quot;));</span>
+<span class="fc" id="L286">                return;</span>
+            }
+
+            try {
+<span class="fc" id="L290">                StateSnapshot snapshot = readStateSnapshot(dataSource);</span>
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                Optional&lt;AuthenticatedPrincipal&gt; principal = snapshot.exists()</span>
+<span class="fc" id="L292">                        ? resolvePrincipal(dataSource, ctx)</span>
+<span class="fc" id="L293">                        : Optional.empty();</span>
+<span class="fc bfc" id="L294" title="All 4 branches covered.">                if (snapshot.exists() &amp;&amp; principal.isEmpty()) {</span>
+<span class="fc" id="L295">                    auditLogService.recordBestEffort(</span>
+                            null, AuditAction.STATE_UPDATE_REJECTED, &quot;APP_STATE&quot;, &quot;1&quot;, false,
+<span class="fc" id="L297">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;),</span>
+<span class="fc" id="L298">                            Map.of(&quot;reason&quot;, &quot;invalid_or_expired_token&quot;)</span>
+                    );
+<span class="fc" id="L300">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="fc" id="L301">                    return;</span>
+                }
+
+<span class="fc" id="L304">                List&lt;String&gt; changedSections = changedSections(snapshot.payload(), payload);</span>
+<span class="fc" id="L305">                try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L306">                    connection.setAutoCommit(false);</span>
+                    try {
+<span class="fc" id="L308">                        saveState(connection, payload);</span>
+<span class="fc" id="L309">                        auditLogService.record(</span>
+                                connection,
+<span class="fc" id="L311">                                principal.orElse(null),</span>
+                                AuditAction.STATE_UPDATED,
+                                &quot;APP_STATE&quot;,
+                                &quot;1&quot;,
+                                true,
+<span class="fc" id="L316">                                ctx.ip(),</span>
+<span class="fc" id="L317">                                ctx.header(&quot;User-Agent&quot;),</span>
+<span class="fc" id="L318">                                Map.of(</span>
+                                        &quot;changedSections&quot;, changedSections,
+<span class="fc bfc" id="L320" title="All 2 branches covered.">                                        &quot;initialization&quot;, !snapshot.exists()</span>
+                                )
+                        );
+<span class="fc" id="L323">                        connection.commit();</span>
+<span class="fc" id="L324">                    } catch (Exception ex) {</span>
+<span class="fc" id="L325">                        connection.rollback();</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                        if (ex instanceof SQLException sqlException) {</span>
+<span class="fc" id="L327">                            throw sqlException;</span>
+                        }
+<span class="nc" id="L329">                        throw new SQLException(&quot;State transaction failed&quot;, ex);</span>
+<span class="fc" id="L330">                    }</span>
+                }
                 try {
-<span class="nc" id="L51">                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);</span>
-<span class="fc" id="L52">                } catch (Exception ex) {</span>
-<span class="fc" id="L53">                    LOGGER.error(&quot;Failed to sync relational database state in shadow mode&quot;, ex);</span>
-<span class="nc" id="L54">                }</span>
-<span class="fc" id="L55">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
-<span class="fc" id="L56">            } catch (SQLException ex) {</span>
-<span class="fc" id="L57">                LOGGER.error(&quot;Failed to save app state&quot;, ex);</span>
-<span class="fc" id="L58">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
-<span class="fc" id="L59">            }</span>
-<span class="fc" id="L60">        });</span>
-<span class="fc" id="L61">    }</span>
+<span class="nc" id="L333">                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);</span>
+<span class="fc" id="L334">                } catch (Exception ex) {</span>
+<span class="fc" id="L335">                    LOGGER.atError()</span>
+<span class="fc" id="L336">                          .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L337">                          .addKeyValue(&quot;operation&quot;, &quot;state_update&quot;)</span>
+<span class="fc" id="L338">                          .setCause(ex)</span>
+<span class="fc" id="L339">                          .log(&quot;Failed to sync relational database state in shadow mode&quot;);</span>
+<span class="nc" id="L340">                }</span>
+<span class="fc" id="L341">                ctx.json(Map.of(&quot;ok&quot;, true));</span>
+<span class="fc" id="L342">            } catch (SQLException ex) {</span>
+<span class="fc" id="L343">                auditLogService.recordBestEffort(</span>
+                        null, AuditAction.STATE_UPDATE_REJECTED, &quot;APP_STATE&quot;, &quot;1&quot;, false,
+<span class="fc" id="L345">                        ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;persistence_error&quot;)</span>
+                );
+<span class="fc" id="L347">                LOGGER.atError()</span>
+<span class="fc" id="L348">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L349">                      .addKeyValue(&quot;operation&quot;, &quot;state_update&quot;)</span>
+<span class="fc" id="L350">                      .setCause(ex)</span>
+<span class="fc" id="L351">                      .log(&quot;Failed to save app state&quot;);</span>
+<span class="fc" id="L352">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível salvar os dados.&quot;));</span>
+<span class="fc" id="L353">            }</span>
+<span class="fc" id="L354">        });</span>
+<span class="fc" id="L355">    }</span>
 
     private static String readState(HikariDataSource dataSource) throws SQLException {
-<span class="fc" id="L64">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
-<span class="fc" id="L65">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L66">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L67">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L68" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
-<span class="fc" id="L69">            return null;</span>
-<span class="pc bpc" id="L70" title="3 of 6 branches missed.">        }</span>
+<span class="fc" id="L358">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L359">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L360">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L361">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L362" title="All 2 branches covered.">            if (resultSet.next()) return resultSet.getString(1);</span>
+<span class="fc" id="L363">            return null;</span>
+<span class="pc bpc" id="L364" title="3 of 6 branches missed.">        }</span>
     }
 
-    private static boolean stateExists(HikariDataSource dataSource) throws SQLException {
-<span class="fc" id="L74">        String sql = &quot;SELECT 1 FROM app_state WHERE id = 1&quot;;</span>
-<span class="fc" id="L75">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L76">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L77">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L78">            return resultSet.next();</span>
-        }
+    private static StateSnapshot readStateSnapshot(HikariDataSource dataSource) throws SQLException {
+<span class="fc" id="L368">        String sql = &quot;SELECT data::text FROM app_state WHERE id = 1&quot;;</span>
+<span class="fc" id="L369">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L370">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="fc" id="L371">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">            if (!resultSet.next()) return new StateSnapshot(false, null);</span>
+<span class="fc" id="L373">            return new StateSnapshot(true, resultSet.getString(1));</span>
+<span class="pc bpc" id="L374" title="3 of 6 branches missed.">        }</span>
     }
 
-    private static boolean hasValidBearerToken(HikariDataSource dataSource, Context ctx) throws SQLException {
-<span class="fc" id="L83">        String authorization = ctx.header(&quot;Authorization&quot;);</span>
-<span class="fc bfc" id="L84" title="All 4 branches covered.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return false;</span>
+    private static Optional&lt;AuthenticatedPrincipal&gt; resolvePrincipal(
+            HikariDataSource dataSource,
+            Context ctx) throws SQLException {
+<span class="fc" id="L380">        String authorization = ctx.header(&quot;Authorization&quot;);</span>
+<span class="fc bfc" id="L381" title="All 4 branches covered.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return Optional.empty();</span>
+<span class="fc" id="L382">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">        if (token.isBlank()) return Optional.empty();</span>
 
-<span class="fc" id="L86">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
-<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (token.isBlank()) return false;</span>
-
-<span class="fc" id="L89">        String sql = &quot;SELECT 1 FROM auth_tokens WHERE token = ? AND expires_at &gt; CURRENT_TIMESTAMP&quot;;</span>
-<span class="fc" id="L90">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L91">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L92">            statement.setString(1, token);</span>
-<span class="fc" id="L93">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L94">                return resultSet.next();</span>
-            }
-        }
+<span class="fc" id="L385">        String sql = &quot;&quot;&quot;</span>
+                SELECT u.id, u.external_id, u.role
+                FROM auth_tokens t
+                JOIN usuarios u ON u.id = t.usuario_id
+                WHERE t.token = ? AND t.expires_at &gt; CURRENT_TIMESTAMP
+                &quot;&quot;&quot;;
+<span class="fc" id="L391">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L392">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L393">            statement.setString(1, token);</span>
+<span class="fc" id="L394">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">                if (!resultSet.next()) return Optional.empty();</span>
+<span class="fc" id="L396">                return Optional.of(new AuthenticatedPrincipal(</span>
+<span class="fc" id="L397">                        resultSet.getLong(&quot;id&quot;),</span>
+<span class="fc" id="L398">                        resultSet.getString(&quot;external_id&quot;),</span>
+<span class="fc" id="L399">                        resultSet.getString(&quot;role&quot;)</span>
+                ));
+<span class="nc bnc" id="L401" title="All 2 branches missed.">            }</span>
+<span class="nc bnc" id="L402" title="All 4 branches missed.">        }</span>
     }
 
-    private static void saveState(HikariDataSource dataSource, String payload) throws SQLException {
-<span class="fc" id="L100">        String sql = &quot;&quot;&quot;</span>
+    private static void saveState(Connection connection, String payload) throws SQLException {
+<span class="fc" id="L406">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO app_state (id, data, updated_at)
                 VALUES (1, ?::jsonb, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE
                 SET data = EXCLUDED.data,
                     updated_at = CURRENT_TIMESTAMP
                 &quot;&quot;&quot;;
-<span class="fc" id="L107">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L108">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L109">            statement.setString(1, payload);</span>
-<span class="fc" id="L110">            statement.executeUpdate();</span>
+<span class="fc" id="L413">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L414">            statement.setString(1, payload);</span>
+<span class="fc" id="L415">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L112">    }</span>
+<span class="fc" id="L417">    }</span>
+
+    private static List&lt;String&gt; changedSections(String previousPayload, String nextPayload) {
+<span class="fc" id="L420">        List&lt;String&gt; changed = new ArrayList&lt;&gt;();</span>
+        try {
+<span class="fc" id="L422">            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            com.fasterxml.jackson.databind.JsonNode previous = previousPayload == null</span>
+<span class="fc" id="L424">                    ? mapper.createObjectNode()</span>
+<span class="fc" id="L425">                    : mapper.readTree(previousPayload);</span>
+<span class="fc" id="L426">            com.fasterxml.jackson.databind.JsonNode next = mapper.readTree(nextPayload);</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">            for (String section : List.of(&quot;users&quot;, &quot;boardGames&quot;, &quot;sessions&quot;, &quot;events&quot;)) {</span>
+<span class="fc bfc" id="L428" title="All 2 branches covered.">                if (!java.util.Objects.equals(previous.get(section), next.get(section))) {</span>
+<span class="fc" id="L429">                    changed.add(section);</span>
+                }
+<span class="fc" id="L431">            }</span>
+<span class="nc" id="L432">        } catch (Exception ignored) {</span>
+            // The existing persistence path remains responsible for invalid JSON.
+<span class="fc" id="L434">        }</span>
+<span class="fc" id="L435">        return changed;</span>
+    }
+
+<span class="fc" id="L438">    private record StateSnapshot(boolean exists, String payload) {</span>
+    }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LiteLlmClient.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.ai</a> &gt; <span class="el_source">LiteLlmClient.java</span></div><h1>LiteLlmClient.java</h1><pre class="source lang-java linenums">package br.com.tabula.ai;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.ConnectException;
+import java.net.http.HttpTimeoutException;
+
+public final class LiteLlmClient implements AiChatClient {
+<span class="fc" id="L15">    private static final ObjectMapper MAPPER = new ObjectMapper();</span>
+    private final AiConfiguration configuration;
+    private final HttpClient httpClient;
+
+    public LiteLlmClient(AiConfiguration configuration) {
+<span class="fc" id="L20">        this(configuration, HttpClient.newBuilder().connectTimeout(configuration.timeout()).build());</span>
+<span class="fc" id="L21">    }</span>
+
+<span class="fc" id="L23">    LiteLlmClient(AiConfiguration configuration, HttpClient httpClient) {</span>
+<span class="fc" id="L24">        this.configuration = configuration;</span>
+<span class="fc" id="L25">        this.httpClient = httpClient;</span>
+<span class="fc" id="L26">    }</span>
+
+<span class="nc" id="L28">    @Override public String model() { return configuration.model(); }</span>
+
+    @Override
+    public String chat(String systemPrompt, String userPrompt) throws AiProviderException {
+<span class="fc" id="L32">        return chatWithUsage(systemPrompt, userPrompt).content();</span>
+    }
+
+    @Override
+    public AiChatResult chatWithUsage(String systemPrompt, String userPrompt) throws AiProviderException {
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (!configuration.configured()) throw new AiProviderException(AiProviderException.Category.NOT_CONFIGURED);</span>
+        AiProviderException firstFailure;
+        try {
+<span class="fc" id="L40">            return withProviderCalls(send(systemPrompt, userPrompt), 1);</span>
+<span class="fc" id="L41">        } catch (AiProviderException ex) {</span>
+<span class="fc" id="L42">            firstFailure = ex;</span>
+        }
+<span class="pc bpc" id="L44" title="1 of 4 branches missed.">        if (!configuration.retryEnabled() || !firstFailure.transientFailure()) throw firstFailure;</span>
+        try {
+<span class="fc" id="L46">            return withProviderCalls(send(systemPrompt, userPrompt), 2);</span>
+<span class="fc" id="L47">        } catch (AiProviderException secondFailure) {</span>
+<span class="fc" id="L48">            throw secondFailure.withProviderCalls(2);</span>
+        }
+    }
+
+    private static AiChatResult withProviderCalls(AiChatResult result, int calls) {
+<span class="fc" id="L53">        return new AiChatResult(result.content(), result.usage(), calls);</span>
+    }
+
+    private AiChatResult send(String systemPrompt, String userPrompt) throws AiProviderException {
+        try {
+<span class="fc" id="L58">            ObjectNode body = MAPPER.createObjectNode();</span>
+<span class="fc" id="L59">            body.put(&quot;model&quot;, configuration.model());</span>
+<span class="fc" id="L60">            body.put(&quot;temperature&quot;, 0.1);</span>
+<span class="fc" id="L61">            body.put(&quot;max_tokens&quot;, configuration.maxCompletionTokens());</span>
+<span class="fc" id="L62">            body.putObject(&quot;response_format&quot;).put(&quot;type&quot;, &quot;json_object&quot;);</span>
+<span class="fc" id="L63">            ArrayNode messages = body.putArray(&quot;messages&quot;);</span>
+<span class="fc" id="L64">            messages.addObject().put(&quot;role&quot;, &quot;system&quot;).put(&quot;content&quot;, systemPrompt);</span>
+<span class="fc" id="L65">            messages.addObject().put(&quot;role&quot;, &quot;user&quot;).put(&quot;content&quot;, userPrompt);</span>
+<span class="fc" id="L66">            String endpoint = configuration.baseUrl().toString() + &quot;/chat/completions&quot;;</span>
+<span class="fc" id="L67">            HttpRequest request = HttpRequest.newBuilder(java.net.URI.create(endpoint))</span>
+<span class="fc" id="L68">                    .timeout(configuration.timeout()).header(&quot;Authorization&quot;, &quot;Bearer &quot; + configuration.apiKey())</span>
+<span class="fc" id="L69">                    .header(&quot;Content-Type&quot;, &quot;application/json&quot;)</span>
+<span class="fc" id="L70">                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body))).build();</span>
+<span class="fc" id="L71">            HttpResponse&lt;String&gt; response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());</span>
+<span class="fc" id="L72">            int status = response.statusCode();</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">            if (status == 401 || status == 403) throw new AiProviderException(AiProviderException.Category.UNAUTHORIZED);</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (status == 429) throw new AiProviderException(AiProviderException.Category.RATE_LIMITED);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (status &gt;= 500) throw new AiProviderException(AiProviderException.Category.SERVER_ERROR);</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">            if (status &lt; 200 || status &gt;= 300) throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">            if (response.body() == null || response.body().isBlank())</span>
+<span class="fc" id="L78">                throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);</span>
+<span class="fc" id="L79">            JsonNode root = MAPPER.readTree(response.body());</span>
+<span class="fc" id="L80">            JsonNode choices = root.get(&quot;choices&quot;);</span>
+<span class="pc bpc" id="L81" title="1 of 6 branches missed.">            if (choices == null || !choices.isArray() || choices.isEmpty())</span>
+<span class="fc" id="L82">                throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);</span>
+<span class="fc" id="L83">            JsonNode content = choices.get(0).path(&quot;message&quot;).get(&quot;content&quot;);</span>
+<span class="pc bpc" id="L84" title="2 of 6 branches missed.">            if (content == null || !content.isTextual() || content.asText().isBlank())</span>
+<span class="fc" id="L85">                throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);</span>
+<span class="fc" id="L86">            JsonNode usageNode = root.path(&quot;usage&quot;);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            AiUsage usage = usageNode.isObject()</span>
+<span class="fc" id="L88">                    ? new AiUsage(nullableInt(usageNode, &quot;prompt_tokens&quot;),</span>
+<span class="fc" id="L89">                            nullableInt(usageNode, &quot;completion_tokens&quot;), nullableInt(usageNode, &quot;total_tokens&quot;))</span>
+<span class="fc" id="L90">                    : AiUsage.empty();</span>
+<span class="fc" id="L91">            return new AiChatResult(content.asText(), usage);</span>
+<span class="fc" id="L92">        } catch (AiProviderException ex) { throw ex; }</span>
+<span class="nc" id="L93">        catch (HttpTimeoutException ex) { throw new AiProviderException(AiProviderException.Category.TIMEOUT, ex); }</span>
+<span class="nc" id="L94">        catch (ConnectException ex) { throw new AiProviderException(AiProviderException.Category.CONNECTION, ex); }</span>
+<span class="nc" id="L95">        catch (InterruptedException ex) {</span>
+<span class="nc" id="L96">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L97">            throw new AiProviderException(AiProviderException.Category.INTERRUPTED, ex);</span>
+<span class="fc" id="L98">        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {</span>
+<span class="fc" id="L99">            throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE, ex);</span>
+<span class="nc" id="L100">        } catch (java.io.IOException ex) {</span>
+<span class="nc" id="L101">            throw new AiProviderException(AiProviderException.Category.CONNECTION, ex);</span>
+<span class="nc" id="L102">        } catch (Exception ex) {</span>
+<span class="nc" id="L103">            throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE, ex);</span>
+        }
+    }
+
+    private static Integer nullableInt(JsonNode node, String field) {
+<span class="fc" id="L108">        JsonNode value = node.get(field);</span>
+<span class="pc bpc" id="L109" title="3 of 6 branches missed.">        return value != null &amp;&amp; value.canConvertToInt() &amp;&amp; value.asInt() &gt;= 0 ? value.asInt() : null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

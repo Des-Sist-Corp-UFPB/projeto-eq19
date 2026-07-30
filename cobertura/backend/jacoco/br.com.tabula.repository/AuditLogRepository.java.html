@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuditLogRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.repository</a> &gt; <span class="el_source">AuditLogRepository.java</span></div><h1>AuditLogRepository.java</h1><pre class="source lang-java linenums">package br.com.tabula.repository;
+
+import br.com.tabula.dto.AuditLogFilter;
+import br.com.tabula.model.AuditLog;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+public class AuditLogRepository {
+<span class="fc" id="L20">    private static final ObjectMapper MAPPER = new ObjectMapper();</span>
+    private final HikariDataSource dataSource;
+
+<span class="fc" id="L23">    public AuditLogRepository(HikariDataSource dataSource) {</span>
+<span class="fc" id="L24">        this.dataSource = dataSource;</span>
+<span class="fc" id="L25">    }</span>
+
+    public void insert(Connection connection, AuditLog log) throws SQLException {
+<span class="fc" id="L28">        String sql = &quot;&quot;&quot;</span>
+                INSERT INTO audit_logs (
+                    usuario_id, ator_id_externo, acao, tipo_recurso, recurso_id,
+                    detalhes, endereco_ip, user_agent, sucesso, trace_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::inet, ?, ?, ?)
+                &quot;&quot;&quot;;
+<span class="fc" id="L35">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L36">            setNullableLong(statement, 1, log.getUserDatabaseId());</span>
+<span class="fc" id="L37">            statement.setString(2, log.getActorExternalId());</span>
+<span class="fc" id="L38">            statement.setString(3, log.getAction());</span>
+<span class="fc" id="L39">            statement.setString(4, log.getResourceType());</span>
+<span class="fc" id="L40">            statement.setString(5, log.getResourceId());</span>
+<span class="fc" id="L41">            statement.setString(6, log.getDetails().toString());</span>
+<span class="fc" id="L42">            statement.setString(7, log.getIpAddress());</span>
+<span class="fc" id="L43">            statement.setString(8, log.getUserAgent());</span>
+<span class="fc" id="L44">            statement.setBoolean(9, log.isSuccess());</span>
+<span class="fc" id="L45">            statement.setString(10, log.getTraceId());</span>
+<span class="fc" id="L46">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L48">    }</span>
+
+    public List&lt;AuditLog&gt; findPage(AuditLogFilter filter) throws SQLException {
+<span class="fc" id="L51">        FilterSql filterSql = buildFilter(filter);</span>
+<span class="fc" id="L52">        String sql = &quot;&quot;&quot;</span>
+                SELECT id, usuario_id, ator_id_externo, acao, tipo_recurso, recurso_id,
+                       detalhes::text AS detalhes, host(endereco_ip) AS endereco_ip,
+                       user_agent, sucesso, trace_id, criado_em
+                FROM audit_logs
+<span class="fc" id="L57">                &quot;&quot;&quot; + filterSql.whereClause()</span>
+                + &quot; ORDER BY criado_em DESC, id DESC LIMIT ? OFFSET ?&quot;;
+
+<span class="fc" id="L60">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L61">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L62">            int index = bind(statement, filterSql.parameters(), 1);</span>
+<span class="fc" id="L63">            statement.setInt(index++, filter.getPageSize());</span>
+<span class="fc" id="L64">            statement.setInt(index, filter.getOffset());</span>
+
+<span class="fc" id="L66">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L67">                List&lt;AuditLog&gt; logs = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                while (resultSet.next()) {</span>
+<span class="fc" id="L69">                    logs.add(map(resultSet));</span>
+                }
+<span class="fc" id="L71">                return logs;</span>
+            }
+        }
+    }
+
+    public long count(AuditLogFilter filter) throws SQLException {
+<span class="fc" id="L77">        FilterSql filterSql = buildFilter(filter);</span>
+<span class="fc" id="L78">        String sql = &quot;SELECT COUNT(*) FROM audit_logs&quot; + filterSql.whereClause();</span>
+<span class="fc" id="L79">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L80">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L81">            bind(statement, filterSql.parameters(), 1);</span>
+<span class="fc" id="L82">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                return resultSet.next() ? resultSet.getLong(1) : 0L;</span>
+            }
+        }
+    }
+
+    private static FilterSql buildFilter(AuditLogFilter filter) {
+<span class="fc" id="L89">        List&lt;String&gt; clauses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L90">        List&lt;Object&gt; parameters = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L91">        addFilter(clauses, parameters, &quot;acao = ?&quot;, filter.getAction());</span>
+<span class="fc" id="L92">        addFilter(clauses, parameters, &quot;ator_id_externo = ?&quot;, filter.getUserId());</span>
+<span class="fc" id="L93">        addFilter(clauses, parameters, &quot;tipo_recurso = ?&quot;, filter.getResourceType());</span>
+<span class="fc" id="L94">        addFilter(clauses, parameters, &quot;recurso_id = ?&quot;, filter.getResourceId());</span>
+<span class="fc" id="L95">        addFilter(clauses, parameters, &quot;sucesso = ?&quot;, filter.getSuccess());</span>
+<span class="fc" id="L96">        addFilter(clauses, parameters, &quot;criado_em &gt;= ?&quot;, filter.getStartDate());</span>
+<span class="fc" id="L97">        addFilter(clauses, parameters, &quot;criado_em &lt;= ?&quot;, filter.getEndDate());</span>
+<span class="fc" id="L98">        return new FilterSql(</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                clauses.isEmpty() ? &quot;&quot; : &quot; WHERE &quot; + String.join(&quot; AND &quot;, clauses),</span>
+                parameters
+        );
+    }
+
+    private static void addFilter(List&lt;String&gt; clauses, List&lt;Object&gt; parameters, String clause, Object value) {
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (value != null) {</span>
+<span class="fc" id="L106">            clauses.add(clause);</span>
+<span class="fc" id="L107">            parameters.add(value);</span>
+        }
+<span class="fc" id="L109">    }</span>
+
+    private static int bind(PreparedStatement statement, List&lt;Object&gt; parameters, int startIndex) throws SQLException {
+<span class="fc" id="L112">        int index = startIndex;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        for (Object parameter : parameters) {</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            if (parameter instanceof Instant instant) {</span>
+<span class="fc" id="L115">                statement.setTimestamp(index++, Timestamp.from(instant));</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            } else if (parameter instanceof Boolean bool) {</span>
+<span class="fc" id="L117">                statement.setBoolean(index++, bool);</span>
+            } else {
+<span class="fc" id="L119">                statement.setString(index++, parameter.toString());</span>
+            }
+<span class="fc" id="L121">        }</span>
+<span class="fc" id="L122">        return index;</span>
+    }
+
+    private static AuditLog map(ResultSet resultSet) throws SQLException {
+<span class="fc" id="L126">        long databaseUserId = resultSet.getLong(&quot;usuario_id&quot;);</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        Long nullableDatabaseUserId = resultSet.wasNull() ? null : databaseUserId;</span>
+<span class="fc" id="L128">        Timestamp createdAt = resultSet.getTimestamp(&quot;criado_em&quot;);</span>
+        try {
+<span class="fc" id="L130">            JsonNode details = MAPPER.readTree(resultSet.getString(&quot;detalhes&quot;));</span>
+<span class="fc" id="L131">            return new AuditLog(</span>
+<span class="fc" id="L132">                    resultSet.getLong(&quot;id&quot;),</span>
+                    nullableDatabaseUserId,
+<span class="fc" id="L134">                    resultSet.getString(&quot;ator_id_externo&quot;),</span>
+<span class="fc" id="L135">                    resultSet.getString(&quot;acao&quot;),</span>
+<span class="fc" id="L136">                    resultSet.getString(&quot;tipo_recurso&quot;),</span>
+<span class="fc" id="L137">                    resultSet.getString(&quot;recurso_id&quot;),</span>
+                    details,
+<span class="fc" id="L139">                    resultSet.getString(&quot;endereco_ip&quot;),</span>
+<span class="fc" id="L140">                    resultSet.getString(&quot;user_agent&quot;),</span>
+<span class="fc" id="L141">                    resultSet.getBoolean(&quot;sucesso&quot;),</span>
+<span class="fc" id="L142">                    resultSet.getString(&quot;trace_id&quot;),</span>
+<span class="fc" id="L143">                    createdAt.toInstant()</span>
+            );
+<span class="nc" id="L145">        } catch (Exception ex) {</span>
+<span class="nc" id="L146">            throw new SQLException(&quot;Invalid audit log data returned by database&quot;, ex);</span>
+        }
+    }
+
+    private static void setNullableLong(PreparedStatement statement, int index, Long value) throws SQLException {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L152">            statement.setNull(index, Types.BIGINT);</span>
+        } else {
+<span class="fc" id="L154">            statement.setLong(index, value);</span>
+        }
+<span class="fc" id="L156">    }</span>
+
+<span class="fc" id="L158">    private record FilterSql(String whereClause, List&lt;Object&gt; parameters) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

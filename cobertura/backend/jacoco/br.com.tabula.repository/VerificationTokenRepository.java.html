@@ -17,41 +17,52 @@ public class VerificationTokenRepository {
 <span class="fc" id="L17">    }</span>
 
     public void createToken(long userId, String token, Instant expiresAt) throws SQLException {
-<span class="fc" id="L20">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L20">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L21">            createToken(connection, userId, token, expiresAt);</span>
+        }
+<span class="fc" id="L23">    }</span>
+
+    public void createToken(Connection connection, long userId, String token, Instant expiresAt) throws SQLException {
+<span class="fc" id="L26">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO codigos_verificacao (usuario_id, codigo, expiracao, utilizado)
                 VALUES (?, ?, ?, FALSE)
                 &quot;&quot;&quot;;
-<span class="fc" id="L24">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L25">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L26">            statement.setLong(1, userId);</span>
-<span class="fc" id="L27">            statement.setString(2, token);</span>
-<span class="fc" id="L28">            statement.setTimestamp(3, Timestamp.from(expiresAt));</span>
-<span class="fc" id="L29">            statement.executeUpdate();</span>
+<span class="fc" id="L30">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L31">            statement.setLong(1, userId);</span>
+<span class="fc" id="L32">            statement.setString(2, token);</span>
+<span class="fc" id="L33">            statement.setTimestamp(3, Timestamp.from(expiresAt));</span>
+<span class="fc" id="L34">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L31">    }</span>
+<span class="fc" id="L36">    }</span>
 
     public Optional&lt;TokenInfo&gt; findToken(String token) throws SQLException {
-<span class="fc" id="L34">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L39">        String sql = &quot;&quot;&quot;</span>
                 SELECT usuario_id, expiracao, utilizado
                 FROM codigos_verificacao
                 WHERE codigo = ? AND utilizado = FALSE
                 &quot;&quot;&quot;;
-<span class="fc" id="L39">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L40">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L41">            statement.setString(1, token);</span>
-<span class="fc" id="L42">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L43" title="All 2 branches covered.">                if (resultSet.next()) {</span>
-<span class="fc" id="L44">                    long userId = resultSet.getLong(&quot;usuario_id&quot;);</span>
-<span class="fc" id="L45">                    Timestamp expiracao = resultSet.getTimestamp(&quot;expiracao&quot;);</span>
-<span class="fc" id="L46">                    return Optional.of(new TokenInfo(userId, expiracao.toInstant()));</span>
+<span class="fc" id="L44">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L45">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L46">            statement.setString(1, token);</span>
+<span class="fc" id="L47">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                if (resultSet.next()) {</span>
+<span class="fc" id="L49">                    long userId = resultSet.getLong(&quot;usuario_id&quot;);</span>
+<span class="fc" id="L50">                    Timestamp expiracao = resultSet.getTimestamp(&quot;expiracao&quot;);</span>
+<span class="fc" id="L51">                    return Optional.of(new TokenInfo(userId, expiracao.toInstant()));</span>
                 }
-<span class="pc bpc" id="L48" title="1 of 2 branches missed.">            }</span>
-<span class="pc bpc" id="L49" title="2 of 4 branches missed.">        }</span>
-<span class="fc" id="L50">        return Optional.empty();</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L54" title="2 of 4 branches missed.">        }</span>
+<span class="fc" id="L55">        return Optional.empty();</span>
     }
 
     public Optional&lt;TokenInfo&gt; findCodeForEmail(String email, String code) throws SQLException {
-<span class="fc" id="L54">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L59">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L60">            return findCodeForEmail(connection, email, code);</span>
+        }
+    }
+
+    public Optional&lt;TokenInfo&gt; findCodeForEmail(Connection connection, String email, String code) throws SQLException {
+<span class="fc" id="L65">        String sql = &quot;&quot;&quot;</span>
                 SELECT cv.usuario_id, cv.expiracao, cv.utilizado
                 FROM codigos_verificacao cv
                 INNER JOIN usuarios u ON u.id = cv.usuario_id
@@ -62,52 +73,56 @@ public class VerificationTokenRepository {
                 LIMIT 1
                 &quot;&quot;&quot;;
 
-<span class="fc" id="L65">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L66">            PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L67">            statement.setString(1, email);</span>
-<span class="fc" id="L68">            statement.setString(2, code);</span>
+<span class="fc" id="L76">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L77">            statement.setString(1, email);</span>
+<span class="fc" id="L78">            statement.setString(2, code);</span>
 
-<span class="fc" id="L70">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L71" title="All 2 branches covered.">                if (resultSet.next()) {</span>
-<span class="fc" id="L72">                    long userId = resultSet.getLong(&quot;usuario_id&quot;);</span>
-<span class="fc" id="L73">                    Timestamp expiracao = resultSet.getTimestamp(&quot;expiracao&quot;);</span>
-<span class="fc" id="L74">                    return Optional.of(new TokenInfo(userId, expiracao.toInstant()));</span>
+<span class="fc" id="L80">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                if (resultSet.next()) {</span>
+<span class="fc" id="L82">                    long userId = resultSet.getLong(&quot;usuario_id&quot;);</span>
+<span class="fc" id="L83">                    Timestamp expiracao = resultSet.getTimestamp(&quot;expiracao&quot;);</span>
+<span class="fc" id="L84">                    return Optional.of(new TokenInfo(userId, expiracao.toInstant()));</span>
                 }
-<span class="pc bpc" id="L76" title="1 of 2 branches missed.">            }</span>
-<span class="pc bpc" id="L77" title="2 of 4 branches missed.">        }</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        }</span>
 
-<span class="fc" id="L79">        return Optional.empty();</span>
+<span class="fc" id="L89">        return Optional.empty();</span>
     }    
 
     public void deleteToken(String token) throws SQLException {
-<span class="fc" id="L83">        String sql = &quot;DELETE FROM codigos_verificacao WHERE codigo = ?&quot;;</span>
-<span class="fc" id="L84">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L85">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L86">            statement.setString(1, token);</span>
-<span class="fc" id="L87">            statement.executeUpdate();</span>
+<span class="fc" id="L93">        String sql = &quot;DELETE FROM codigos_verificacao WHERE codigo = ?&quot;;</span>
+<span class="fc" id="L94">        try (Connection connection = dataSource.getConnection();</span>
+<span class="fc" id="L95">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L96">            statement.setString(1, token);</span>
+<span class="fc" id="L97">            statement.executeUpdate();</span>
         }
-<span class="fc" id="L89">    }</span>
+<span class="fc" id="L99">    }</span>
 
     public void deleteTokensByUser(long userId) throws SQLException {
-<span class="fc" id="L92">        String sql = &quot;DELETE FROM codigos_verificacao WHERE usuario_id = ?&quot;;</span>
-<span class="fc" id="L93">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L94">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L95">            statement.setLong(1, userId);</span>
-<span class="fc" id="L96">            statement.executeUpdate();</span>
+<span class="fc" id="L102">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L103">            deleteTokensByUser(connection, userId);</span>
         }
-<span class="fc" id="L98">    }</span>
+<span class="fc" id="L105">    }</span>
+
+    public void deleteTokensByUser(Connection connection, long userId) throws SQLException {
+<span class="fc" id="L108">        String sql = &quot;DELETE FROM codigos_verificacao WHERE usuario_id = ?&quot;;</span>
+<span class="fc" id="L109">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L110">            statement.setLong(1, userId);</span>
+<span class="fc" id="L111">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L113">    }</span>
 
     public static class TokenInfo {
         private final long userId;
         private final Instant expiresAt;
 
-<span class="fc" id="L104">        public TokenInfo(long userId, Instant expiresAt) {</span>
-<span class="fc" id="L105">            this.userId = userId;</span>
-<span class="fc" id="L106">            this.expiresAt = expiresAt;</span>
-<span class="fc" id="L107">        }</span>
+<span class="fc" id="L119">        public TokenInfo(long userId, Instant expiresAt) {</span>
+<span class="fc" id="L120">            this.userId = userId;</span>
+<span class="fc" id="L121">            this.expiresAt = expiresAt;</span>
+<span class="fc" id="L122">        }</span>
 
-<span class="fc" id="L109">        public long getUserId() { return userId; }</span>
-<span class="fc" id="L110">        public Instant getExpiresAt() { return expiresAt; }</span>
+<span class="fc" id="L124">        public long getUserId() { return userId; }</span>
+<span class="fc" id="L125">        public Instant getExpiresAt() { return expiresAt; }</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

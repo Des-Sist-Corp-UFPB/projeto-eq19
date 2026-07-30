@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AiProviderException.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.ai</a> &gt; <span class="el_source">AiProviderException.java</span></div><h1>AiProviderException.java</h1><pre class="source lang-java linenums">package br.com.tabula.ai;
+
+public class AiProviderException extends Exception {
+<span class="fc" id="L4">    public enum Category {</span>
+<span class="fc" id="L5">        NOT_CONFIGURED, TIMEOUT, CONNECTION, UNAUTHORIZED, RATE_LIMITED,</span>
+<span class="fc" id="L6">        SERVER_ERROR, INVALID_RESPONSE, CATALOG_UNAVAILABLE, INTERRUPTED, INTERNAL</span>
+    }
+
+    private final Category category;
+    private final int providerCalls;
+
+    public AiProviderException(Category category) {
+<span class="pc bpc" id="L13" title="1 of 4 branches missed.">        this(category, null, category == Category.NOT_CONFIGURED || category == Category.CATALOG_UNAVAILABLE ? 0 : 1);</span>
+<span class="fc" id="L14">    }</span>
+
+    public AiProviderException(Category category, Throwable cause) {
+<span class="pc bpc" id="L17" title="2 of 4 branches missed.">        this(category, cause, category == Category.NOT_CONFIGURED || category == Category.CATALOG_UNAVAILABLE ? 0 : 1);</span>
+<span class="fc" id="L18">    }</span>
+
+    public AiProviderException(Category category, Throwable cause, int providerCalls) {
+<span class="fc" id="L21">        super(category.name(), cause);</span>
+<span class="fc" id="L22">        this.category = category;</span>
+<span class="fc" id="L23">        this.providerCalls = providerCalls;</span>
+<span class="fc" id="L24">    }</span>
+
+<span class="fc" id="L26">    public Category category() { return category; }</span>
+<span class="fc" id="L27">    public int providerCalls() { return providerCalls; }</span>
+    public AiProviderException withProviderCalls(int calls) {
+<span class="fc" id="L29">        return new AiProviderException(category, getCause(), calls);</span>
+    }
+    public boolean transientFailure() {
+<span class="pc bpc" id="L32" title="3 of 8 branches missed.">        return category == Category.TIMEOUT || category == Category.CONNECTION</span>
+                || category == Category.RATE_LIMITED || category == Category.SERVER_ERROR;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

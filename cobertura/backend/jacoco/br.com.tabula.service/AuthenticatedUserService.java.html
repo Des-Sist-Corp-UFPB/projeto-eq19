@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AuthenticatedUserService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">AuthenticatedUserService.java</span></div><h1>AuthenticatedUserService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import br.com.tabula.model.AuthenticatedPrincipal;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Optional;
+
+public class AuthenticatedUserService {
+    private final HikariDataSource dataSource;
+
+<span class="fc" id="L15">    public AuthenticatedUserService(HikariDataSource dataSource) {</span>
+<span class="fc" id="L16">        this.dataSource = dataSource;</span>
+<span class="fc" id="L17">    }</span>
+
+    public Optional&lt;AuthenticatedPrincipal&gt; resolve(String authorization) throws SQLException {
+<span class="fc" id="L20">        String token = extractBearer(authorization);</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if (token == null) return Optional.empty();</span>
+<span class="fc" id="L22">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L23">            return resolveToken(connection, token);</span>
+        }
+    }
+
+    public Optional&lt;AuthenticatedPrincipal&gt; resolve(Connection connection, String authorization) throws SQLException {
+<span class="fc" id="L28">        String token = extractBearer(authorization);</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (token == null) return Optional.empty();</span>
+<span class="nc" id="L30">        return resolveToken(connection, token);</span>
+    }
+
+    private static Optional&lt;AuthenticatedPrincipal&gt; resolveToken(Connection connection, String token) throws SQLException {
+<span class="fc" id="L34">        String sql = &quot;&quot;&quot;</span>
+                SELECT u.id, u.external_id, u.role
+                FROM auth_tokens t
+                JOIN usuarios u ON u.id = t.usuario_id
+                WHERE t.token = ? AND t.expires_at &gt; CURRENT_TIMESTAMP
+                &quot;&quot;&quot;;
+<span class="fc" id="L40">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L41">            statement.setString(1, token);</span>
+<span class="fc" id="L42">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">                if (!resultSet.next()) return Optional.empty();</span>
+<span class="fc" id="L44">                return Optional.of(new AuthenticatedPrincipal(</span>
+<span class="fc" id="L45">                        resultSet.getLong(&quot;id&quot;),</span>
+<span class="fc" id="L46">                        resultSet.getString(&quot;external_id&quot;),</span>
+<span class="fc" id="L47">                        resultSet.getString(&quot;role&quot;)</span>
+                ));
+<span class="nc bnc" id="L49" title="All 2 branches missed.">            }</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">        }</span>
+    }
+
+    private static String extractBearer(String authorization) {
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return null;</span>
+<span class="fc" id="L55">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        return token.isEmpty() ? null : token;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

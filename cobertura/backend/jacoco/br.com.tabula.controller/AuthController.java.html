@@ -6,12 +6,18 @@ import br.com.tabula.dto.RegisterRequest;
 import br.com.tabula.dto.ResetPasswordRequest;
 import br.com.tabula.dto.ResendVerificationRequest;
 import br.com.tabula.dto.VerifyEmailCodeRequest;
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.model.UserAccount;
 import br.com.tabula.repository.UserRepository;
 import br.com.tabula.repository.VerificationTokenRepository;
 import br.com.tabula.service.EmailService;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +26,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.sql.SQLException;
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -27,329 +34,488 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class AuthController {
-<span class="fc" id="L30">    private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);</span>
-<span class="fc" id="L31">    private static final SecureRandom SECURE_RANDOM = new SecureRandom();</span>
+<span class="fc" id="L37">    private static final Logger LOGGER = LoggerFactory.getLogger(AuthController.class);</span>
+<span class="fc" id="L38">    private static final SecureRandom SECURE_RANDOM = new SecureRandom();</span>
 
     private AuthController() {
     }
 
     public static void register(Javalin app, HikariDataSource dataSource) {
-<span class="fc" id="L37">        UserRepository userRepository = new UserRepository(dataSource);</span>
+<span class="fc" id="L44">        UserRepository userRepository = new UserRepository(dataSource);</span>
+<span class="fc" id="L45">        AuditLogService auditLogService = new AuditLogService(dataSource);</span>
+<span class="fc" id="L46">        AuthenticatedUserService authenticatedUserService = new AuthenticatedUserService(dataSource);</span>
 
-<span class="fc" id="L39">        app.post(&quot;/auth/login&quot;, ctx -&gt; {</span>
+<span class="fc" id="L48">        app.post(&quot;/auth/login&quot;, ctx -&gt; {</span>
             try {
-<span class="fc" id="L41">                LoginRequest request = ctx.bodyAsClass(LoginRequest.class);</span>
-<span class="fc" id="L42">                String email = normalizeEmail(request.getEmail());</span>
-<span class="fc bfc" id="L43" title="All 2 branches covered.">                String password = request.getPassword() == null ? &quot;&quot; : request.getPassword();</span>
+<span class="fc" id="L50">                LoginRequest request = ctx.bodyAsClass(LoginRequest.class);</span>
+<span class="fc" id="L51">                String email = normalizeEmail(request.getEmail());</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                String password = request.getPassword() == null ? &quot;&quot; : request.getPassword();</span>
 
-<span class="fc bfc" id="L45" title="All 4 branches covered.">                if (email.isEmpty() || password.isEmpty()) {</span>
-<span class="fc" id="L46">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;E-mail e senha são obrigatórios.&quot;));</span>
-<span class="fc" id="L47">                    return;</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">                if (email.isEmpty() || password.isEmpty()) {</span>
+<span class="fc" id="L55">                    auditLogService.recordBestEffort(</span>
+                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, null, false,
+<span class="fc" id="L57">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;invalid_request&quot;)</span>
+                    );
+<span class="fc" id="L59">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;E-mail e senha são obrigatórios.&quot;));</span>
+<span class="fc" id="L60">                    return;</span>
                 }
 
-<span class="fc" id="L50">                Optional&lt;UserAccount&gt; account = userRepository.findByEmail(email);</span>
-<span class="pc bpc" id="L51" title="2 of 4 branches missed.">                if (account.isEmpty() || !sha256(password).equals(account.get().getPasswordHash())) {</span>
-<span class="nc" id="L52">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Credenciais inválidas.&quot;));</span>
-<span class="nc" id="L53">                    return;</span>
+<span class="fc" id="L63">                Optional&lt;UserAccount&gt; account = userRepository.findByEmail(email);</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                if (account.isEmpty() || !sha256(password).equals(account.get().getPasswordHash())) {</span>
+<span class="fc" id="L65">                    LOGGER.atWarn()</span>
+<span class="fc" id="L66">                          .addKeyValue(&quot;auth_result&quot;, &quot;invalid_credentials&quot;)</span>
+<span class="fc" id="L67">                          .log(&quot;Login rejected&quot;);</span>
+<span class="fc" id="L68">                    auditLogService.recordBestEffort(</span>
+                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, null, false,
+<span class="fc" id="L70">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;invalid_credentials&quot;)</span>
+                    );
+<span class="fc" id="L72">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Credenciais inválidas.&quot;));</span>
+<span class="fc" id="L73">                    return;</span>
                 }
 
-<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (!account.get().isEmailVerificado()) {</span>
-<span class="fc" id="L57">                    ctx.status(403).json(Map.of(&quot;error&quot;, &quot;Please verify your email before signing in.&quot;));</span>
-<span class="fc" id="L58">                    return;</span>
-                }
-
-<span class="fc" id="L61">                String token = userRepository.createAuthToken(account.get().getId());</span>
-<span class="fc" id="L62">                ctx.json(Map.of(</span>
-<span class="fc" id="L63">                        &quot;ok&quot;, true,</span>
-                        &quot;message&quot;, &quot;Login realizado com sucesso.&quot;,
-                        &quot;token&quot;, token,
-<span class="fc" id="L66">                        &quot;user&quot;, toFrontendUser(account.get())</span>
-                ));
-<span class="fc" id="L68">            } catch (SQLException ex) {</span>
-<span class="fc" id="L69">                LOGGER.error(&quot;Failed to login user&quot;, ex);</span>
-<span class="fc" id="L70">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível fazer login no momento.&quot;));</span>
-<span class="fc" id="L71">            } catch (Exception ex) {</span>
-<span class="fc" id="L72">                LOGGER.error(&quot;Invalid login payload&quot;, ex);</span>
-<span class="fc" id="L73">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para login.&quot;));</span>
-<span class="fc" id="L74">            }</span>
-<span class="fc" id="L75">        });</span>
-
-<span class="fc" id="L77">        app.post(&quot;/auth/register&quot;, ctx -&gt; {</span>
-            try {
-<span class="fc" id="L79">                RegisterRequest request = ctx.bodyAsClass(RegisterRequest.class);</span>
-<span class="fc bfc" id="L80" title="All 2 branches covered.">                String name = request.getName() == null ? &quot;&quot; : request.getName().trim();</span>
-<span class="fc" id="L81">                String email = normalizeEmail(request.getEmail());</span>
-<span class="fc bfc" id="L82" title="All 2 branches covered.">                String password = request.getPassword() == null ? &quot;&quot; : request.getPassword();</span>
-
-<span class="pc bpc" id="L84" title="2 of 6 branches missed.">                if (name.isEmpty() || email.isEmpty() || password.isEmpty()) {</span>
-<span class="fc" id="L85">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Nome, e-mail e senha são obrigatórios.&quot;));</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                if (!account.get().isEmailVerificado()) {</span>
+<span class="fc" id="L77">                    LOGGER.atWarn()</span>
+<span class="fc" id="L78">                          .addKeyValue(&quot;user_id&quot;, account.get().getExternalId())</span>
+<span class="fc" id="L79">                          .addKeyValue(&quot;auth_result&quot;, &quot;unverified_email&quot;)</span>
+<span class="fc" id="L80">                          .log(&quot;Login attempt for unverified email&quot;);</span>
+<span class="fc" id="L81">                    auditLogService.recordBestEffort(</span>
+<span class="fc" id="L82">                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, account.get().getExternalId(), false,</span>
+<span class="fc" id="L83">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;unverified_email&quot;)</span>
+                    );
+<span class="fc" id="L85">                    ctx.status(403).json(Map.of(&quot;error&quot;, &quot;Please verify your email before signing in.&quot;));</span>
 <span class="fc" id="L86">                    return;</span>
                 }
 
-<span class="fc bfc" id="L89" title="All 2 branches covered.">                if (userRepository.emailExists(email)) {</span>
-<span class="fc" id="L90">                    ctx.status(409).json(Map.of(&quot;error&quot;, &quot;Este e-mail já está cadastrado.&quot;));</span>
-<span class="fc" id="L91">                    return;</span>
+<span class="fc" id="L89">                AuthenticatedPrincipal principal = principalFrom(account.get());</span>
+<span class="fc" id="L90">                String token = inTransaction(dataSource, connection -&gt; {</span>
+<span class="fc" id="L91">                    String createdToken = userRepository.createAuthToken(connection, account.get().getId());</span>
+<span class="fc" id="L92">                    auditLogService.record(</span>
+                            connection, principal, AuditAction.LOGIN_SUCCEEDED,
+<span class="fc" id="L94">                            &quot;USER&quot;, account.get().getExternalId(), true,</span>
+<span class="fc" id="L95">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                    );
+<span class="fc" id="L97">                    return createdToken;</span>
+                });
+<span class="fc" id="L99">                LOGGER.atInfo()</span>
+<span class="fc" id="L100">                      .addKeyValue(&quot;user_id&quot;, account.get().getExternalId())</span>
+<span class="fc" id="L101">                      .addKeyValue(&quot;auth_result&quot;, &quot;success&quot;)</span>
+<span class="fc" id="L102">                      .log(&quot;User login completed&quot;);</span>
+
+<span class="fc" id="L104">                ctx.json(Map.of(</span>
+<span class="fc" id="L105">                        &quot;ok&quot;, true,</span>
+                        &quot;message&quot;, &quot;Login realizado com sucesso.&quot;,
+                        &quot;token&quot;, token,
+<span class="fc" id="L108">                        &quot;user&quot;, toFrontendUser(account.get())</span>
+                ));
+<span class="fc" id="L110">            } catch (SQLException ex) {</span>
+<span class="fc" id="L111">                LOGGER.atError()</span>
+<span class="fc" id="L112">                      .setCause(ex)</span>
+<span class="fc" id="L113">                      .log(&quot;Failed to login user&quot;);</span>
+<span class="fc" id="L114">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível fazer login no momento.&quot;));</span>
+<span class="fc" id="L115">            } catch (Exception ex) {</span>
+<span class="fc" id="L116">                LOGGER.atError()</span>
+<span class="fc" id="L117">                      .setCause(ex)</span>
+<span class="fc" id="L118">                      .log(&quot;Invalid login payload&quot;);</span>
+<span class="fc" id="L119">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para login.&quot;));</span>
+<span class="fc" id="L120">            }</span>
+<span class="fc" id="L121">        });</span>
+
+<span class="fc" id="L123">        app.post(&quot;/auth/register&quot;, ctx -&gt; {</span>
+            try {
+<span class="fc" id="L125">                RegisterRequest request = ctx.bodyAsClass(RegisterRequest.class);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                String name = request.getName() == null ? &quot;&quot; : request.getName().trim();</span>
+<span class="fc" id="L127">                String email = normalizeEmail(request.getEmail());</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                String password = request.getPassword() == null ? &quot;&quot; : request.getPassword();</span>
+
+<span class="pc bpc" id="L130" title="2 of 6 branches missed.">                if (name.isEmpty() || email.isEmpty() || password.isEmpty()) {</span>
+<span class="fc" id="L131">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Nome, e-mail e senha são obrigatórios.&quot;));</span>
+<span class="fc" id="L132">                    return;</span>
                 }
 
-<span class="fc" id="L94">                UserAccount account = userRepository.createUser(</span>
-<span class="fc" id="L95">                        &quot;u_&quot; + UUID.randomUUID(),</span>
-                        name,
-                        email,
-<span class="fc" id="L98">                        sha256(password),</span>
-                        &quot;USER&quot;,
-                        false // email_verificado = false
-                );
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (userRepository.emailExists(email)) {</span>
+<span class="fc" id="L136">                    ctx.status(409).json(Map.of(&quot;error&quot;, &quot;Este e-mail já está cadastrado.&quot;));</span>
+<span class="fc" id="L137">                    return;</span>
+                }
 
-<span class="fc" id="L103">                LOGGER.info(&quot;Registered user {} ({}) with id {}&quot;, name, email, account.getId());</span>
+<span class="fc" id="L140">                String externalId = &quot;u_&quot; + UUID.randomUUID();</span>
+<span class="fc" id="L141">                String passwordHash = sha256(password);</span>
+<span class="fc" id="L142">                String code = generateVerificationCode();</span>
+<span class="fc" id="L143">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
+<span class="fc" id="L144">                UserAccount account = inTransaction(dataSource, connection -&gt; {</span>
+<span class="fc" id="L145">                    UserAccount created = userRepository.createUser(</span>
+                            connection,
+                            externalId,
+                            name,
+                            email,
+                            passwordHash,
+                            &quot;USER&quot;,
+                            false
+                    );
+<span class="fc" id="L154">                    tokenRepository.deleteTokensByUser(connection, created.getId());</span>
+<span class="fc" id="L155">                    tokenRepository.createToken(</span>
+<span class="fc" id="L156">                            connection, created.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES)</span>
+                    );
+<span class="fc" id="L158">                    auditLogService.record(</span>
+                            connection, null, AuditAction.USER_REGISTERED,
+<span class="fc" id="L160">                            &quot;USER&quot;, created.getExternalId(), true,</span>
+<span class="fc" id="L161">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                    );
+<span class="fc" id="L163">                    auditLogService.record(</span>
+                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,
+<span class="fc" id="L165">                            &quot;USER&quot;, created.getExternalId(), true,</span>
+<span class="fc" id="L166">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                    );
+<span class="fc" id="L168">                    return created;</span>
+                });
 
-                // Generate secure random verification token (UUID)
-<span class="fc" id="L106">                String code = generateVerificationCode();</span>
-<span class="fc" id="L107">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
-                // Delete previous verification codes first to guarantee only one exists at a time
-<span class="fc" id="L109">                tokenRepository.deleteTokensByUser(account.getId());</span>
-<span class="fc" id="L110">                tokenRepository.createToken(account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES));</span>
+<span class="fc" id="L171">                LOGGER.atInfo()</span>
+<span class="fc" id="L172">                      .addKeyValue(&quot;user_id&quot;, account.getExternalId())</span>
+<span class="fc" id="L173">                      .addKeyValue(&quot;operation&quot;, &quot;user_registration&quot;)</span>
+<span class="fc" id="L174">                      .log(&quot;User registration completed&quot;);</span>
 
-<span class="fc" id="L112">                EmailService emailService = new EmailService();</span>
+<span class="fc" id="L176">                EmailService emailService = new EmailService();</span>
 
                 try {
-<span class="fc" id="L115">                    emailService.sendVerificationCode(email, name, code);</span>
-<span class="fc" id="L116">                    ctx.status(201).json(Map.of(</span>
-<span class="fc" id="L117">                            &quot;ok&quot;, true,</span>
+<span class="fc" id="L179">                    emailService.sendVerificationCode(email, name, code, account.getExternalId());</span>
+<span class="fc" id="L180">                    ctx.status(201).json(Map.of(</span>
+<span class="fc" id="L181">                            &quot;ok&quot;, true,</span>
                             &quot;message&quot;, &quot;Conta criada com sucesso. Código de verificação enviado para seu e-mail.&quot;
                     ));
-<span class="fc" id="L120">                } catch (Exception ex) {</span>
-<span class="fc" id="L121">                    LOGGER.error(&quot;Failed to send verification email during registration for {}&quot;, email, ex);</span>
+<span class="fc" id="L184">                } catch (Exception ex) {</span>
+<span class="fc" id="L185">                    LOGGER.atError()</span>
+<span class="fc" id="L186">                          .addKeyValue(&quot;user_id&quot;, account.getExternalId())</span>
+<span class="fc" id="L187">                          .addKeyValue(&quot;operation&quot;, &quot;email_verification_delivery&quot;)</span>
+<span class="fc" id="L188">                          .setCause(ex)</span>
+<span class="fc" id="L189">                          .log(&quot;Verification email delivery failed&quot;);</span>
                     // As requested: Do NOT delete the user. Keep unverified and return clear error
-<span class="fc" id="L123">                    ctx.status(201).json(Map.of(</span>
-<span class="fc" id="L124">                            &quot;ok&quot;, true,</span>
+<span class="fc" id="L191">                    ctx.status(201).json(Map.of(</span>
+<span class="fc" id="L192">                            &quot;ok&quot;, true,</span>
                             &quot;message&quot;, &quot;Conta criada com sucesso, mas não foi possível enviar o e-mail de verificação. Por favor, utilize a opção de reenviar verificação para ativar sua conta.&quot;
                     ));
-<span class="fc" id="L127">                }</span>
-<span class="fc" id="L128">            } catch (SQLException ex) {</span>
-<span class="fc" id="L129">                LOGGER.error(&quot;Failed to register user&quot;, ex);</span>
-<span class="fc" id="L130">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível criar a conta no momento.&quot;));</span>
-<span class="fc" id="L131">            } catch (Exception ex) {</span>
-<span class="fc" id="L132">                LOGGER.error(&quot;Invalid registration payload&quot;, ex);</span>
-<span class="fc" id="L133">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para cadastro.&quot;));</span>
-<span class="fc" id="L134">            }</span>
-<span class="fc" id="L135">        });</span>
-
-<span class="fc" id="L137">        io.javalin.http.Handler legacyVerifyEmailHandler = ctx -&gt; {</span>
-<span class="fc" id="L138">            String frontendUrl = System.getenv(&quot;FRONTEND_URL&quot;);</span>
-<span class="pc bpc" id="L139" title="3 of 4 branches missed.">            if (frontendUrl == null || frontendUrl.isBlank()) {</span>
-<span class="fc" id="L140">                frontendUrl = buildBackendUrl(ctx);</span>
-            }
-<span class="fc" id="L142">            ctx.status(400).html(renderErrorPage(&quot;Links de verificação não são mais suportados. Por favor, solicite um novo código de verificação.&quot;, frontendUrl));</span>
-<span class="fc" id="L143">        };</span>
-<span class="fc" id="L144">        app.get(&quot;/auth/verify-email&quot;, legacyVerifyEmailHandler);</span>
-<span class="fc" id="L145">        app.get(&quot;/api/auth/verify-email&quot;, legacyVerifyEmailHandler);</span>
-
-<span class="fc" id="L147">        app.post(&quot;/auth/verify-email&quot;, ctx -&gt; {</span>
-            try {
-<span class="fc" id="L149">                VerifyEmailCodeRequest request = ctx.bodyAsClass(VerifyEmailCodeRequest.class);</span>
-<span class="fc" id="L150">                String email = normalizeEmail(request.getEmail());</span>
-<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                String code = request.getCode() == null ? &quot;&quot; : request.getCode().trim();</span>
-
-<span class="fc bfc" id="L153" title="All 2 branches covered.">                if (email.isEmpty()) {</span>
-<span class="fc" id="L154">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O e-mail é obrigatório.&quot;));</span>
-<span class="fc" id="L155">                    return;</span>
-                }
-<span class="fc bfc" id="L157" title="All 2 branches covered.">                if (code.isEmpty()) {</span>
-<span class="fc" id="L158">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O código de verificação é obrigatório.&quot;));</span>
-<span class="fc" id="L159">                    return;</span>
-                }
-<span class="fc bfc" id="L161" title="All 2 branches covered.">                if (!code.matches(&quot;\\d{6}&quot;)) {</span>
-<span class="fc" id="L162">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O código de verificação deve conter exatamente 6 dígitos.&quot;));</span>
-<span class="fc" id="L163">                    return;</span>
-                }
-
-<span class="fc" id="L166">                Optional&lt;UserAccount&gt; accountOpt = userRepository.findByEmail(email);</span>
-<span class="fc bfc" id="L167" title="All 2 branches covered.">                if (accountOpt.isEmpty()) {</span>
-<span class="fc" id="L168">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Nenhuma conta encontrada com este e-mail.&quot;));</span>
-<span class="fc" id="L169">                    return;</span>
-                }
-
-<span class="fc" id="L172">                UserAccount account = accountOpt.get();</span>
-<span class="fc bfc" id="L173" title="All 2 branches covered.">                if (account.isEmailVerificado()) {</span>
-<span class="fc" id="L174">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Este e-mail já está verificado.&quot;));</span>
-<span class="fc" id="L175">                    return;</span>
-                }
-
-<span class="fc" id="L178">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
-<span class="fc" id="L179">                Optional&lt;VerificationTokenRepository.TokenInfo&gt; tokenInfoOpt = tokenRepository.findCodeForEmail(email, code);</span>
-
-<span class="pc bpc" id="L181" title="1 of 2 branches missed.">                if (tokenInfoOpt.isEmpty()) {</span>
-<span class="nc" id="L182">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Código de verificação inválido ou incorreto.&quot;));</span>
-<span class="nc" id="L183">                    return;</span>
-                }
-
-<span class="fc" id="L186">                VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();</span>
-<span class="fc bfc" id="L187" title="All 2 branches covered.">                if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {</span>
-<span class="fc" id="L188">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Este código de verificação expirou. Por favor, solicite um novo.&quot;));</span>
-<span class="fc" id="L189">                    return;</span>
-                }
-
-                // Mark user as verified
-<span class="fc" id="L193">                userRepository.verifyEmail(tokenInfo.getUserId());</span>
-
-                // Invalidate/delete all verification codes for this user
-<span class="fc" id="L196">                tokenRepository.deleteTokensByUser(tokenInfo.getUserId());</span>
-
-<span class="fc" id="L198">                ctx.json(Map.of(</span>
-<span class="fc" id="L199">                        &quot;ok&quot;, true,</span>
-                        &quot;message&quot;, &quot;E-mail verificado com sucesso.&quot;
-                ));
-<span class="fc" id="L202">            } catch (SQLException ex) {</span>
-<span class="fc" id="L203">                LOGGER.error(&quot;Failed to verify email code&quot;, ex);</span>
-<span class="fc" id="L204">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Erro interno no servidor ao verificar o e-mail.&quot;));</span>
-<span class="nc" id="L205">            } catch (Exception ex) {</span>
-<span class="nc" id="L206">                LOGGER.error(&quot;Invalid verify-email payload&quot;, ex);</span>
-<span class="nc" id="L207">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para verificação.&quot;));</span>
+<span class="fc" id="L195">                }</span>
+<span class="fc" id="L196">            } catch (SQLException ex) {</span>
+<span class="fc" id="L197">                LOGGER.atError()</span>
+<span class="fc" id="L198">                      .addKeyValue(&quot;operation&quot;, &quot;user_registration&quot;)</span>
+<span class="fc" id="L199">                      .setCause(ex)</span>
+<span class="fc" id="L200">                      .log(&quot;Failed to register user&quot;);</span>
+<span class="fc" id="L201">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível criar a conta no momento.&quot;));</span>
+<span class="fc" id="L202">            } catch (Exception ex) {</span>
+<span class="fc" id="L203">                LOGGER.atError()</span>
+<span class="fc" id="L204">                      .addKeyValue(&quot;operation&quot;, &quot;user_registration&quot;)</span>
+<span class="fc" id="L205">                      .setCause(ex)</span>
+<span class="fc" id="L206">                      .log(&quot;Invalid registration payload&quot;);</span>
+<span class="fc" id="L207">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para cadastro.&quot;));</span>
 <span class="fc" id="L208">            }</span>
 <span class="fc" id="L209">        });</span>
 
-<span class="fc" id="L211">        app.post(&quot;/auth/resend-verification&quot;, ctx -&gt; {</span>
+<span class="fc" id="L211">        io.javalin.http.Handler legacyVerifyEmailHandler = ctx -&gt; {</span>
+<span class="fc" id="L212">            String frontendUrl = System.getenv(&quot;FRONTEND_URL&quot;);</span>
+<span class="pc bpc" id="L213" title="3 of 4 branches missed.">            if (frontendUrl == null || frontendUrl.isBlank()) {</span>
+<span class="fc" id="L214">                frontendUrl = buildBackendUrl(ctx);</span>
+            }
+<span class="fc" id="L216">            ctx.status(400).html(renderErrorPage(&quot;Links de verificação não são mais suportados. Por favor, solicite um novo código de verificação.&quot;, frontendUrl));</span>
+<span class="fc" id="L217">        };</span>
+<span class="fc" id="L218">        app.get(&quot;/auth/verify-email&quot;, legacyVerifyEmailHandler);</span>
+<span class="fc" id="L219">        app.get(&quot;/api/auth/verify-email&quot;, legacyVerifyEmailHandler);</span>
+
+<span class="fc" id="L221">        app.post(&quot;/auth/verify-email&quot;, ctx -&gt; {</span>
             try {
-<span class="fc" id="L213">                ResendVerificationRequest request = ctx.bodyAsClass(ResendVerificationRequest.class);</span>
-<span class="fc" id="L214">                String email = normalizeEmail(request.getEmail());</span>
+<span class="fc" id="L223">                VerifyEmailCodeRequest request = ctx.bodyAsClass(VerifyEmailCodeRequest.class);</span>
+<span class="fc" id="L224">                String email = normalizeEmail(request.getEmail());</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                String code = request.getCode() == null ? &quot;&quot; : request.getCode().trim();</span>
 
-<span class="fc bfc" id="L216" title="All 2 branches covered.">                if (email.isEmpty()) {</span>
-<span class="fc" id="L217">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O e-mail é obrigatório.&quot;));</span>
-<span class="fc" id="L218">                    return;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                if (email.isEmpty()) {</span>
+<span class="fc" id="L228">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O e-mail é obrigatório.&quot;));</span>
+<span class="fc" id="L229">                    return;</span>
+                }
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                if (code.isEmpty()) {</span>
+<span class="fc" id="L232">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O código de verificação é obrigatório.&quot;));</span>
+<span class="fc" id="L233">                    return;</span>
+                }
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                if (!code.matches(&quot;\\d{6}&quot;)) {</span>
+<span class="fc" id="L236">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O código de verificação deve conter exatamente 6 dígitos.&quot;));</span>
+<span class="fc" id="L237">                    return;</span>
                 }
 
-<span class="fc" id="L221">                Optional&lt;UserAccount&gt; accountOpt = userRepository.findByEmail(email);</span>
-<span class="fc bfc" id="L222" title="All 2 branches covered.">                if (accountOpt.isEmpty()) {</span>
-<span class="fc" id="L223">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Nenhuma conta encontrada com este e-mail.&quot;));</span>
-<span class="fc" id="L224">                    return;</span>
+<span class="fc" id="L240">                Optional&lt;UserAccount&gt; accountOpt = userRepository.findByEmail(email);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                if (accountOpt.isEmpty()) {</span>
+<span class="fc" id="L242">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Nenhuma conta encontrada com este e-mail.&quot;));</span>
+<span class="fc" id="L243">                    return;</span>
                 }
 
-<span class="fc" id="L227">                UserAccount account = accountOpt.get();</span>
-<span class="fc bfc" id="L228" title="All 2 branches covered.">                if (account.isEmailVerificado()) {</span>
-<span class="fc" id="L229">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Este e-mail já está verificado.&quot;));</span>
-<span class="fc" id="L230">                    return;</span>
+<span class="fc" id="L246">                UserAccount account = accountOpt.get();</span>
+<span class="fc" id="L247">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
+
+                try {
+<span class="fc" id="L250">                    inTransaction(dataSource, connection -&gt; {</span>
+<span class="fc" id="L251">                        verifyUserEmail(</span>
+                                connection, userRepository, tokenRepository,
+<span class="fc" id="L253">                                account, code, account.getExternalId()</span>
+                        );
+<span class="fc" id="L255">                        auditLogService.record(</span>
+                                connection, null, AuditAction.EMAIL_VERIFIED,
+<span class="fc" id="L257">                                &quot;USER&quot;, account.getExternalId(), true,</span>
+<span class="fc" id="L258">                                ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                        );
+<span class="fc" id="L260">                        return null;</span>
+                    });
+
+<span class="fc" id="L263">                    LOGGER.atInfo()</span>
+<span class="fc" id="L264">                          .addKeyValue(&quot;user_id&quot;, account.getExternalId())</span>
+<span class="fc" id="L265">                          .addKeyValue(&quot;verification_result&quot;, &quot;success&quot;)</span>
+<span class="fc" id="L266">                          .log(&quot;User email verification completed&quot;);</span>
+
+<span class="fc" id="L268">                    ctx.json(Map.of(</span>
+<span class="fc" id="L269">                            &quot;ok&quot;, true,</span>
+                            &quot;message&quot;, &quot;E-mail verificado com sucesso.&quot;
+                    ));
+<span class="fc" id="L272">                } catch (VerificationException vex) {</span>
+<span class="fc" id="L273">                    String resultType = &quot;invalid_code&quot;;</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                    if (vex.getMessage().contains(&quot;expirou&quot;)) {</span>
+<span class="fc" id="L275">                        resultType = &quot;expired_code&quot;;</span>
+                    }
+<span class="fc" id="L277">                    LOGGER.atWarn()</span>
+<span class="fc" id="L278">                          .addKeyValue(&quot;user_id&quot;, account.getExternalId())</span>
+<span class="fc" id="L279">                          .addKeyValue(&quot;verification_result&quot;, resultType)</span>
+<span class="fc" id="L280">                          .log(&quot;User email verification rejected&quot;);</span>
+<span class="fc" id="L281">                    auditLogService.recordBestEffort(</span>
+<span class="fc" id="L282">                            null, AuditAction.EMAIL_VERIFIED, &quot;USER&quot;, account.getExternalId(), false,</span>
+<span class="fc" id="L283">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, resultType)</span>
+                    );
+
+<span class="fc" id="L286">                    ctx.status(vex.getStatusCode()).json(Map.of(&quot;error&quot;, vex.getMessage()));</span>
+<span class="fc" id="L287">                }</span>
+<span class="fc" id="L288">            } catch (SQLException ex) {</span>
+<span class="fc" id="L289">                LOGGER.atError()</span>
+<span class="fc" id="L290">                      .setCause(ex)</span>
+<span class="fc" id="L291">                      .log(&quot;Failed to verify email code&quot;);</span>
+<span class="fc" id="L292">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Erro interno no servidor ao verificar o e-mail.&quot;));</span>
+<span class="nc" id="L293">            } catch (Exception ex) {</span>
+<span class="nc" id="L294">                LOGGER.atError()</span>
+<span class="nc" id="L295">                      .setCause(ex)</span>
+<span class="nc" id="L296">                      .log(&quot;Invalid verify-email payload&quot;);</span>
+<span class="nc" id="L297">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para verificação.&quot;));</span>
+<span class="fc" id="L298">            }</span>
+<span class="fc" id="L299">        });</span>
+
+<span class="fc" id="L301">        app.post(&quot;/auth/resend-verification&quot;, ctx -&gt; {</span>
+            try {
+<span class="fc" id="L303">                ResendVerificationRequest request = ctx.bodyAsClass(ResendVerificationRequest.class);</span>
+<span class="fc" id="L304">                String email = normalizeEmail(request.getEmail());</span>
+
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                if (email.isEmpty()) {</span>
+<span class="fc" id="L307">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;O e-mail é obrigatório.&quot;));</span>
+<span class="fc" id="L308">                    return;</span>
+                }
+
+<span class="fc" id="L311">                Optional&lt;UserAccount&gt; accountOpt = userRepository.findByEmail(email);</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">                if (accountOpt.isEmpty()) {</span>
+<span class="fc" id="L313">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Nenhuma conta encontrada com este e-mail.&quot;));</span>
+<span class="fc" id="L314">                    return;</span>
+                }
+
+<span class="fc" id="L317">                UserAccount account = accountOpt.get();</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">                if (account.isEmailVerificado()) {</span>
+<span class="fc" id="L319">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Este e-mail já está verificado.&quot;));</span>
+<span class="fc" id="L320">                    return;</span>
                 }
 
                 // Generate a new 6-digit code
-<span class="fc" id="L234">                String code = generateVerificationCode();</span>
-<span class="fc" id="L235">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
+<span class="fc" id="L324">                String code = generateVerificationCode();</span>
+<span class="fc" id="L325">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
 
-                // Clean up previous tokens
-<span class="fc" id="L238">                tokenRepository.deleteTokensByUser(account.getId());</span>
+<span class="fc" id="L327">                inTransaction(dataSource, connection -&gt; {</span>
+<span class="fc" id="L328">                    tokenRepository.deleteTokensByUser(connection, account.getId());</span>
+<span class="fc" id="L329">                    tokenRepository.createToken(</span>
+<span class="fc" id="L330">                            connection, account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES)</span>
+                    );
+<span class="fc" id="L332">                    auditLogService.record(</span>
+                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,
+<span class="fc" id="L334">                            &quot;USER&quot;, account.getExternalId(), true,</span>
+<span class="fc" id="L335">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                    );
+<span class="fc" id="L337">                    return null;</span>
+                });
 
-                // Store new code with 15-minute expiration
-<span class="fc" id="L241">                tokenRepository.createToken(account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES));</span>
-
-                // Send new code via email
-<span class="fc" id="L244">                EmailService emailService = new EmailService();</span>
+                // External delivery intentionally happens only after the database transaction commits.
+<span class="fc" id="L341">                EmailService emailService = new EmailService();</span>
 
                 try {
-<span class="fc" id="L247">                    emailService.sendVerificationCode(account.getEmail(), account.getName(), code);</span>
-<span class="fc" id="L248">                    ctx.json(Map.of(&quot;ok&quot;, true, &quot;message&quot;, &quot;Código de verificação reenviado com sucesso.&quot;));</span>
-<span class="fc" id="L249">                } catch (Exception ex) {</span>
-<span class="fc" id="L250">                    LOGGER.error(&quot;Failed to send verification code during resend for {}&quot;, email, ex);</span>
-<span class="fc" id="L251">                    ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Falha ao enviar o código de verificação. Por favor, tente novamente.&quot;));</span>
-<span class="fc" id="L252">                }</span>
-<span class="fc" id="L253">            } catch (Exception ex) {</span>
-<span class="fc" id="L254">                LOGGER.error(&quot;Invalid resend verification payload&quot;, ex);</span>
-<span class="fc" id="L255">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para reenvio de verificação.&quot;));</span>
-<span class="fc" id="L256">            }</span>
-<span class="fc" id="L257">        });</span>
+<span class="fc" id="L344">                    emailService.sendVerificationCode(account.getEmail(), account.getName(), code, account.getExternalId());</span>
+<span class="fc" id="L345">                    ctx.json(Map.of(&quot;ok&quot;, true, &quot;message&quot;, &quot;Código de verificação reenviado com sucesso.&quot;));</span>
+<span class="fc" id="L346">                } catch (Exception ex) {</span>
+<span class="fc" id="L347">                    LOGGER.atError()</span>
+<span class="fc" id="L348">                          .addKeyValue(&quot;user_id&quot;, account.getExternalId())</span>
+<span class="fc" id="L349">                          .addKeyValue(&quot;operation&quot;, &quot;email_verification_delivery&quot;)</span>
+<span class="fc" id="L350">                          .setCause(ex)</span>
+<span class="fc" id="L351">                          .log(&quot;Verification email delivery failed&quot;);</span>
+<span class="fc" id="L352">                    ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Falha ao enviar o código de verificação. Por favor, tente novamente.&quot;));</span>
+<span class="fc" id="L353">                }</span>
+<span class="fc" id="L354">            } catch (SQLException ex) {</span>
+<span class="fc" id="L355">                LOGGER.atError()</span>
+<span class="fc" id="L356">                      .setCause(ex)</span>
+<span class="fc" id="L357">                      .log(&quot;Failed to persist verification resend&quot;);</span>
+<span class="fc" id="L358">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível reenviar a verificação no momento.&quot;));</span>
+<span class="nc" id="L359">            } catch (Exception ex) {</span>
+<span class="nc" id="L360">                LOGGER.atError()</span>
+<span class="nc" id="L361">                      .setCause(ex)</span>
+<span class="nc" id="L362">                      .log(&quot;Invalid resend verification payload&quot;);</span>
+<span class="nc" id="L363">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para reenvio de verificação.&quot;));</span>
+<span class="fc" id="L364">            }</span>
+<span class="fc" id="L365">        });</span>
 
-<span class="fc" id="L259">        app.post(&quot;/auth/reset-password&quot;, ctx -&gt; {</span>
+<span class="fc" id="L367">        app.post(&quot;/auth/reset-password&quot;, ctx -&gt; {</span>
             try {
-<span class="fc" id="L261">                ResetPasswordRequest request = ctx.bodyAsClass(ResetPasswordRequest.class);</span>
-<span class="fc" id="L262">                String email = normalizeEmail(request.getEmail());</span>
-<span class="pc bpc" id="L263" title="1 of 2 branches missed.">                String newPassword = request.getNewPassword() == null ? &quot;&quot; : request.getNewPassword();</span>
+<span class="fc" id="L369">                ResetPasswordRequest request = ctx.bodyAsClass(ResetPasswordRequest.class);</span>
+<span class="fc" id="L370">                String email = normalizeEmail(request.getEmail());</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">                String newPassword = request.getNewPassword() == null ? &quot;&quot; : request.getNewPassword();</span>
 
-<span class="pc bpc" id="L265" title="1 of 4 branches missed.">                if (email.isEmpty() || newPassword.isEmpty()) {</span>
-<span class="fc" id="L266">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;E-mail e nova senha são obrigatórios.&quot;));</span>
-<span class="fc" id="L267">                    return;</span>
+<span class="pc bpc" id="L373" title="1 of 4 branches missed.">                if (email.isEmpty() || newPassword.isEmpty()) {</span>
+<span class="fc" id="L374">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;E-mail e nova senha são obrigatórios.&quot;));</span>
+<span class="fc" id="L375">                    return;</span>
                 }
 
-<span class="fc bfc" id="L270" title="All 2 branches covered.">                if (userRepository.findByEmail(email).isEmpty()) {</span>
-<span class="fc" id="L271">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Nenhuma conta encontrada com este e-mail.&quot;));</span>
-<span class="fc" id="L272">                    return;</span>
+<span class="fc" id="L378">                Optional&lt;UserAccount&gt; account = userRepository.findByEmail(email);</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">                if (account.isEmpty()) {</span>
+<span class="fc" id="L380">                    ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Nenhuma conta encontrada com este e-mail.&quot;));</span>
+<span class="fc" id="L381">                    return;</span>
                 }
 
-<span class="fc" id="L275">                userRepository.updatePassword(email, sha256(newPassword));</span>
-<span class="fc" id="L276">                ctx.json(Map.of(&quot;ok&quot;, true, &quot;message&quot;, &quot;Senha redefinida com sucesso.&quot;));</span>
-<span class="fc" id="L277">            } catch (SQLException ex) {</span>
-<span class="fc" id="L278">                LOGGER.error(&quot;Failed to reset password&quot;, ex);</span>
-<span class="fc" id="L279">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível redefinir a senha.&quot;));</span>
-<span class="fc" id="L280">            }</span>
-<span class="fc" id="L281">        });</span>
+<span class="fc" id="L384">                String passwordHash = sha256(newPassword);</span>
+<span class="fc" id="L385">                inTransaction(dataSource, connection -&gt; {</span>
+<span class="fc" id="L386">                    userRepository.updatePassword(connection, email, passwordHash);</span>
+<span class="fc" id="L387">                    AuthenticatedPrincipal actor = authenticatedUserService</span>
+<span class="fc" id="L388">                            .resolve(connection, ctx.header(&quot;Authorization&quot;))</span>
+<span class="fc" id="L389">                            .orElse(null);</span>
+<span class="fc" id="L390">                    auditLogService.record(</span>
+                            connection, actor, AuditAction.PASSWORD_RESET_COMPLETED,
+<span class="fc" id="L392">                            &quot;USER&quot;, account.get().getExternalId(), true,</span>
+<span class="fc" id="L393">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                    );
+<span class="fc" id="L395">                    return null;</span>
+                });
+<span class="fc" id="L397">                ctx.json(Map.of(&quot;ok&quot;, true, &quot;message&quot;, &quot;Senha redefinida com sucesso.&quot;));</span>
+<span class="fc" id="L398">            } catch (SQLException ex) {</span>
+<span class="fc" id="L399">                LOGGER.atError()</span>
+<span class="fc" id="L400">                      .setCause(ex)</span>
+<span class="fc" id="L401">                      .log(&quot;Failed to reset password&quot;);</span>
+<span class="fc" id="L402">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível redefinir a senha.&quot;));</span>
+<span class="fc" id="L403">            }</span>
+<span class="fc" id="L404">        });</span>
 
-<span class="fc" id="L283">        app.post(&quot;/auth/change-password&quot;, ctx -&gt; {</span>
+<span class="fc" id="L406">        app.post(&quot;/auth/change-password&quot;, ctx -&gt; {</span>
             try {
-<span class="fc" id="L285">                ChangePasswordRequest request = ctx.bodyAsClass(ChangePasswordRequest.class);</span>
-<span class="fc" id="L286">                String email = normalizeEmail(request.getEmail());</span>
-<span class="pc bpc" id="L287" title="1 of 2 branches missed.">                String currentPassword = request.getCurrentPassword() == null ? &quot;&quot; : request.getCurrentPassword();</span>
-<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                String newPassword = request.getNewPassword() == null ? &quot;&quot; : request.getNewPassword();</span>
+<span class="fc" id="L408">                ChangePasswordRequest request = ctx.bodyAsClass(ChangePasswordRequest.class);</span>
+<span class="fc" id="L409">                String email = normalizeEmail(request.getEmail());</span>
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">                String currentPassword = request.getCurrentPassword() == null ? &quot;&quot; : request.getCurrentPassword();</span>
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">                String newPassword = request.getNewPassword() == null ? &quot;&quot; : request.getNewPassword();</span>
 
-<span class="pc bpc" id="L290" title="2 of 6 branches missed.">                if (email.isEmpty() || currentPassword.isEmpty() || newPassword.isEmpty()) {</span>
-<span class="fc" id="L291">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Senha atual e nova senha são obrigatórias.&quot;));</span>
-<span class="fc" id="L292">                    return;</span>
+<span class="pc bpc" id="L413" title="2 of 6 branches missed.">                if (email.isEmpty() || currentPassword.isEmpty() || newPassword.isEmpty()) {</span>
+<span class="fc" id="L414">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Senha atual e nova senha são obrigatórias.&quot;));</span>
+<span class="fc" id="L415">                    return;</span>
                 }
 
-<span class="fc" id="L295">                Optional&lt;UserAccount&gt; account = userRepository.findByEmail(email);</span>
-<span class="fc bfc" id="L296" title="All 4 branches covered.">                if (account.isEmpty() || !sha256(currentPassword).equals(account.get().getPasswordHash())) {</span>
-<span class="fc" id="L297">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Senha atual incorreta.&quot;));</span>
-<span class="fc" id="L298">                    return;</span>
+<span class="fc" id="L418">                Optional&lt;UserAccount&gt; account = userRepository.findByEmail(email);</span>
+<span class="fc bfc" id="L419" title="All 4 branches covered.">                if (account.isEmpty() || !sha256(currentPassword).equals(account.get().getPasswordHash())) {</span>
+<span class="fc" id="L420">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Senha atual incorreta.&quot;));</span>
+<span class="fc" id="L421">                    return;</span>
                 }
 
-<span class="fc" id="L301">                userRepository.updatePassword(email, sha256(newPassword));</span>
-<span class="fc" id="L302">                ctx.json(Map.of(&quot;ok&quot;, true, &quot;message&quot;, &quot;Senha alterada com sucesso.&quot;));</span>
-<span class="fc" id="L303">            } catch (SQLException ex) {</span>
-<span class="fc" id="L304">                LOGGER.error(&quot;Failed to change password&quot;, ex);</span>
-<span class="fc" id="L305">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível alterar a senha.&quot;));</span>
-<span class="fc" id="L306">            }</span>
-<span class="fc" id="L307">        });</span>
-<span class="fc" id="L308">    }</span>
+<span class="fc" id="L424">                String passwordHash = sha256(newPassword);</span>
+<span class="fc" id="L425">                inTransaction(dataSource, connection -&gt; {</span>
+<span class="fc" id="L426">                    userRepository.updatePassword(connection, email, passwordHash);</span>
+<span class="fc" id="L427">                    AuthenticatedPrincipal actor = authenticatedUserService</span>
+<span class="fc" id="L428">                            .resolve(connection, ctx.header(&quot;Authorization&quot;))</span>
+<span class="fc" id="L429">                            .orElse(null);</span>
+<span class="fc" id="L430">                    auditLogService.record(</span>
+                            connection, actor, AuditAction.PASSWORD_CHANGED,
+<span class="fc" id="L432">                            &quot;USER&quot;, account.get().getExternalId(), true,</span>
+<span class="fc" id="L433">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
+                    );
+<span class="fc" id="L435">                    return null;</span>
+                });
+<span class="fc" id="L437">                ctx.json(Map.of(&quot;ok&quot;, true, &quot;message&quot;, &quot;Senha alterada com sucesso.&quot;));</span>
+<span class="fc" id="L438">            } catch (SQLException ex) {</span>
+<span class="fc" id="L439">                LOGGER.atError()</span>
+<span class="fc" id="L440">                      .setCause(ex)</span>
+<span class="fc" id="L441">                      .log(&quot;Failed to change password&quot;);</span>
+<span class="fc" id="L442">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível alterar a senha.&quot;));</span>
+<span class="fc" id="L443">            }</span>
+<span class="fc" id="L444">        });</span>
+<span class="fc" id="L445">    }</span>
+
+    private static AuthenticatedPrincipal principalFrom(UserAccount account) {
+<span class="fc" id="L448">        return new AuthenticatedPrincipal(account.getId(), account.getExternalId(), account.getRole());</span>
+    }
+
+    private static &lt;T&gt; T inTransaction(
+            HikariDataSource dataSource,
+            TransactionWork&lt;T&gt; work) throws Exception {
+<span class="fc" id="L454">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L455">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L457">                T result = work.execute(connection);</span>
+<span class="fc" id="L458">                connection.commit();</span>
+<span class="fc" id="L459">                return result;</span>
+<span class="fc" id="L460">            } catch (Exception ex) {</span>
+                try {
+<span class="fc" id="L462">                    connection.rollback();</span>
+<span class="nc" id="L463">                } catch (SQLException rollbackError) {</span>
+<span class="nc" id="L464">                    ex.addSuppressed(rollbackError);</span>
+<span class="fc" id="L465">                }</span>
+<span class="fc" id="L466">                throw ex;</span>
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface TransactionWork&lt;T&gt; {
+        T execute(Connection connection) throws Exception;
+    }
 
     private static String normalizeEmail(String email) {
-<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        return email == null ? &quot;&quot; : email.trim().toLowerCase();</span>
+<span class="pc bpc" id="L477" title="1 of 2 branches missed.">        return email == null ? &quot;&quot; : email.trim().toLowerCase();</span>
     }
 
     private static String generateVerificationCode() {
-<span class="fc" id="L315">        int code = 100000 + SECURE_RANDOM.nextInt(900000);</span>
-<span class="fc" id="L316">        return String.valueOf(code);</span>
+<span class="fc" id="L481">        int code = 100000 + SECURE_RANDOM.nextInt(900000);</span>
+<span class="fc" id="L482">        return String.valueOf(code);</span>
     }
 
     private static Map&lt;String, Object&gt; toFrontendUser(UserAccount account) {
-<span class="fc" id="L320">        boolean admin = &quot;ADMIN&quot;.equalsIgnoreCase(account.getRole());</span>
-<span class="fc" id="L321">        String[] parts = account.getName().trim().split(&quot;\\s+&quot;);</span>
-<span class="fc" id="L322">        String initials = &quot;U&quot;;</span>
-<span class="fc bfc" id="L323" title="All 2 branches covered.">        if (parts.length &gt;= 2) {</span>
-<span class="fc" id="L324">            initials = (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();</span>
-<span class="pc bpc" id="L325" title="1 of 4 branches missed.">        } else if (parts.length == 1 &amp;&amp; !parts[0].isBlank()) {</span>
-<span class="fc" id="L326">            initials = parts[0].substring(0, Math.min(2, parts[0].length())).toUpperCase();</span>
+<span class="fc" id="L486">        boolean admin = &quot;ADMIN&quot;.equalsIgnoreCase(account.getRole());</span>
+<span class="fc" id="L487">        String[] parts = account.getName().trim().split(&quot;\\s+&quot;);</span>
+<span class="fc" id="L488">        String initials = &quot;U&quot;;</span>
+<span class="fc bfc" id="L489" title="All 2 branches covered.">        if (parts.length &gt;= 2) {</span>
+<span class="fc" id="L490">            initials = (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();</span>
+<span class="pc bpc" id="L491" title="1 of 4 branches missed.">        } else if (parts.length == 1 &amp;&amp; !parts[0].isBlank()) {</span>
+<span class="fc" id="L492">            initials = parts[0].substring(0, Math.min(2, parts[0].length())).toUpperCase();</span>
         }
 
-<span class="fc" id="L329">        return Map.of(</span>
-<span class="fc" id="L330">                &quot;id&quot;, account.getExternalId(),</span>
-<span class="fc" id="L331">                &quot;name&quot;, account.getName(),</span>
-<span class="fc" id="L332">                &quot;email&quot;, account.getEmail(),</span>
-<span class="fc bfc" id="L333" title="All 2 branches covered.">                &quot;role&quot;, admin ? &quot;admin&quot; : &quot;student&quot;,</span>
-<span class="fc bfc" id="L334" title="All 2 branches covered.">                &quot;course&quot;, admin ? &quot;Administração do clube&quot; : &quot;Sem curso informado&quot;,</span>
+<span class="fc" id="L495">        return Map.of(</span>
+<span class="fc" id="L496">                &quot;id&quot;, account.getExternalId(),</span>
+<span class="fc" id="L497">                &quot;name&quot;, account.getName(),</span>
+<span class="fc" id="L498">                &quot;email&quot;, account.getEmail(),</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">                &quot;role&quot;, admin ? &quot;admin&quot; : &quot;student&quot;,</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">                &quot;course&quot;, admin ? &quot;Administração do clube&quot; : &quot;Sem curso informado&quot;,</span>
                 &quot;avatar&quot;, initials,
-<span class="fc" id="L336">                &quot;winCount&quot;, 0,</span>
-<span class="fc" id="L337">                &quot;favoriteGames&quot;, java.util.List.of(),</span>
-<span class="fc" id="L338">                &quot;joinedAt&quot;, java.time.Instant.now().toString(),</span>
-<span class="fc bfc" id="L339" title="All 2 branches covered.">                &quot;bio&quot;, admin ? &quot;Conta administrativa do Tabula.&quot; : &quot;Novo membro do Tabula.&quot;</span>
+<span class="fc" id="L502">                &quot;winCount&quot;, 0,</span>
+<span class="fc" id="L503">                &quot;favoriteGames&quot;, java.util.List.of(),</span>
+<span class="fc" id="L504">                &quot;joinedAt&quot;, java.time.Instant.now().toString(),</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">                &quot;bio&quot;, admin ? &quot;Conta administrativa do Tabula.&quot; : &quot;Novo membro do Tabula.&quot;</span>
         );
     }
 
     private static String sha256(String value) throws NoSuchAlgorithmException {
-<span class="fc" id="L344">        MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
-<span class="fc" id="L345">        byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));</span>
-<span class="fc" id="L346">        StringBuilder hex = new StringBuilder();</span>
-<span class="fc bfc" id="L347" title="All 2 branches covered.">        for (byte b : hash) hex.append(String.format(&quot;%02x&quot;, b));</span>
-<span class="fc" id="L348">        return hex.toString();</span>
+<span class="fc" id="L510">        MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L511">        byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L512">        StringBuilder hex = new StringBuilder();</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        for (byte b : hash) hex.append(String.format(&quot;%02x&quot;, b));</span>
+<span class="fc" id="L514">        return hex.toString();</span>
     }
 
     private static String renderSuccessPage(String frontendUrl) {
-<span class="fc" id="L352">        return &quot;&lt;!DOCTYPE html&gt;&quot;</span>
+<span class="fc" id="L518">        return &quot;&lt;!DOCTYPE html&gt;&quot;</span>
                 + &quot;&lt;html lang=\&quot;pt-BR\&quot;&gt;&quot;
                 + &quot;&lt;head&gt;&quot;
                 + &quot;&lt;meta charset=\&quot;UTF-8\&quot;&gt;&quot;
@@ -389,7 +555,7 @@ public class AuthController {
     }
 
     private static String renderErrorPage(String message, String frontendUrl) {
-<span class="fc" id="L392">        return &quot;&lt;!DOCTYPE html&gt;&quot;</span>
+<span class="fc" id="L558">        return &quot;&lt;!DOCTYPE html&gt;&quot;</span>
                 + &quot;&lt;html lang=\&quot;pt-BR\&quot;&gt;&quot;
                 + &quot;&lt;head&gt;&quot;
                 + &quot;&lt;meta charset=\&quot;UTF-8\&quot;&gt;&quot;
@@ -429,20 +595,58 @@ public class AuthController {
     }
 
     private static String buildBackendUrl(io.javalin.http.Context ctx) {
-<span class="fc" id="L432">        String backendUrl = System.getenv(&quot;BACKEND_URL&quot;);</span>
-<span class="pc bpc" id="L433" title="3 of 4 branches missed.">        if (backendUrl != null &amp;&amp; !backendUrl.isBlank()) {</span>
-<span class="nc" id="L434">            return backendUrl.trim().replaceAll(&quot;/+$&quot;, &quot;&quot;);</span>
+<span class="fc" id="L598">        String backendUrl = System.getenv(&quot;BACKEND_URL&quot;);</span>
+<span class="pc bpc" id="L599" title="3 of 4 branches missed.">        if (backendUrl != null &amp;&amp; !backendUrl.isBlank()) {</span>
+<span class="nc" id="L600">            return backendUrl.trim().replaceAll(&quot;/+$&quot;, &quot;&quot;);</span>
         }
         
-<span class="fc" id="L437">        String proto = ctx.header(&quot;X-Forwarded-Proto&quot;);</span>
-<span class="pc bpc" id="L438" title="1 of 4 branches missed.">        if (proto == null || proto.isBlank()) {</span>
-<span class="fc" id="L439">            proto = ctx.scheme();</span>
+<span class="fc" id="L603">        String proto = ctx.header(&quot;X-Forwarded-Proto&quot;);</span>
+<span class="pc bpc" id="L604" title="1 of 4 branches missed.">        if (proto == null || proto.isBlank()) {</span>
+<span class="fc" id="L605">            proto = ctx.scheme();</span>
         }
-<span class="fc" id="L441">        String host = ctx.header(&quot;X-Forwarded-Host&quot;);</span>
-<span class="pc bpc" id="L442" title="1 of 4 branches missed.">        if (host == null || host.isBlank()) {</span>
-<span class="fc" id="L443">            host = ctx.host();</span>
+<span class="fc" id="L607">        String host = ctx.header(&quot;X-Forwarded-Host&quot;);</span>
+<span class="pc bpc" id="L608" title="1 of 4 branches missed.">        if (host == null || host.isBlank()) {</span>
+<span class="fc" id="L609">            host = ctx.host();</span>
         }
-<span class="fc" id="L445">        return proto + &quot;://&quot; + host;</span>
+<span class="fc" id="L611">        return proto + &quot;://&quot; + host;</span>
     }
+
+    private static class VerificationException extends Exception {
+        private final int statusCode;
+        public VerificationException(String message, int statusCode) {
+<span class="fc" id="L617">            super(message);</span>
+<span class="fc" id="L618">            this.statusCode = statusCode;</span>
+<span class="fc" id="L619">        }</span>
+<span class="fc" id="L620">        public int getStatusCode() { return statusCode; }</span>
+    }
+
+    @WithSpan(&quot;verify-user-email&quot;)
+    private static void verifyUserEmail(
+            Connection connection,
+            UserRepository userRepository,
+            VerificationTokenRepository tokenRepository,
+            UserAccount account,
+            String code,
+            @SpanAttribute(&quot;user_id&quot;) String userId) throws SQLException, VerificationException {
+<span class="fc bfc" id="L631" title="All 2 branches covered.">        if (account.isEmailVerificado()) {</span>
+<span class="fc" id="L632">            throw new VerificationException(&quot;Este e-mail já está verificado.&quot;, 400);</span>
+        }
+
+<span class="fc" id="L635">        Optional&lt;VerificationTokenRepository.TokenInfo&gt; tokenInfoOpt =</span>
+<span class="fc" id="L636">                tokenRepository.findCodeForEmail(connection, account.getEmail(), code);</span>
+<span class="pc bpc" id="L637" title="1 of 2 branches missed.">        if (tokenInfoOpt.isEmpty()) {</span>
+<span class="nc" id="L638">            throw new VerificationException(&quot;Código de verificação inválido ou incorreto.&quot;, 400);</span>
+        }
+
+<span class="fc" id="L641">        VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();</span>
+<span class="fc bfc" id="L642" title="All 2 branches covered.">        if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {</span>
+<span class="fc" id="L643">            throw new VerificationException(</span>
+                    &quot;Este código de verificação expirou. Por favor, solicite um novo.&quot;, 400
+            );
+        }
+
+<span class="fc" id="L648">        userRepository.verifyEmail(connection, tokenInfo.getUserId());</span>
+<span class="fc" id="L649">        tokenRepository.deleteTokensByUser(connection, tokenInfo.getUserId());</span>
+<span class="fc" id="L650">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

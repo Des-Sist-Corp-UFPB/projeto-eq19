@@ -83,7 +83,9 @@ Internamente, o backend registra as rotas sem o prefixo `/api`, pois esse prefix
 
 ## Assistente de eventos com IA
 
-O fluxo **Criar com IA** gera um rascunho editável a partir de linguagem natural, usando LiteLLM somente pelo backend. O evento continua exigindo revisão e confirmação manual. Consulte [docs/ai-event-assistant.md](docs/ai-event-assistant.md).
+O fluxo **Criar com IA** gera rascunhos editáveis de eventos a partir de linguagem natural e permite refiná-los antes da confirmação. A integração acontece somente no backend, por LiteLLM com `gpt-4o-mini`, nos endpoints `POST /api/ai/event-drafts` e `POST /api/ai/event-drafts/refine`.
+
+Gerações e refinamentos são auditados, mas nunca salvam o evento automaticamente: a revisão e a confirmação humana continuam obrigatórias. Consulte [docs/ai-event-assistant.md](docs/ai-event-assistant.md).
 
 ## Persistência dos dados
 
@@ -306,18 +308,22 @@ Os testes automatizados do backend foram executados com Maven e JaCoCo.
 
 Resultado da última execução:
 
-- Testes executados: 121
+- Testes executados: 171
+- Testes aprovados: 171
 - Falhas: 0
 - Erros: 0
 - Ignorados: 0
-- Cobertura por instruções: 92%
-- Cobertura por linhas: 94,6%
-- Cobertura por branches: 74%
+- Cobertura por instruções: 87,31% (10.020/11.477)
+- Cobertura por branches: 71,17% (706/992)
+- Pacote `br.com.tabula.ai`: 90,65% de instruções e 71,95% de branches
 
-Relatório HTML:
+Os testes incluem cenários específicos da trilha de auditoria e da integração com IA, como autenticação, limites de consumo, retry e telemetria de tokens. Os testes da IA usam clientes simulados e servidores HTTP locais; não consomem a cota LiteLLM.
+
+Relatórios:
 
 ```text
 cobertura/backend/jacoco/index.html
+cobertura/backend/jacoco/jacoco.xml
 ```
 
 Comando utilizado:
@@ -333,18 +339,21 @@ Os testes automatizados do frontend foram executados com Vitest e V8 Coverage.
 
 Resultado da última execução:
 
-* Arquivos de teste: 10
-* Testes executados: 26
+* Arquivos de teste: 13
+* Testes aprovados: 38
 * Falhas: 0
-* Cobertura por statements: 86,52%
-* Cobertura por linhas: 88,47%
-* Cobertura por branches: 71,42%
-* Cobertura por funções: 77,62%
+* Cobertura por statements: 80,69% (1.145/1.419)
+* Cobertura por linhas: 82,35% (1.069/1.298)
+* Cobertura por branches: 70,92% (500/705)
+* Cobertura por funções: 70,50% (263/373)
 
-Relatório HTML:
+Os testes de interface cobrem também a auditoria e os fluxos de geração e refinamento por IA, inclusive a preservação do formulário quando o limite é atingido.
+
+Relatórios:
 
 ```text
 cobertura/frontend/index.html
+cobertura/frontend/coverage-summary.json
 ```
 
 Comando utilizado:
@@ -352,6 +361,8 @@ Comando utilizado:
 ```bash
 npm run test:coverage
 ```
+
+Detalhes, limitações e links para os relatórios estão em [docs/testing-and-coverage.md](docs/testing-and-coverage.md).
 
 ## Observações importantes
 

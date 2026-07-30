@@ -6,6 +6,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -16,585 +18,610 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class RelationalStateSyncService {
-<span class="fc" id="L19">    private static final Logger LOGGER = LoggerFactory.getLogger(RelationalStateSyncService.class);</span>
-<span class="fc" id="L20">    private static final ObjectMapper MAPPER = new ObjectMapper();</span>
+<span class="fc" id="L21">    private static final Logger LOGGER = LoggerFactory.getLogger(RelationalStateSyncService.class);</span>
+<span class="fc" id="L22">    private static final ObjectMapper MAPPER = new ObjectMapper();</span>
 
     private RelationalStateSyncService() {
     }
 
+    @WithSpan(&quot;sync-from-state-json&quot;)
     public static void syncFromStateJson(HikariDataSource dataSource, String payload) throws Exception {
-<span class="fc bfc" id="L26" title="All 4 branches covered.">        if (payload == null || payload.isBlank()) {</span>
-<span class="fc" id="L27">            LOGGER.warn(&quot;RelationalStateSyncService: Empty or blank payload provided.&quot;);</span>
-<span class="fc" id="L28">            return;</span>
+<span class="fc bfc" id="L29" title="All 4 branches covered.">        if (payload == null || payload.isBlank()) {</span>
+<span class="fc" id="L30">            LOGGER.warn(&quot;RelationalStateSyncService: Empty or blank payload provided.&quot;);</span>
+<span class="fc" id="L31">            return;</span>
         }
 
-<span class="fc" id="L31">        JsonNode root = MAPPER.readTree(payload);</span>
+<span class="fc" id="L34">        JsonNode root = MAPPER.readTree(payload);</span>
 
-<span class="fc" id="L33">        try (Connection conn = dataSource.getConnection()) {</span>
-<span class="fc" id="L34">            conn.setAutoCommit(false);</span>
+<span class="fc" id="L36">        int usersSynced = 0;</span>
+<span class="fc" id="L37">        int gamesSynced = 0;</span>
+<span class="fc" id="L38">        int eventsSynced = 0;</span>
+<span class="fc" id="L39">        int sessionsSynced = 0;</span>
+
+<span class="fc" id="L41">        try (Connection conn = dataSource.getConnection()) {</span>
+<span class="fc" id="L42">            conn.setAutoCommit(false);</span>
             try {
                 // 1) Delete dependent rows in safe dependency order
-<span class="fc" id="L37">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM favoritos&quot;)) {</span>
-<span class="fc" id="L38">                    stmt.executeUpdate();</span>
+<span class="fc" id="L45">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM favoritos&quot;)) {</span>
+<span class="fc" id="L46">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L40">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM comentarios&quot;)) {</span>
-<span class="fc" id="L41">                    stmt.executeUpdate();</span>
+<span class="fc" id="L48">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM comentarios&quot;)) {</span>
+<span class="fc" id="L49">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L43">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM partida_fotos&quot;)) {</span>
-<span class="fc" id="L44">                    stmt.executeUpdate();</span>
+<span class="fc" id="L51">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM partida_fotos&quot;)) {</span>
+<span class="fc" id="L52">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L46">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM partida_participantes&quot;)) {</span>
-<span class="fc" id="L47">                    stmt.executeUpdate();</span>
+<span class="fc" id="L54">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM partida_participantes&quot;)) {</span>
+<span class="fc" id="L55">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L49">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM partidas&quot;)) {</span>
-<span class="fc" id="L50">                    stmt.executeUpdate();</span>
+<span class="fc" id="L57">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM partidas&quot;)) {</span>
+<span class="fc" id="L58">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L52">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM evento_participantes&quot;)) {</span>
-<span class="fc" id="L53">                    stmt.executeUpdate();</span>
+<span class="fc" id="L60">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM evento_participantes&quot;)) {</span>
+<span class="fc" id="L61">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L55">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM eventos&quot;)) {</span>
-<span class="fc" id="L56">                    stmt.executeUpdate();</span>
+<span class="fc" id="L63">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM eventos&quot;)) {</span>
+<span class="fc" id="L64">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L58">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM logs&quot;)) {</span>
-<span class="fc" id="L59">                    stmt.executeUpdate();</span>
+<span class="fc" id="L66">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM logs&quot;)) {</span>
+<span class="fc" id="L67">                    stmt.executeUpdate();</span>
                 }
-<span class="fc" id="L61">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM jogos WHERE external_id IS NOT NULL&quot;)) {</span>
-<span class="fc" id="L62">                    stmt.executeUpdate();</span>
+<span class="fc" id="L69">                try (PreparedStatement stmt = conn.prepareStatement(&quot;DELETE FROM jogos WHERE external_id IS NOT NULL&quot;)) {</span>
+<span class="fc" id="L70">                    stmt.executeUpdate();</span>
                 }
 
                 // 2) Sync users (do not delete usuarios)
-<span class="fc" id="L66">                JsonNode usersNode = root.path(&quot;users&quot;);</span>
-<span class="fc bfc" id="L67" title="All 2 branches covered.">                if (usersNode.isArray()) {</span>
-<span class="fc bfc" id="L68" title="All 2 branches covered.">                    for (JsonNode userNode : usersNode) {</span>
-<span class="fc" id="L69">                        String userId = userNode.path(&quot;id&quot;).asText();</span>
-<span class="fc" id="L70">                        String name = userNode.path(&quot;name&quot;).asText();</span>
-<span class="fc" id="L71">                        String email = userNode.path(&quot;email&quot;).asText();</span>
-<span class="fc" id="L72">                        String roleStr = userNode.path(&quot;role&quot;).asText();</span>
-<span class="fc bfc" id="L73" title="All 2 branches covered.">                        String role = &quot;admin&quot;.equalsIgnoreCase(roleStr) ? &quot;ADMIN&quot; : &quot;USER&quot;;</span>
-<span class="pc bpc" id="L74" title="1 of 4 branches missed.">                        String passwordHash = userNode.has(&quot;passwordHash&quot;) &amp;&amp; !userNode.path(&quot;passwordHash&quot;).isNull()</span>
-<span class="fc" id="L75">                                ? userNode.path(&quot;passwordHash&quot;).asText() : null;</span>
-<span class="pc bpc" id="L76" title="3 of 4 branches missed.">                        String avatarUrl = userNode.has(&quot;avatarUrl&quot;) &amp;&amp; !userNode.path(&quot;avatarUrl&quot;).isNull()</span>
-<span class="pc" id="L77">                                ? userNode.path(&quot;avatarUrl&quot;).asText() : null;</span>
-<span class="pc bpc" id="L78" title="3 of 4 branches missed.">                        String bio = userNode.has(&quot;bio&quot;) &amp;&amp; !userNode.path(&quot;bio&quot;).isNull()</span>
-<span class="pc" id="L79">                                ? userNode.path(&quot;bio&quot;).asText() : null;</span>
-<span class="pc bpc" id="L80" title="3 of 4 branches missed.">                        String course = userNode.has(&quot;course&quot;) &amp;&amp; !userNode.path(&quot;course&quot;).isNull()</span>
-<span class="pc" id="L81">                                ? userNode.path(&quot;course&quot;).asText() : null;</span>
+<span class="fc" id="L74">                JsonNode usersNode = root.path(&quot;users&quot;);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                if (usersNode.isArray()) {</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                    for (JsonNode userNode : usersNode) {</span>
+<span class="fc" id="L77">                        String userId = userNode.path(&quot;id&quot;).asText();</span>
+<span class="fc" id="L78">                        String name = userNode.path(&quot;name&quot;).asText();</span>
+<span class="fc" id="L79">                        String email = userNode.path(&quot;email&quot;).asText();</span>
+<span class="fc" id="L80">                        String roleStr = userNode.path(&quot;role&quot;).asText();</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                        String role = &quot;admin&quot;.equalsIgnoreCase(roleStr) ? &quot;ADMIN&quot; : &quot;USER&quot;;</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">                        String passwordHash = userNode.has(&quot;passwordHash&quot;) &amp;&amp; !userNode.path(&quot;passwordHash&quot;).isNull()</span>
+<span class="fc" id="L83">                                ? userNode.path(&quot;passwordHash&quot;).asText() : null;</span>
+<span class="pc bpc" id="L84" title="3 of 4 branches missed.">                        String avatarUrl = userNode.has(&quot;avatarUrl&quot;) &amp;&amp; !userNode.path(&quot;avatarUrl&quot;).isNull()</span>
+<span class="pc" id="L85">                                ? userNode.path(&quot;avatarUrl&quot;).asText() : null;</span>
+<span class="pc bpc" id="L86" title="3 of 4 branches missed.">                        String bio = userNode.has(&quot;bio&quot;) &amp;&amp; !userNode.path(&quot;bio&quot;).isNull()</span>
+<span class="pc" id="L87">                                ? userNode.path(&quot;bio&quot;).asText() : null;</span>
+<span class="pc bpc" id="L88" title="3 of 4 branches missed.">                        String course = userNode.has(&quot;course&quot;) &amp;&amp; !userNode.path(&quot;course&quot;).isNull()</span>
+<span class="pc" id="L89">                                ? userNode.path(&quot;course&quot;).asText() : null;</span>
 
                         // Check if user exists by external_id
-<span class="fc" id="L84">                        Long dbIdByExt = null;</span>
-<span class="fc" id="L85">                        String dbEmailByExt = null;</span>
-<span class="fc" id="L86">                        try (PreparedStatement selExt = conn.prepareStatement(&quot;SELECT id, email FROM usuarios WHERE external_id = ?&quot;)) {</span>
-<span class="fc" id="L87">                            selExt.setString(1, userId);</span>
-<span class="fc" id="L88">                            try (ResultSet rs = selExt.executeQuery()) {</span>
-<span class="fc bfc" id="L89" title="All 2 branches covered.">                                if (rs.next()) {</span>
-<span class="fc" id="L90">                                    dbIdByExt = rs.getLong(&quot;id&quot;);</span>
-<span class="fc" id="L91">                                    dbEmailByExt = rs.getString(&quot;email&quot;);</span>
+<span class="fc" id="L92">                        Long dbIdByExt = null;</span>
+<span class="fc" id="L93">                        String dbEmailByExt = null;</span>
+<span class="fc" id="L94">                        try (PreparedStatement selExt = conn.prepareStatement(&quot;SELECT id, email FROM usuarios WHERE external_id = ?&quot;)) {</span>
+<span class="fc" id="L95">                            selExt.setString(1, userId);</span>
+<span class="fc" id="L96">                            try (ResultSet rs = selExt.executeQuery()) {</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                                if (rs.next()) {</span>
+<span class="fc" id="L98">                                    dbIdByExt = rs.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L99">                                    dbEmailByExt = rs.getString(&quot;email&quot;);</span>
                                 }
                             }
                         }
 
-<span class="fc bfc" id="L96" title="All 2 branches covered.">                        if (dbIdByExt != null) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                        if (dbIdByExt != null) {</span>
                             // User exists by external_id
                             // Check if new email is safe to update (not in use by another user)
-<span class="fc" id="L99">                            boolean emailSafe = false;</span>
-<span class="fc bfc" id="L100" title="All 2 branches covered.">                            if (email.equalsIgnoreCase(dbEmailByExt)) {</span>
-<span class="fc" id="L101">                                emailSafe = true;</span>
+<span class="fc" id="L107">                            boolean emailSafe = false;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                            if (email.equalsIgnoreCase(dbEmailByExt)) {</span>
+<span class="fc" id="L109">                                emailSafe = true;</span>
                             } else {
-<span class="fc" id="L103">                                try (PreparedStatement chkEmail = conn.prepareStatement(&quot;SELECT 1 FROM usuarios WHERE lower(email) = lower(?) AND id &lt;&gt; ?&quot;)) {</span>
-<span class="fc" id="L104">                                    chkEmail.setString(1, email);</span>
-<span class="fc" id="L105">                                    chkEmail.setLong(2, dbIdByExt);</span>
-<span class="fc" id="L106">                                    try (ResultSet rs = chkEmail.executeQuery()) {</span>
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                                        emailSafe = !rs.next();</span>
+<span class="fc" id="L111">                                try (PreparedStatement chkEmail = conn.prepareStatement(&quot;SELECT 1 FROM usuarios WHERE lower(email) = lower(?) AND id &lt;&gt; ?&quot;)) {</span>
+<span class="fc" id="L112">                                    chkEmail.setString(1, email);</span>
+<span class="fc" id="L113">                                    chkEmail.setLong(2, dbIdByExt);</span>
+<span class="fc" id="L114">                                    try (ResultSet rs = chkEmail.executeQuery()) {</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                                        emailSafe = !rs.next();</span>
                                     }
+                                }
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                                if (!emailSafe) {</span>
+<span class="fc" id="L119">                                    LOGGER.atWarn()</span>
+<span class="fc" id="L120">                                          .addKeyValue(&quot;user_id&quot;, userId)</span>
+<span class="fc" id="L121">                                          .addKeyValue(&quot;operation&quot;, &quot;relational_state_sync&quot;)</span>
+<span class="fc" id="L122">                                          .addKeyValue(&quot;sync_result&quot;, &quot;email_conflict&quot;)</span>
+<span class="fc" id="L123">                                          .log(&quot;Email update skipped during state synchronization&quot;);</span>
                                 }
                             }
 
-<span class="fc bfc" id="L112" title="All 2 branches covered.">                            String updateSql = emailSafe</span>
-<span class="fc" id="L113">                                    ? &quot;UPDATE usuarios SET nome = ?, email = ?, role = ?, avatar_url = ?, bio = ?, curso = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;</span>
-<span class="fc" id="L114">                                    : &quot;UPDATE usuarios SET nome = ?, role = ?, avatar_url = ?, bio = ?, curso = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                            String updateSql = emailSafe</span>
+<span class="fc" id="L128">                                    ? &quot;UPDATE usuarios SET nome = ?, email = ?, role = ?, avatar_url = ?, bio = ?, curso = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;</span>
+<span class="fc" id="L129">                                    : &quot;UPDATE usuarios SET nome = ?, role = ?, avatar_url = ?, bio = ?, curso = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;;</span>
 
-<span class="fc" id="L116">                            try (PreparedStatement updStmt = conn.prepareStatement(updateSql)) {</span>
-<span class="fc" id="L117">                                updStmt.setString(1, name);</span>
-<span class="fc bfc" id="L118" title="All 2 branches covered.">                                if (emailSafe) {</span>
-<span class="fc" id="L119">                                    updStmt.setString(2, email);</span>
-<span class="fc" id="L120">                                    updStmt.setString(3, role);</span>
-<span class="fc" id="L121">                                    updStmt.setString(4, avatarUrl);</span>
-<span class="fc" id="L122">                                    updStmt.setString(5, bio);</span>
-<span class="fc" id="L123">                                    updStmt.setString(6, course);</span>
-<span class="fc" id="L124">                                    updStmt.setLong(7, dbIdByExt);</span>
+<span class="fc" id="L131">                            try (PreparedStatement updStmt = conn.prepareStatement(updateSql)) {</span>
+<span class="fc" id="L132">                                updStmt.setString(1, name);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                                if (emailSafe) {</span>
+<span class="fc" id="L134">                                    updStmt.setString(2, email);</span>
+<span class="fc" id="L135">                                    updStmt.setString(3, role);</span>
+<span class="fc" id="L136">                                    updStmt.setString(4, avatarUrl);</span>
+<span class="fc" id="L137">                                    updStmt.setString(5, bio);</span>
+<span class="fc" id="L138">                                    updStmt.setString(6, course);</span>
+<span class="fc" id="L139">                                    updStmt.setLong(7, dbIdByExt);</span>
                                 } else {
-<span class="fc" id="L126">                                    updStmt.setString(2, role);</span>
-<span class="fc" id="L127">                                    updStmt.setString(3, avatarUrl);</span>
-<span class="fc" id="L128">                                    updStmt.setString(4, bio);</span>
-<span class="fc" id="L129">                                    updStmt.setString(5, course);</span>
-<span class="fc" id="L130">                                    updStmt.setLong(6, dbIdByExt);</span>
+<span class="fc" id="L141">                                    updStmt.setString(2, role);</span>
+<span class="fc" id="L142">                                    updStmt.setString(3, avatarUrl);</span>
+<span class="fc" id="L143">                                    updStmt.setString(4, bio);</span>
+<span class="fc" id="L144">                                    updStmt.setString(5, course);</span>
+<span class="fc" id="L145">                                    updStmt.setLong(6, dbIdByExt);</span>
                                 }
-<span class="fc" id="L132">                                updStmt.executeUpdate();</span>
+<span class="fc" id="L147">                                updStmt.executeUpdate();</span>
                             }
-<span class="fc" id="L134">                        } else {</span>
+<span class="fc" id="L149">                        } else {</span>
                             // Try to find user by email (case-insensitive)
-<span class="fc" id="L136">                            Long dbIdByEmail = null;</span>
-<span class="fc" id="L137">                            try (PreparedStatement selEmail = conn.prepareStatement(&quot;SELECT id FROM usuarios WHERE lower(email) = lower(?)&quot;)) {</span>
-<span class="fc" id="L138">                                selEmail.setString(1, email);</span>
-<span class="fc" id="L139">                                try (ResultSet rs = selEmail.executeQuery()) {</span>
-<span class="fc bfc" id="L140" title="All 2 branches covered.">                                    if (rs.next()) {</span>
-<span class="fc" id="L141">                                        dbIdByEmail = rs.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L151">                            Long dbIdByEmail = null;</span>
+<span class="fc" id="L152">                            try (PreparedStatement selEmail = conn.prepareStatement(&quot;SELECT id FROM usuarios WHERE lower(email) = lower(?)&quot;)) {</span>
+<span class="fc" id="L153">                                selEmail.setString(1, email);</span>
+<span class="fc" id="L154">                                try (ResultSet rs = selEmail.executeQuery()) {</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                                    if (rs.next()) {</span>
+<span class="fc" id="L156">                                        dbIdByEmail = rs.getLong(&quot;id&quot;);</span>
                                     }
                                 }
                             }
 
-<span class="fc bfc" id="L146" title="All 2 branches covered.">                            if (dbIdByEmail != null) {</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                            if (dbIdByEmail != null) {</span>
                                 // Link user by setting external_id and update other profile fields
-<span class="fc" id="L148">                                String updateSql = &quot;UPDATE usuarios SET external_id = ?, nome = ?, role = ?, avatar_url = ?, bio = ?, curso = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;;</span>
-<span class="fc" id="L149">                                try (PreparedStatement updStmt = conn.prepareStatement(updateSql)) {</span>
-<span class="fc" id="L150">                                    updStmt.setString(1, userId);</span>
-<span class="fc" id="L151">                                    updStmt.setString(2, name);</span>
-<span class="fc" id="L152">                                    updStmt.setString(3, role);</span>
-<span class="fc" id="L153">                                    updStmt.setString(4, avatarUrl);</span>
-<span class="fc" id="L154">                                    updStmt.setString(5, bio);</span>
-<span class="fc" id="L155">                                    updStmt.setString(6, course);</span>
-<span class="fc" id="L156">                                    updStmt.setLong(7, dbIdByEmail);</span>
-<span class="fc" id="L157">                                    updStmt.executeUpdate();</span>
+<span class="fc" id="L163">                                String updateSql = &quot;UPDATE usuarios SET external_id = ?, nome = ?, role = ?, avatar_url = ?, bio = ?, curso = ?, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?&quot;;</span>
+<span class="fc" id="L164">                                try (PreparedStatement updStmt = conn.prepareStatement(updateSql)) {</span>
+<span class="fc" id="L165">                                    updStmt.setString(1, userId);</span>
+<span class="fc" id="L166">                                    updStmt.setString(2, name);</span>
+<span class="fc" id="L167">                                    updStmt.setString(3, role);</span>
+<span class="fc" id="L168">                                    updStmt.setString(4, avatarUrl);</span>
+<span class="fc" id="L169">                                    updStmt.setString(5, bio);</span>
+<span class="fc" id="L170">                                    updStmt.setString(6, course);</span>
+<span class="fc" id="L171">                                    updStmt.setLong(7, dbIdByEmail);</span>
+<span class="fc" id="L172">                                    updStmt.executeUpdate();</span>
                                 }
-<span class="fc" id="L159">                            } else {</span>
+<span class="fc" id="L174">                            } else {</span>
                                 // Insert new user
-<span class="fc" id="L161">                                String insertSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L176">                                String insertSql = &quot;&quot;&quot;</span>
                                         INSERT INTO usuarios (external_id, nome, email, senha_hash, role, email_verificado, avatar_url, bio, curso, criado_em)
                                         VALUES (?, ?, ?, ?, ?, TRUE, ?, ?, ?, CURRENT_TIMESTAMP)
                                         &quot;&quot;&quot;;
-<span class="fc" id="L165">                                try (PreparedStatement insStmt = conn.prepareStatement(insertSql)) {</span>
-<span class="fc" id="L166">                                    insStmt.setString(1, userId);</span>
-<span class="fc" id="L167">                                    insStmt.setString(2, name);</span>
-<span class="fc" id="L168">                                    insStmt.setString(3, email);</span>
-<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                                    insStmt.setString(4, passwordHash != null ? passwordHash : &quot;DISABLED&quot;);</span>
-<span class="fc" id="L170">                                    insStmt.setString(5, role);</span>
-<span class="fc" id="L171">                                    insStmt.setString(6, avatarUrl);</span>
-<span class="fc" id="L172">                                    insStmt.setString(7, bio);</span>
-<span class="fc" id="L173">                                    insStmt.setString(8, course);</span>
-<span class="fc" id="L174">                                    insStmt.executeUpdate();</span>
+<span class="fc" id="L180">                                try (PreparedStatement insStmt = conn.prepareStatement(insertSql)) {</span>
+<span class="fc" id="L181">                                    insStmt.setString(1, userId);</span>
+<span class="fc" id="L182">                                    insStmt.setString(2, name);</span>
+<span class="fc" id="L183">                                    insStmt.setString(3, email);</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                                    insStmt.setString(4, passwordHash != null ? passwordHash : &quot;DISABLED&quot;);</span>
+<span class="fc" id="L185">                                    insStmt.setString(5, role);</span>
+<span class="fc" id="L186">                                    insStmt.setString(6, avatarUrl);</span>
+<span class="fc" id="L187">                                    insStmt.setString(7, bio);</span>
+<span class="fc" id="L188">                                    insStmt.setString(8, course);</span>
+<span class="fc" id="L189">                                    insStmt.executeUpdate();</span>
                                 }
                             }
                         }
-<span class="fc" id="L178">                    }</span>
+<span class="fc" id="L193">                        usersSynced++;</span>
+<span class="fc" id="L194">                    }</span>
                 }
 
                 // Cache all users external_id to internal id
-<span class="fc" id="L182">                Map&lt;String, Long&gt; userExternalToInternalId = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L183">                try (PreparedStatement stmt = conn.prepareStatement(&quot;SELECT id, external_id FROM usuarios WHERE external_id IS NOT NULL&quot;)) {</span>
-<span class="fc" id="L184">                    try (ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L185" title="All 2 branches covered.">                        while (rs.next()) {</span>
-<span class="fc" id="L186">                            userExternalToInternalId.put(rs.getString(&quot;external_id&quot;), rs.getLong(&quot;id&quot;));</span>
+<span class="fc" id="L198">                Map&lt;String, Long&gt; userExternalToInternalId = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L199">                try (PreparedStatement stmt = conn.prepareStatement(&quot;SELECT id, external_id FROM usuarios WHERE external_id IS NOT NULL&quot;)) {</span>
+<span class="fc" id="L200">                    try (ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                        while (rs.next()) {</span>
+<span class="fc" id="L202">                            userExternalToInternalId.put(rs.getString(&quot;external_id&quot;), rs.getLong(&quot;id&quot;));</span>
                         }
                     }
                 }
 
                 // 3) Sync boardGames
-<span class="fc" id="L192">                JsonNode gamesNode = root.path(&quot;boardGames&quot;);</span>
-<span class="fc bfc" id="L193" title="All 2 branches covered.">                if (gamesNode.isArray()) {</span>
-<span class="fc bfc" id="L194" title="All 2 branches covered.">                    for (JsonNode gameNode : gamesNode) {</span>
-<span class="fc" id="L195">                        String gameId = gameNode.path(&quot;id&quot;).asText();</span>
-<span class="fc" id="L196">                        String name = gameNode.path(&quot;name&quot;).asText();</span>
-<span class="fc" id="L197">                        String description = gameNode.path(&quot;description&quot;).asText();</span>
-<span class="fc" id="L198">                        String coverUrl = gameNode.path(&quot;coverUrl&quot;).asText();</span>
-<span class="fc" id="L199">                        String category = gameNode.path(&quot;category&quot;).asText();</span>
+<span class="fc" id="L208">                JsonNode gamesNode = root.path(&quot;boardGames&quot;);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">                if (gamesNode.isArray()) {</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                    for (JsonNode gameNode : gamesNode) {</span>
+<span class="fc" id="L211">                        String gameId = gameNode.path(&quot;id&quot;).asText();</span>
+<span class="fc" id="L212">                        String name = gameNode.path(&quot;name&quot;).asText();</span>
+<span class="fc" id="L213">                        String description = gameNode.path(&quot;description&quot;).asText();</span>
+<span class="fc" id="L214">                        String coverUrl = gameNode.path(&quot;coverUrl&quot;).asText();</span>
+<span class="fc" id="L215">                        String category = gameNode.path(&quot;category&quot;).asText();</span>
 
-<span class="pc bpc" id="L201" title="1 of 4 branches missed.">                        Integer minPlayers = gameNode.has(&quot;minPlayers&quot;) &amp;&amp; !gameNode.path(&quot;minPlayers&quot;).isNull()</span>
-<span class="fc" id="L202">                                ? gameNode.path(&quot;minPlayers&quot;).asInt() : null;</span>
-<span class="pc bpc" id="L203" title="1 of 4 branches missed.">                        Integer maxPlayers = gameNode.has(&quot;maxPlayers&quot;) &amp;&amp; !gameNode.path(&quot;maxPlayers&quot;).isNull()</span>
-<span class="fc" id="L204">                                ? gameNode.path(&quot;maxPlayers&quot;).asInt() : null;</span>
-<span class="pc bpc" id="L205" title="1 of 4 branches missed.">                        Integer avgPlayTime = gameNode.has(&quot;avgPlayTime&quot;) &amp;&amp; !gameNode.path(&quot;avgPlayTime&quot;).isNull()</span>
-<span class="fc" id="L206">                                ? gameNode.path(&quot;avgPlayTime&quot;).asInt() : null;</span>
-<span class="pc bpc" id="L207" title="1 of 4 branches missed.">                        Double complexity = gameNode.has(&quot;complexity&quot;) &amp;&amp; !gameNode.path(&quot;complexity&quot;).isNull()</span>
-<span class="fc" id="L208">                                ? gameNode.path(&quot;complexity&quot;).asDouble() : null;</span>
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">                        Integer minPlayers = gameNode.has(&quot;minPlayers&quot;) &amp;&amp; !gameNode.path(&quot;minPlayers&quot;).isNull()</span>
+<span class="fc" id="L218">                                ? gameNode.path(&quot;minPlayers&quot;).asInt() : null;</span>
+<span class="pc bpc" id="L219" title="1 of 4 branches missed.">                        Integer maxPlayers = gameNode.has(&quot;maxPlayers&quot;) &amp;&amp; !gameNode.path(&quot;maxPlayers&quot;).isNull()</span>
+<span class="fc" id="L220">                                ? gameNode.path(&quot;maxPlayers&quot;).asInt() : null;</span>
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">                        Integer avgPlayTime = gameNode.has(&quot;avgPlayTime&quot;) &amp;&amp; !gameNode.path(&quot;avgPlayTime&quot;).isNull()</span>
+<span class="fc" id="L222">                                ? gameNode.path(&quot;avgPlayTime&quot;).asInt() : null;</span>
+<span class="pc bpc" id="L223" title="1 of 4 branches missed.">                        Double complexity = gameNode.has(&quot;complexity&quot;) &amp;&amp; !gameNode.path(&quot;complexity&quot;).isNull()</span>
+<span class="fc" id="L224">                                ? gameNode.path(&quot;complexity&quot;).asDouble() : null;</span>
 
                         // Find by external_id first
-<span class="fc" id="L211">                        Long dbGameId = null;</span>
-<span class="fc" id="L212">                        try (PreparedStatement selExt = conn.prepareStatement(&quot;SELECT id FROM jogos WHERE external_id = ?&quot;)) {</span>
-<span class="fc" id="L213">                            selExt.setString(1, gameId);</span>
-<span class="fc" id="L214">                            try (ResultSet rs = selExt.executeQuery()) {</span>
-<span class="fc bfc" id="L215" title="All 2 branches covered.">                                if (rs.next()) {</span>
-<span class="fc" id="L216">                                    dbGameId = rs.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L227">                        Long dbGameId = null;</span>
+<span class="fc" id="L228">                        try (PreparedStatement selExt = conn.prepareStatement(&quot;SELECT id FROM jogos WHERE external_id = ?&quot;)) {</span>
+<span class="fc" id="L229">                            selExt.setString(1, gameId);</span>
+<span class="fc" id="L230">                            try (ResultSet rs = selExt.executeQuery()) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                                if (rs.next()) {</span>
+<span class="fc" id="L232">                                    dbGameId = rs.getLong(&quot;id&quot;);</span>
                                 }
                             }
                         }
 
-<span class="fc bfc" id="L221" title="All 2 branches covered.">                        if (dbGameId != null) {</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                        if (dbGameId != null) {</span>
                             // Update existing game by external_id
-<span class="fc" id="L223">                            String updSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L239">                            String updSql = &quot;&quot;&quot;</span>
                                     UPDATE jogos
                                     SET nome = ?, descricao = ?, cover_url = ?, categoria = ?, min_players = ?, max_players = ?, avg_play_time = ?, complexity = ?, atualizado_em = CURRENT_TIMESTAMP
                                     WHERE id = ?
                                     &quot;&quot;&quot;;
-<span class="fc" id="L228">                            try (PreparedStatement updStmt = conn.prepareStatement(updSql)) {</span>
-<span class="fc" id="L229">                                updStmt.setString(1, name);</span>
-<span class="fc" id="L230">                                updStmt.setString(2, description);</span>
-<span class="fc" id="L231">                                updStmt.setString(3, coverUrl);</span>
-<span class="fc" id="L232">                                updStmt.setString(4, category);</span>
-<span class="fc" id="L233">                                setNullableInt(updStmt, 5, minPlayers);</span>
-<span class="fc" id="L234">                                setNullableInt(updStmt, 6, maxPlayers);</span>
-<span class="fc" id="L235">                                setNullableInt(updStmt, 7, avgPlayTime);</span>
-<span class="fc" id="L236">                                setNullableDouble(updStmt, 8, complexity);</span>
-<span class="fc" id="L237">                                updStmt.setLong(9, dbGameId);</span>
-<span class="fc" id="L238">                                updStmt.executeUpdate();</span>
+<span class="fc" id="L244">                            try (PreparedStatement updStmt = conn.prepareStatement(updSql)) {</span>
+<span class="fc" id="L245">                                updStmt.setString(1, name);</span>
+<span class="fc" id="L246">                                updStmt.setString(2, description);</span>
+<span class="fc" id="L247">                                updStmt.setString(3, coverUrl);</span>
+<span class="fc" id="L248">                                updStmt.setString(4, category);</span>
+<span class="fc" id="L249">                                setNullableInt(updStmt, 5, minPlayers);</span>
+<span class="fc" id="L250">                                setNullableInt(updStmt, 6, maxPlayers);</span>
+<span class="fc" id="L251">                                setNullableInt(updStmt, 7, avgPlayTime);</span>
+<span class="fc" id="L252">                                setNullableDouble(updStmt, 8, complexity);</span>
+<span class="fc" id="L253">                                updStmt.setLong(9, dbGameId);</span>
+<span class="fc" id="L254">                                updStmt.executeUpdate();</span>
                             }
-<span class="fc" id="L240">                        } else {</span>
+<span class="fc" id="L256">                        } else {</span>
                             // Find by name
-<span class="fc" id="L242">                            Long dbGameIdByName = null;</span>
-<span class="fc" id="L243">                            try (PreparedStatement selName = conn.prepareStatement(&quot;SELECT id FROM jogos WHERE nome = ?&quot;)) {</span>
-<span class="fc" id="L244">                                selName.setString(1, name);</span>
-<span class="fc" id="L245">                                try (ResultSet rs = selName.executeQuery()) {</span>
-<span class="fc bfc" id="L246" title="All 2 branches covered.">                                    if (rs.next()) {</span>
-<span class="fc" id="L247">                                        dbGameIdByName = rs.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L258">                            Long dbGameIdByName = null;</span>
+<span class="fc" id="L259">                            try (PreparedStatement selName = conn.prepareStatement(&quot;SELECT id FROM jogos WHERE nome = ?&quot;)) {</span>
+<span class="fc" id="L260">                                selName.setString(1, name);</span>
+<span class="fc" id="L261">                                try (ResultSet rs = selName.executeQuery()) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                                    if (rs.next()) {</span>
+<span class="fc" id="L263">                                        dbGameIdByName = rs.getLong(&quot;id&quot;);</span>
                                     }
                                 }
                             }
 
-<span class="fc bfc" id="L252" title="All 2 branches covered.">                            if (dbGameIdByName != null) {</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                            if (dbGameIdByName != null) {</span>
                                 // If external_id is null, link it, otherwise update.
-<span class="fc" id="L254">                                String updSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L270">                                String updSql = &quot;&quot;&quot;</span>
                                         UPDATE jogos
                                         SET external_id = ?, descricao = ?, cover_url = ?, categoria = ?, min_players = ?, max_players = ?, avg_play_time = ?, complexity = ?, atualizado_em = CURRENT_TIMESTAMP
                                         WHERE id = ?
                                         &quot;&quot;&quot;;
-<span class="fc" id="L259">                                try (PreparedStatement updStmt = conn.prepareStatement(updSql)) {</span>
-<span class="fc" id="L260">                                    updStmt.setString(1, gameId);</span>
-<span class="fc" id="L261">                                    updStmt.setString(2, description);</span>
-<span class="fc" id="L262">                                    updStmt.setString(3, coverUrl);</span>
-<span class="fc" id="L263">                                    updStmt.setString(4, category);</span>
-<span class="fc" id="L264">                                    setNullableInt(updStmt, 5, minPlayers);</span>
-<span class="fc" id="L265">                                    setNullableInt(updStmt, 6, maxPlayers);</span>
-<span class="fc" id="L266">                                    setNullableInt(updStmt, 7, avgPlayTime);</span>
-<span class="fc" id="L267">                                    setNullableDouble(updStmt, 8, complexity);</span>
-<span class="fc" id="L268">                                    updStmt.setLong(9, dbGameIdByName);</span>
-<span class="fc" id="L269">                                    updStmt.executeUpdate();</span>
+<span class="fc" id="L275">                                try (PreparedStatement updStmt = conn.prepareStatement(updSql)) {</span>
+<span class="fc" id="L276">                                    updStmt.setString(1, gameId);</span>
+<span class="fc" id="L277">                                    updStmt.setString(2, description);</span>
+<span class="fc" id="L278">                                    updStmt.setString(3, coverUrl);</span>
+<span class="fc" id="L279">                                    updStmt.setString(4, category);</span>
+<span class="fc" id="L280">                                    setNullableInt(updStmt, 5, minPlayers);</span>
+<span class="fc" id="L281">                                    setNullableInt(updStmt, 6, maxPlayers);</span>
+<span class="fc" id="L282">                                    setNullableInt(updStmt, 7, avgPlayTime);</span>
+<span class="fc" id="L283">                                    setNullableDouble(updStmt, 8, complexity);</span>
+<span class="fc" id="L284">                                    updStmt.setLong(9, dbGameIdByName);</span>
+<span class="fc" id="L285">                                    updStmt.executeUpdate();</span>
                                 }
-<span class="fc" id="L271">                            } else {</span>
+<span class="fc" id="L287">                            } else {</span>
                                 // Insert new game
-<span class="fc" id="L273">                                String insSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L289">                                String insSql = &quot;&quot;&quot;</span>
                                         INSERT INTO jogos (external_id, nome, descricao, cover_url, categoria, min_players, max_players, avg_play_time, complexity, atualizado_em)
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                                         &quot;&quot;&quot;;
-<span class="fc" id="L277">                                try (PreparedStatement insStmt = conn.prepareStatement(insSql)) {</span>
-<span class="fc" id="L278">                                    insStmt.setString(1, gameId);</span>
-<span class="fc" id="L279">                                    insStmt.setString(2, name);</span>
-<span class="fc" id="L280">                                    insStmt.setString(3, description);</span>
-<span class="fc" id="L281">                                    insStmt.setString(4, coverUrl);</span>
-<span class="fc" id="L282">                                    insStmt.setString(5, category);</span>
-<span class="fc" id="L283">                                    setNullableInt(insStmt, 6, minPlayers);</span>
-<span class="fc" id="L284">                                    setNullableInt(insStmt, 7, maxPlayers);</span>
-<span class="fc" id="L285">                                    setNullableInt(insStmt, 8, avgPlayTime);</span>
-<span class="fc" id="L286">                                    setNullableDouble(insStmt, 9, complexity);</span>
-<span class="fc" id="L287">                                    insStmt.executeUpdate();</span>
+<span class="fc" id="L293">                                try (PreparedStatement insStmt = conn.prepareStatement(insSql)) {</span>
+<span class="fc" id="L294">                                    insStmt.setString(1, gameId);</span>
+<span class="fc" id="L295">                                    insStmt.setString(2, name);</span>
+<span class="fc" id="L296">                                    insStmt.setString(3, description);</span>
+<span class="fc" id="L297">                                    insStmt.setString(4, coverUrl);</span>
+<span class="fc" id="L298">                                    insStmt.setString(5, category);</span>
+<span class="fc" id="L299">                                    setNullableInt(insStmt, 6, minPlayers);</span>
+<span class="fc" id="L300">                                    setNullableInt(insStmt, 7, maxPlayers);</span>
+<span class="fc" id="L301">                                    setNullableInt(insStmt, 8, avgPlayTime);</span>
+<span class="fc" id="L302">                                    setNullableDouble(insStmt, 9, complexity);</span>
+<span class="fc" id="L303">                                    insStmt.executeUpdate();</span>
                                 }
                             }
                         }
-<span class="fc" id="L291">                    }</span>
+<span class="fc" id="L307">                        gamesSynced++;</span>
+<span class="fc" id="L308">                    }</span>
                 }
 
                 // Cache all games external_id to internal id
-<span class="fc" id="L295">                Map&lt;String, Long&gt; gameExternalToInternalId = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L296">                try (PreparedStatement stmt = conn.prepareStatement(&quot;SELECT id, external_id FROM jogos WHERE external_id IS NOT NULL&quot;)) {</span>
-<span class="fc" id="L297">                    try (ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L298" title="All 2 branches covered.">                        while (rs.next()) {</span>
-<span class="fc" id="L299">                            gameExternalToInternalId.put(rs.getString(&quot;external_id&quot;), rs.getLong(&quot;id&quot;));</span>
+<span class="fc" id="L312">                Map&lt;String, Long&gt; gameExternalToInternalId = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L313">                try (PreparedStatement stmt = conn.prepareStatement(&quot;SELECT id, external_id FROM jogos WHERE external_id IS NOT NULL&quot;)) {</span>
+<span class="fc" id="L314">                    try (ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">                        while (rs.next()) {</span>
+<span class="fc" id="L316">                            gameExternalToInternalId.put(rs.getString(&quot;external_id&quot;), rs.getLong(&quot;id&quot;));</span>
                         }
                     }
                 }
 
                 // 4) Sync events
-<span class="fc" id="L305">                JsonNode eventsNode = root.path(&quot;events&quot;);</span>
-<span class="fc bfc" id="L306" title="All 2 branches covered.">                if (eventsNode.isArray()) {</span>
-<span class="fc" id="L307">                    String insEventSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L322">                JsonNode eventsNode = root.path(&quot;events&quot;);</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">                if (eventsNode.isArray()) {</span>
+<span class="fc" id="L324">                    String insEventSql = &quot;&quot;&quot;</span>
                             INSERT INTO eventos (external_id, jogo_id, data_hora, local, descricao, max_participantes, status, organizador_id, criado_em)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                             &quot;&quot;&quot;;
-<span class="fc" id="L311">                    try (PreparedStatement stmt = conn.prepareStatement(insEventSql, Statement.RETURN_GENERATED_KEYS)) {</span>
-<span class="fc bfc" id="L312" title="All 2 branches covered.">                        for (JsonNode eventNode : eventsNode) {</span>
-<span class="fc" id="L313">                            String eventId = eventNode.path(&quot;id&quot;).asText();</span>
-<span class="fc" id="L314">                            stmt.setString(1, eventId);</span>
+<span class="fc" id="L328">                    try (PreparedStatement stmt = conn.prepareStatement(insEventSql, Statement.RETURN_GENERATED_KEYS)) {</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">                        for (JsonNode eventNode : eventsNode) {</span>
+<span class="fc" id="L330">                            String eventId = eventNode.path(&quot;id&quot;).asText();</span>
+<span class="fc" id="L331">                            stmt.setString(1, eventId);</span>
 
-<span class="fc" id="L316">                            String gameId = eventNode.path(&quot;gameId&quot;).asText();</span>
-<span class="fc" id="L317">                            Long dbGameId = gameExternalToInternalId.get(gameId);</span>
-<span class="fc" id="L318">                            setNullableLong(stmt, 2, dbGameId);</span>
+<span class="fc" id="L333">                            String gameId = eventNode.path(&quot;gameId&quot;).asText();</span>
+<span class="fc" id="L334">                            Long dbGameId = gameExternalToInternalId.get(gameId);</span>
+<span class="fc" id="L335">                            setNullableLong(stmt, 2, dbGameId);</span>
 
-<span class="fc" id="L320">                            String date = eventNode.path(&quot;date&quot;).asText();</span>
-<span class="fc" id="L321">                            String time = eventNode.path(&quot;time&quot;).asText();</span>
-<span class="pc bpc" id="L322" title="4 of 8 branches missed.">                            String dataHoraStr = (date != null &amp;&amp; !date.isBlank() &amp;&amp; time != null &amp;&amp; !time.isBlank())</span>
-<span class="pc" id="L323">                                    ? date + &quot;T&quot; + time + &quot;:00&quot; : &quot;&quot;;</span>
-<span class="fc" id="L324">                            stmt.setTimestamp(3, parseTimestamp(dataHoraStr));</span>
+<span class="fc" id="L337">                            String date = eventNode.path(&quot;date&quot;).asText();</span>
+<span class="fc" id="L338">                            String time = eventNode.path(&quot;time&quot;).asText();</span>
+<span class="pc bpc" id="L339" title="4 of 8 branches missed.">                            String dataHoraStr = (date != null &amp;&amp; !date.isBlank() &amp;&amp; time != null &amp;&amp; !time.isBlank())</span>
+<span class="pc" id="L340">                                    ? date + &quot;T&quot; + time + &quot;:00&quot; : &quot;&quot;;</span>
+<span class="fc" id="L341">                            stmt.setTimestamp(3, parseTimestamp(dataHoraStr));</span>
 
-<span class="fc" id="L326">                            stmt.setString(4, eventNode.path(&quot;location&quot;).asText());</span>
-<span class="fc" id="L327">                            stmt.setString(5, eventNode.path(&quot;description&quot;).asText());</span>
+<span class="fc" id="L343">                            stmt.setString(4, eventNode.path(&quot;location&quot;).asText());</span>
+<span class="fc" id="L344">                            stmt.setString(5, eventNode.path(&quot;description&quot;).asText());</span>
 
-<span class="pc bpc" id="L329" title="2 of 4 branches missed.">                            Integer maxParts = eventNode.has(&quot;maxParticipants&quot;) &amp;&amp; !eventNode.path(&quot;maxParticipants&quot;).isNull()</span>
-<span class="pc" id="L330">                                    ? eventNode.path(&quot;maxParticipants&quot;).asInt() : null;</span>
-<span class="fc" id="L331">                            setNullableInt(stmt, 6, maxParts);</span>
+<span class="pc bpc" id="L346" title="2 of 4 branches missed.">                            Integer maxParts = eventNode.has(&quot;maxParticipants&quot;) &amp;&amp; !eventNode.path(&quot;maxParticipants&quot;).isNull()</span>
+<span class="pc" id="L347">                                    ? eventNode.path(&quot;maxParticipants&quot;).asInt() : null;</span>
+<span class="fc" id="L348">                            setNullableInt(stmt, 6, maxParts);</span>
 
-<span class="fc" id="L333">                            String status = eventNode.path(&quot;status&quot;).asText();</span>
-<span class="pc bpc" id="L334" title="1 of 2 branches missed.">                            if (status.isBlank()) {</span>
-<span class="nc" id="L335">                                status = &quot;active&quot;;</span>
+<span class="fc" id="L350">                            String status = eventNode.path(&quot;status&quot;).asText();</span>
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">                            if (status.isBlank()) {</span>
+<span class="nc" id="L352">                                status = &quot;active&quot;;</span>
                             }
-<span class="fc" id="L337">                            stmt.setString(7, status);</span>
+<span class="fc" id="L354">                            stmt.setString(7, status);</span>
 
-<span class="fc" id="L339">                            String organizerId = eventNode.path(&quot;organizerId&quot;).asText();</span>
-<span class="fc" id="L340">                            Long dbOrganizerId = userExternalToInternalId.get(organizerId);</span>
-<span class="fc" id="L341">                            setNullableLong(stmt, 8, dbOrganizerId);</span>
+<span class="fc" id="L356">                            String organizerId = eventNode.path(&quot;organizerId&quot;).asText();</span>
+<span class="fc" id="L357">                            Long dbOrganizerId = userExternalToInternalId.get(organizerId);</span>
+<span class="fc" id="L358">                            setNullableLong(stmt, 8, dbOrganizerId);</span>
 
-<span class="fc" id="L343">                            stmt.executeUpdate();</span>
+<span class="fc" id="L360">                            stmt.executeUpdate();</span>
 
                             long dbEventId;
-<span class="fc" id="L346">                            try (ResultSet gk = stmt.getGeneratedKeys()) {</span>
-<span class="pc bpc" id="L347" title="1 of 2 branches missed.">                                if (gk.next()) {</span>
-<span class="fc" id="L348">                                    dbEventId = gk.getLong(1);</span>
+<span class="fc" id="L363">                            try (ResultSet gk = stmt.getGeneratedKeys()) {</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">                                if (gk.next()) {</span>
+<span class="fc" id="L365">                                    dbEventId = gk.getLong(1);</span>
                                 } else {
-<span class="nc" id="L350">                                    throw new SQLException(&quot;Failed to get generated key for event: &quot; + eventId);</span>
+<span class="nc" id="L367">                                    throw new SQLException(&quot;Failed to get generated key for event: &quot; + eventId);</span>
                                 }
                             }
 
                             // participantIds -&gt; PARTICIPANT
-<span class="fc" id="L355">                            JsonNode partsNode = eventNode.path(&quot;participantIds&quot;);</span>
-<span class="pc bpc" id="L356" title="1 of 2 branches missed.">                            if (partsNode.isArray()) {</span>
-<span class="fc" id="L357">                                try (PreparedStatement pStmt = conn.prepareStatement(</span>
+<span class="fc" id="L372">                            JsonNode partsNode = eventNode.path(&quot;participantIds&quot;);</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">                            if (partsNode.isArray()) {</span>
+<span class="fc" id="L374">                                try (PreparedStatement pStmt = conn.prepareStatement(</span>
                                         &quot;INSERT INTO evento_participantes (evento_id, usuario_id, tipo) VALUES (?, ?, 'PARTICIPANT') ON CONFLICT DO NOTHING&quot;)) {
-<span class="fc bfc" id="L359" title="All 2 branches covered.">                                    for (JsonNode pNode : partsNode) {</span>
-<span class="fc" id="L360">                                        String pUserId = pNode.asText();</span>
-<span class="fc" id="L361">                                        Long dbPUserId = userExternalToInternalId.get(pUserId);</span>
-<span class="pc bpc" id="L362" title="1 of 2 branches missed.">                                        if (dbPUserId != null) {</span>
-<span class="fc" id="L363">                                            pStmt.setLong(1, dbEventId);</span>
-<span class="fc" id="L364">                                            pStmt.setLong(2, dbPUserId);</span>
-<span class="fc" id="L365">                                            pStmt.executeUpdate();</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">                                    for (JsonNode pNode : partsNode) {</span>
+<span class="fc" id="L377">                                        String pUserId = pNode.asText();</span>
+<span class="fc" id="L378">                                        Long dbPUserId = userExternalToInternalId.get(pUserId);</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">                                        if (dbPUserId != null) {</span>
+<span class="fc" id="L380">                                            pStmt.setLong(1, dbEventId);</span>
+<span class="fc" id="L381">                                            pStmt.setLong(2, dbPUserId);</span>
+<span class="fc" id="L382">                                            pStmt.executeUpdate();</span>
                                         }
-<span class="fc" id="L367">                                    }</span>
+<span class="fc" id="L384">                                    }</span>
                                 }
                             }
 
                             // waitingListIds -&gt; WAITING
-<span class="fc" id="L372">                            JsonNode waitNode = eventNode.path(&quot;waitingListIds&quot;);</span>
-<span class="pc bpc" id="L373" title="1 of 2 branches missed.">                            if (waitNode.isArray()) {</span>
-<span class="fc" id="L374">                                try (PreparedStatement wStmt = conn.prepareStatement(</span>
+<span class="fc" id="L389">                            JsonNode waitNode = eventNode.path(&quot;waitingListIds&quot;);</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">                            if (waitNode.isArray()) {</span>
+<span class="fc" id="L391">                                try (PreparedStatement wStmt = conn.prepareStatement(</span>
                                         &quot;INSERT INTO evento_participantes (evento_id, usuario_id, tipo) VALUES (?, ?, 'WAITING') ON CONFLICT DO NOTHING&quot;)) {
-<span class="pc bpc" id="L376" title="1 of 2 branches missed.">                                    for (JsonNode wtNode : waitNode) {</span>
-<span class="nc" id="L377">                                        String wUserId = wtNode.asText();</span>
-<span class="nc" id="L378">                                        Long dbWUserId = userExternalToInternalId.get(wUserId);</span>
-<span class="nc bnc" id="L379" title="All 2 branches missed.">                                        if (dbWUserId != null) {</span>
-<span class="nc" id="L380">                                            wStmt.setLong(1, dbEventId);</span>
-<span class="nc" id="L381">                                            wStmt.setLong(2, dbWUserId);</span>
-<span class="nc" id="L382">                                            wStmt.executeUpdate();</span>
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">                                    for (JsonNode wtNode : waitNode) {</span>
+<span class="nc" id="L394">                                        String wUserId = wtNode.asText();</span>
+<span class="nc" id="L395">                                        Long dbWUserId = userExternalToInternalId.get(wUserId);</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">                                        if (dbWUserId != null) {</span>
+<span class="nc" id="L397">                                            wStmt.setLong(1, dbEventId);</span>
+<span class="nc" id="L398">                                            wStmt.setLong(2, dbWUserId);</span>
+<span class="nc" id="L399">                                            wStmt.executeUpdate();</span>
                                         }
-<span class="nc" id="L384">                                    }</span>
+<span class="nc" id="L401">                                    }</span>
                                 }
                             }
-<span class="fc" id="L387">                        }</span>
+<span class="fc" id="L404">                            eventsSynced++;</span>
+<span class="fc" id="L405">                        }</span>
                     }
                 }
 
                 // 5) Sync sessions (partidas)
-<span class="fc" id="L392">                JsonNode sessionsNode = root.path(&quot;sessions&quot;);</span>
-<span class="fc bfc" id="L393" title="All 2 branches covered.">                if (sessionsNode.isArray()) {</span>
-<span class="fc" id="L394">                    String insSessionSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L410">                JsonNode sessionsNode = root.path(&quot;sessions&quot;);</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">                if (sessionsNode.isArray()) {</span>
+<span class="fc" id="L412">                    String insSessionSql = &quot;&quot;&quot;</span>
                             INSERT INTO partidas (external_id, jogo_id, evento_id, data_hora, local, organizador_id, vencedor_id, duracao_minutos, notas, criado_em)
                             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                             &quot;&quot;&quot;;
-<span class="fc" id="L398">                    try (PreparedStatement stmt = conn.prepareStatement(insSessionSql, Statement.RETURN_GENERATED_KEYS)) {</span>
-<span class="fc bfc" id="L399" title="All 2 branches covered.">                        for (JsonNode sessionNode : sessionsNode) {</span>
-<span class="fc" id="L400">                            String sessionId = sessionNode.path(&quot;id&quot;).asText();</span>
-<span class="fc" id="L401">                            stmt.setString(1, sessionId);</span>
+<span class="fc" id="L416">                    try (PreparedStatement stmt = conn.prepareStatement(insSessionSql, Statement.RETURN_GENERATED_KEYS)) {</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">                        for (JsonNode sessionNode : sessionsNode) {</span>
+<span class="fc" id="L418">                            String sessionId = sessionNode.path(&quot;id&quot;).asText();</span>
+<span class="fc" id="L419">                            stmt.setString(1, sessionId);</span>
 
-<span class="fc" id="L403">                            String gameId = sessionNode.path(&quot;gameId&quot;).asText();</span>
-<span class="fc" id="L404">                            Long dbGameId = gameExternalToInternalId.get(gameId);</span>
-<span class="fc" id="L405">                            setNullableLong(stmt, 2, dbGameId);</span>
+<span class="fc" id="L421">                            String gameId = sessionNode.path(&quot;gameId&quot;).asText();</span>
+<span class="fc" id="L422">                            Long dbGameId = gameExternalToInternalId.get(gameId);</span>
+<span class="fc" id="L423">                            setNullableLong(stmt, 2, dbGameId);</span>
 
-<span class="fc" id="L407">                            String dateStr = sessionNode.path(&quot;date&quot;).asText();</span>
-<span class="fc" id="L408">                            stmt.setTimestamp(3, parseTimestamp(dateStr));</span>
+<span class="fc" id="L425">                            String dateStr = sessionNode.path(&quot;date&quot;).asText();</span>
+<span class="fc" id="L426">                            stmt.setTimestamp(3, parseTimestamp(dateStr));</span>
 
-<span class="fc" id="L410">                            stmt.setString(4, sessionNode.path(&quot;location&quot;).asText());</span>
+<span class="fc" id="L428">                            stmt.setString(4, sessionNode.path(&quot;location&quot;).asText());</span>
 
-<span class="fc" id="L412">                            String organizerId = sessionNode.path(&quot;organizerId&quot;).asText();</span>
-<span class="fc" id="L413">                            Long dbOrganizerId = userExternalToInternalId.get(organizerId);</span>
-<span class="fc" id="L414">                            setNullableLong(stmt, 5, dbOrganizerId);</span>
+<span class="fc" id="L430">                            String organizerId = sessionNode.path(&quot;organizerId&quot;).asText();</span>
+<span class="fc" id="L431">                            Long dbOrganizerId = userExternalToInternalId.get(organizerId);</span>
+<span class="fc" id="L432">                            setNullableLong(stmt, 5, dbOrganizerId);</span>
 
-<span class="fc" id="L416">                            String winnerId = sessionNode.path(&quot;winnerId&quot;).asText();</span>
-<span class="fc" id="L417">                            Long dbWinnerId = userExternalToInternalId.get(winnerId);</span>
-<span class="fc" id="L418">                            setNullableLong(stmt, 6, dbWinnerId);</span>
+<span class="fc" id="L434">                            String winnerId = sessionNode.path(&quot;winnerId&quot;).asText();</span>
+<span class="fc" id="L435">                            Long dbWinnerId = userExternalToInternalId.get(winnerId);</span>
+<span class="fc" id="L436">                            setNullableLong(stmt, 6, dbWinnerId);</span>
 
-<span class="pc bpc" id="L420" title="2 of 4 branches missed.">                            Integer duration = sessionNode.has(&quot;duration&quot;) &amp;&amp; !sessionNode.path(&quot;duration&quot;).isNull()</span>
-<span class="pc" id="L421">                                    ? sessionNode.path(&quot;duration&quot;).asInt() : null;</span>
-<span class="fc" id="L422">                            setNullableInt(stmt, 7, duration);</span>
+<span class="pc bpc" id="L438" title="2 of 4 branches missed.">                            Integer duration = sessionNode.has(&quot;duration&quot;) &amp;&amp; !sessionNode.path(&quot;duration&quot;).isNull()</span>
+<span class="pc" id="L439">                                    ? sessionNode.path(&quot;duration&quot;).asInt() : null;</span>
+<span class="fc" id="L440">                            setNullableInt(stmt, 7, duration);</span>
 
-<span class="fc" id="L424">                            stmt.setString(8, sessionNode.path(&quot;notes&quot;).asText());</span>
+<span class="fc" id="L442">                            stmt.setString(8, sessionNode.path(&quot;notes&quot;).asText());</span>
 
-<span class="fc" id="L426">                            stmt.executeUpdate();</span>
+<span class="fc" id="L444">                            stmt.executeUpdate();</span>
 
                             long dbSessionId;
-<span class="fc" id="L429">                            try (ResultSet gk = stmt.getGeneratedKeys()) {</span>
-<span class="pc bpc" id="L430" title="1 of 2 branches missed.">                                if (gk.next()) {</span>
-<span class="fc" id="L431">                                    dbSessionId = gk.getLong(1);</span>
+<span class="fc" id="L447">                            try (ResultSet gk = stmt.getGeneratedKeys()) {</span>
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">                                if (gk.next()) {</span>
+<span class="fc" id="L449">                                    dbSessionId = gk.getLong(1);</span>
                                 } else {
-<span class="nc" id="L433">                                    throw new SQLException(&quot;Failed to get generated key for session: &quot; + sessionId);</span>
+<span class="nc" id="L451">                                    throw new SQLException(&quot;Failed to get generated key for session: &quot; + sessionId);</span>
                                 }
                             }
 
                             // participantIds -&gt; partida_participantes
-<span class="fc" id="L438">                            JsonNode partsNode = sessionNode.path(&quot;participantIds&quot;);</span>
-<span class="pc bpc" id="L439" title="1 of 2 branches missed.">                            if (partsNode.isArray()) {</span>
-<span class="fc" id="L440">                                try (PreparedStatement pStmt = conn.prepareStatement(</span>
+<span class="fc" id="L456">                            JsonNode partsNode = sessionNode.path(&quot;participantIds&quot;);</span>
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">                            if (partsNode.isArray()) {</span>
+<span class="fc" id="L458">                                try (PreparedStatement pStmt = conn.prepareStatement(</span>
                                         &quot;INSERT INTO partida_participantes (partida_id, usuario_id) VALUES (?, ?) ON CONFLICT DO NOTHING&quot;)) {
-<span class="fc bfc" id="L442" title="All 2 branches covered.">                                    for (JsonNode pNode : partsNode) {</span>
-<span class="fc" id="L443">                                        String pUserId = pNode.asText();</span>
-<span class="fc" id="L444">                                        Long dbPUserId = userExternalToInternalId.get(pUserId);</span>
-<span class="pc bpc" id="L445" title="1 of 2 branches missed.">                                        if (dbPUserId != null) {</span>
-<span class="fc" id="L446">                                            pStmt.setLong(1, dbSessionId);</span>
-<span class="fc" id="L447">                                            pStmt.setLong(2, dbPUserId);</span>
-<span class="fc" id="L448">                                            pStmt.executeUpdate();</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">                                    for (JsonNode pNode : partsNode) {</span>
+<span class="fc" id="L461">                                        String pUserId = pNode.asText();</span>
+<span class="fc" id="L462">                                        Long dbPUserId = userExternalToInternalId.get(pUserId);</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">                                        if (dbPUserId != null) {</span>
+<span class="fc" id="L464">                                            pStmt.setLong(1, dbSessionId);</span>
+<span class="fc" id="L465">                                            pStmt.setLong(2, dbPUserId);</span>
+<span class="fc" id="L466">                                            pStmt.executeUpdate();</span>
                                         }
-<span class="fc" id="L450">                                    }</span>
+<span class="fc" id="L468">                                    }</span>
                                 }
                             }
 
                             // photos -&gt; partida_fotos
-<span class="fc" id="L455">                            JsonNode photosNode = sessionNode.path(&quot;photos&quot;);</span>
-<span class="pc bpc" id="L456" title="1 of 2 branches missed.">                            if (photosNode.isArray()) {</span>
-<span class="fc" id="L457">                                try (PreparedStatement photoStmt = conn.prepareStatement(</span>
+<span class="fc" id="L473">                            JsonNode photosNode = sessionNode.path(&quot;photos&quot;);</span>
+<span class="pc bpc" id="L474" title="1 of 2 branches missed.">                            if (photosNode.isArray()) {</span>
+<span class="fc" id="L475">                                try (PreparedStatement photoStmt = conn.prepareStatement(</span>
                                         &quot;INSERT INTO partida_fotos (partida_id, url, ordem) VALUES (?, ?, ?)&quot;)) {
-<span class="fc" id="L459">                                    int order = 0;</span>
-<span class="fc bfc" id="L460" title="All 2 branches covered.">                                    for (JsonNode photoNode : photosNode) {</span>
-<span class="fc" id="L461">                                        photoStmt.setLong(1, dbSessionId);</span>
-<span class="fc" id="L462">                                        photoStmt.setString(2, photoNode.asText());</span>
-<span class="fc" id="L463">                                        photoStmt.setInt(3, order++);</span>
-<span class="fc" id="L464">                                        photoStmt.executeUpdate();</span>
-<span class="fc" id="L465">                                    }</span>
+<span class="fc" id="L477">                                    int order = 0;</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">                                    for (JsonNode photoNode : photosNode) {</span>
+<span class="fc" id="L479">                                        photoStmt.setLong(1, dbSessionId);</span>
+<span class="fc" id="L480">                                        photoStmt.setString(2, photoNode.asText());</span>
+<span class="fc" id="L481">                                        photoStmt.setInt(3, order++);</span>
+<span class="fc" id="L482">                                        photoStmt.executeUpdate();</span>
+<span class="fc" id="L483">                                    }</span>
                                 }
                             }
 
                             // comments -&gt; comentarios
-<span class="fc" id="L470">                            JsonNode commentsNode = sessionNode.path(&quot;comments&quot;);</span>
-<span class="pc bpc" id="L471" title="1 of 2 branches missed.">                            if (commentsNode.isArray()) {</span>
-<span class="fc" id="L472">                                try (PreparedStatement commentStmt = conn.prepareStatement(</span>
+<span class="fc" id="L488">                            JsonNode commentsNode = sessionNode.path(&quot;comments&quot;);</span>
+<span class="pc bpc" id="L489" title="1 of 2 branches missed.">                            if (commentsNode.isArray()) {</span>
+<span class="fc" id="L490">                                try (PreparedStatement commentStmt = conn.prepareStatement(</span>
                                         &quot;INSERT INTO comentarios (external_id, partida_id, usuario_id, conteudo, criado_em) VALUES (?, ?, ?, ?, ?)&quot;)) {
-<span class="fc bfc" id="L474" title="All 2 branches covered.">                                    for (JsonNode commentNode : commentsNode) {</span>
-<span class="fc" id="L475">                                        commentStmt.setString(1, commentNode.path(&quot;id&quot;).asText());</span>
-<span class="fc" id="L476">                                        commentStmt.setLong(2, dbSessionId);</span>
+<span class="fc bfc" id="L492" title="All 2 branches covered.">                                    for (JsonNode commentNode : commentsNode) {</span>
+<span class="fc" id="L493">                                        commentStmt.setString(1, commentNode.path(&quot;id&quot;).asText());</span>
+<span class="fc" id="L494">                                        commentStmt.setLong(2, dbSessionId);</span>
 
-<span class="fc" id="L478">                                        String commentUserId = commentNode.path(&quot;userId&quot;).asText();</span>
-<span class="fc" id="L479">                                        Long dbCommentUserId = userExternalToInternalId.get(commentUserId);</span>
-<span class="fc" id="L480">                                        setNullableLong(commentStmt, 3, dbCommentUserId);</span>
+<span class="fc" id="L496">                                        String commentUserId = commentNode.path(&quot;userId&quot;).asText();</span>
+<span class="fc" id="L497">                                        Long dbCommentUserId = userExternalToInternalId.get(commentUserId);</span>
+<span class="fc" id="L498">                                        setNullableLong(commentStmt, 3, dbCommentUserId);</span>
 
-<span class="fc" id="L482">                                        commentStmt.setString(4, commentNode.path(&quot;content&quot;).asText());</span>
+<span class="fc" id="L500">                                        commentStmt.setString(4, commentNode.path(&quot;content&quot;).asText());</span>
 
-<span class="fc" id="L484">                                        String createdAtStr = commentNode.path(&quot;createdAt&quot;).asText();</span>
-<span class="fc" id="L485">                                        commentStmt.setTimestamp(5, parseTimestamp(createdAtStr));</span>
+<span class="fc" id="L502">                                        String createdAtStr = commentNode.path(&quot;createdAt&quot;).asText();</span>
+<span class="fc" id="L503">                                        commentStmt.setTimestamp(5, parseTimestamp(createdAtStr));</span>
 
-<span class="fc" id="L487">                                        commentStmt.executeUpdate();</span>
-<span class="fc" id="L488">                                    }</span>
+<span class="fc" id="L505">                                        commentStmt.executeUpdate();</span>
+<span class="fc" id="L506">                                    }</span>
                                 }
                             }
-<span class="fc" id="L491">                        }</span>
+<span class="fc" id="L509">                            sessionsSynced++;</span>
+<span class="fc" id="L510">                        }</span>
                     }
                 }
 
                 // 6) Sync favoritos (User.favoriteGames -&gt; favoritos)
-<span class="fc bfc" id="L496" title="All 2 branches covered.">                if (usersNode.isArray()) {</span>
-<span class="fc" id="L497">                    try (PreparedStatement favStmt = conn.prepareStatement(</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">                if (usersNode.isArray()) {</span>
+<span class="fc" id="L516">                    try (PreparedStatement favStmt = conn.prepareStatement(</span>
                             &quot;INSERT INTO favoritos (usuario_id, jogo_id) VALUES (?, ?) ON CONFLICT DO NOTHING&quot;)) {
-<span class="fc bfc" id="L499" title="All 2 branches covered.">                        for (JsonNode userNode : usersNode) {</span>
-<span class="fc" id="L500">                            String userId = userNode.path(&quot;id&quot;).asText();</span>
-<span class="fc" id="L501">                            Long dbUserId = userExternalToInternalId.get(userId);</span>
-<span class="pc bpc" id="L502" title="1 of 2 branches missed.">                            if (dbUserId == null) {</span>
-<span class="nc" id="L503">                                continue;</span>
+<span class="fc bfc" id="L518" title="All 2 branches covered.">                        for (JsonNode userNode : usersNode) {</span>
+<span class="fc" id="L519">                            String userId = userNode.path(&quot;id&quot;).asText();</span>
+<span class="fc" id="L520">                            Long dbUserId = userExternalToInternalId.get(userId);</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">                            if (dbUserId == null) {</span>
+<span class="fc" id="L522">                                continue;</span>
                             }
 
-<span class="fc" id="L506">                            JsonNode favsNode = userNode.path(&quot;favoriteGames&quot;);</span>
-<span class="fc bfc" id="L507" title="All 2 branches covered.">                            if (favsNode.isArray()) {</span>
-<span class="fc bfc" id="L508" title="All 2 branches covered.">                                for (JsonNode favNode : favsNode) {</span>
-<span class="fc" id="L509">                                    String gameId = favNode.asText();</span>
-<span class="fc" id="L510">                                    Long dbGameId = gameExternalToInternalId.get(gameId);</span>
-<span class="pc bpc" id="L511" title="1 of 2 branches missed.">                                    if (dbGameId != null) {</span>
-<span class="fc" id="L512">                                        favStmt.setLong(1, dbUserId);</span>
-<span class="fc" id="L513">                                        favStmt.setLong(2, dbGameId);</span>
-<span class="fc" id="L514">                                        favStmt.executeUpdate();</span>
+<span class="fc" id="L525">                            JsonNode favsNode = userNode.path(&quot;favoriteGames&quot;);</span>
+<span class="fc bfc" id="L526" title="All 2 branches covered.">                            if (favsNode.isArray()) {</span>
+<span class="fc bfc" id="L527" title="All 2 branches covered.">                                for (JsonNode favNode : favsNode) {</span>
+<span class="fc" id="L528">                                    String gameId = favNode.asText();</span>
+<span class="fc" id="L529">                                    Long dbGameId = gameExternalToInternalId.get(gameId);</span>
+<span class="pc bpc" id="L530" title="1 of 2 branches missed.">                                    if (dbGameId != null) {</span>
+<span class="fc" id="L531">                                        favStmt.setLong(1, dbUserId);</span>
+<span class="fc" id="L532">                                        favStmt.setLong(2, dbGameId);</span>
+<span class="fc" id="L533">                                        favStmt.executeUpdate();</span>
                                     }
-<span class="fc" id="L516">                                }</span>
+<span class="fc" id="L535">                                }</span>
                             }
-<span class="fc" id="L518">                        }</span>
+<span class="fc" id="L537">                        }</span>
                     }
                 }
 
                 // 7) Sync logs
-<span class="fc" id="L523">                JsonNode logsNode = root.path(&quot;logs&quot;);</span>
-<span class="fc bfc" id="L524" title="All 2 branches covered.">                if (logsNode.isArray()) {</span>
-<span class="fc" id="L525">                    String insLogSql = &quot;&quot;&quot;</span>
+<span class="fc" id="L542">                JsonNode logsNode = root.path(&quot;logs&quot;);</span>
+<span class="fc bfc" id="L543" title="All 2 branches covered.">                if (logsNode.isArray()) {</span>
+<span class="fc" id="L544">                    String insLogSql = &quot;&quot;&quot;</span>
                             INSERT INTO logs (external_id, usuario_id, nome_usuario, acao, criado_em)
                             VALUES (?, ?, ?, ?, ?)
                             &quot;&quot;&quot;;
-<span class="fc" id="L529">                    try (PreparedStatement stmt = conn.prepareStatement(insLogSql)) {</span>
-<span class="fc bfc" id="L530" title="All 2 branches covered.">                        for (JsonNode logNode : logsNode) {</span>
-<span class="fc" id="L531">                            stmt.setString(1, logNode.path(&quot;id&quot;).asText());</span>
+<span class="fc" id="L548">                    try (PreparedStatement stmt = conn.prepareStatement(insLogSql)) {</span>
+<span class="fc bfc" id="L549" title="All 2 branches covered.">                        for (JsonNode logNode : logsNode) {</span>
+<span class="fc" id="L550">                            stmt.setString(1, logNode.path(&quot;id&quot;).asText());</span>
 
-<span class="fc" id="L533">                            String logUserId = logNode.path(&quot;userId&quot;).asText();</span>
-<span class="fc" id="L534">                            Long dbLogUserId = userExternalToInternalId.get(logUserId);</span>
-<span class="fc" id="L535">                            setNullableLong(stmt, 2, dbLogUserId);</span>
+<span class="fc" id="L552">                            String logUserId = logNode.path(&quot;userId&quot;).asText();</span>
+<span class="fc" id="L553">                            Long dbLogUserId = userExternalToInternalId.get(logUserId);</span>
+<span class="fc" id="L554">                            setNullableLong(stmt, 2, dbLogUserId);</span>
 
-<span class="fc" id="L537">                            stmt.setString(3, logNode.path(&quot;userName&quot;).asText());</span>
-<span class="fc" id="L538">                            stmt.setString(4, logNode.path(&quot;action&quot;).asText());</span>
+<span class="fc" id="L556">                            stmt.setString(3, logNode.path(&quot;userName&quot;).asText());</span>
+<span class="fc" id="L557">                            stmt.setString(4, logNode.path(&quot;action&quot;).asText());</span>
 
-<span class="fc" id="L540">                            String timestampStr = logNode.path(&quot;timestamp&quot;).asText();</span>
-<span class="fc" id="L541">                            stmt.setTimestamp(5, parseTimestamp(timestampStr));</span>
+<span class="fc" id="L559">                            String timestampStr = logNode.path(&quot;timestamp&quot;).asText();</span>
+<span class="fc" id="L560">                            stmt.setTimestamp(5, parseTimestamp(timestampStr));</span>
 
-<span class="fc" id="L543">                            stmt.executeUpdate();</span>
-<span class="fc" id="L544">                        }</span>
+<span class="fc" id="L562">                            stmt.executeUpdate();</span>
+<span class="fc" id="L563">                        }</span>
                     }
                 }
 
-<span class="fc" id="L548">                conn.commit();</span>
-<span class="fc" id="L549">                LOGGER.info(&quot;RelationalStateSyncService: Relational tables synchronization completed successfully.&quot;);</span>
-<span class="fc" id="L550">            } catch (Exception ex) {</span>
-<span class="fc" id="L551">                conn.rollback();</span>
-<span class="fc" id="L552">                throw ex;</span>
-<span class="fc" id="L553">            }</span>
+<span class="fc" id="L567">                conn.commit();</span>
+<span class="fc" id="L568">                LOGGER.atInfo()</span>
+<span class="fc" id="L569">                      .addKeyValue(&quot;state_id&quot;, 1)</span>
+<span class="fc" id="L570">                      .addKeyValue(&quot;operation&quot;, &quot;relational_state_sync&quot;)</span>
+<span class="fc" id="L571">                      .addKeyValue(&quot;sync_result&quot;, &quot;success&quot;)</span>
+<span class="fc" id="L572">                      .addKeyValue(&quot;users_synced&quot;, usersSynced)</span>
+<span class="fc" id="L573">                      .addKeyValue(&quot;games_synced&quot;, gamesSynced)</span>
+<span class="fc" id="L574">                      .addKeyValue(&quot;events_synced&quot;, eventsSynced)</span>
+<span class="fc" id="L575">                      .addKeyValue(&quot;sessions_synced&quot;, sessionsSynced)</span>
+<span class="fc" id="L576">                      .log(&quot;Relational state synchronization completed&quot;);</span>
+<span class="fc" id="L577">            } catch (Exception ex) {</span>
+<span class="fc" id="L578">                conn.rollback();</span>
+<span class="fc" id="L579">                throw ex;</span>
+<span class="fc" id="L580">            }</span>
         }
-<span class="fc" id="L555">    }</span>
+<span class="fc" id="L582">    }</span>
 
     private static void setNullableInt(PreparedStatement stmt, int parameterIndex, Integer value) throws SQLException {
-<span class="fc bfc" id="L558" title="All 2 branches covered.">        if (value == null) {</span>
-<span class="fc" id="L559">            stmt.setNull(parameterIndex, Types.INTEGER);</span>
+<span class="fc bfc" id="L585" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L586">            stmt.setNull(parameterIndex, Types.INTEGER);</span>
         } else {
-<span class="fc" id="L561">            stmt.setInt(parameterIndex, value);</span>
+<span class="fc" id="L588">            stmt.setInt(parameterIndex, value);</span>
         }
-<span class="fc" id="L563">    }</span>
+<span class="fc" id="L590">    }</span>
 
     private static void setNullableLong(PreparedStatement stmt, int parameterIndex, Long value) throws SQLException {
-<span class="pc bpc" id="L566" title="1 of 2 branches missed.">        if (value == null) {</span>
-<span class="nc" id="L567">            stmt.setNull(parameterIndex, Types.BIGINT);</span>
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L594">            stmt.setNull(parameterIndex, Types.BIGINT);</span>
         } else {
-<span class="fc" id="L569">            stmt.setLong(parameterIndex, value);</span>
+<span class="fc" id="L596">            stmt.setLong(parameterIndex, value);</span>
         }
-<span class="fc" id="L571">    }</span>
+<span class="fc" id="L598">    }</span>
 
     private static void setNullableDouble(PreparedStatement stmt, int parameterIndex, Double value) throws SQLException {
-<span class="fc bfc" id="L574" title="All 2 branches covered.">        if (value == null) {</span>
-<span class="fc" id="L575">            stmt.setNull(parameterIndex, Types.NUMERIC);</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L602">            stmt.setNull(parameterIndex, Types.NUMERIC);</span>
         } else {
-<span class="fc" id="L577">            stmt.setDouble(parameterIndex, value);</span>
+<span class="fc" id="L604">            stmt.setDouble(parameterIndex, value);</span>
         }
-<span class="fc" id="L579">    }</span>
+<span class="fc" id="L606">    }</span>
 
     public static java.sql.Timestamp parseTimestamp(String dateStr) {
-<span class="fc bfc" id="L582" title="All 4 branches covered.">        if (dateStr == null || dateStr.isBlank()) {</span>
-<span class="fc" id="L583">            return new java.sql.Timestamp(System.currentTimeMillis());</span>
+<span class="fc bfc" id="L609" title="All 4 branches covered.">        if (dateStr == null || dateStr.isBlank()) {</span>
+<span class="fc" id="L610">            return new java.sql.Timestamp(System.currentTimeMillis());</span>
         }
         try {
-<span class="fc" id="L586">            return java.sql.Timestamp.from(java.time.Instant.parse(dateStr));</span>
-<span class="fc" id="L587">        } catch (Exception e) {</span>
+<span class="fc" id="L613">            return java.sql.Timestamp.from(java.time.Instant.parse(dateStr));</span>
+<span class="fc" id="L614">        } catch (Exception e) {</span>
             try {
-<span class="nc" id="L589">                return java.sql.Timestamp.from(java.time.OffsetDateTime.parse(dateStr).toInstant());</span>
-<span class="fc" id="L590">            } catch (Exception e2) {</span>
+<span class="nc" id="L616">                return java.sql.Timestamp.from(java.time.OffsetDateTime.parse(dateStr).toInstant());</span>
+<span class="fc" id="L617">            } catch (Exception e2) {</span>
                 try {
-<span class="fc" id="L592">                    return java.sql.Timestamp.valueOf(java.time.LocalDateTime.parse(dateStr));</span>
-<span class="fc" id="L593">                } catch (Exception e3) {</span>
+<span class="fc" id="L619">                    return java.sql.Timestamp.valueOf(java.time.LocalDateTime.parse(dateStr));</span>
+<span class="fc" id="L620">                } catch (Exception e3) {</span>
                     try {
-<span class="fc" id="L595">                        return java.sql.Timestamp.valueOf(java.time.LocalDate.parse(dateStr).atStartOfDay());</span>
-<span class="fc" id="L596">                    } catch (Exception e4) {</span>
-<span class="fc" id="L597">                        return new java.sql.Timestamp(System.currentTimeMillis());</span>
+<span class="fc" id="L622">                        return java.sql.Timestamp.valueOf(java.time.LocalDate.parse(dateStr).atStartOfDay());</span>
+<span class="fc" id="L623">                    } catch (Exception e4) {</span>
+<span class="fc" id="L624">                        return new java.sql.Timestamp(System.currentTimeMillis());</span>
                     }
                 }
             }

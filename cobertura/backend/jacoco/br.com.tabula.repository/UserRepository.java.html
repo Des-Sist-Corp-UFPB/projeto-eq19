@@ -17,104 +17,141 @@ public class UserRepository {
 <span class="fc" id="L17">    }</span>
 
     public boolean emailExists(String email) throws SQLException {
-<span class="fc" id="L20">        String sql = &quot;SELECT 1 FROM usuarios WHERE lower(email) = lower(?)&quot;;</span>
-<span class="fc" id="L21">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L22">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L23">            statement.setString(1, email);</span>
-<span class="fc" id="L24">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc" id="L25">                return resultSet.next();</span>
+<span class="fc" id="L20">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L21">            return emailExists(connection, email);</span>
+        }
+    }
+
+    public boolean emailExists(Connection connection, String email) throws SQLException {
+<span class="fc" id="L26">        String sql = &quot;SELECT 1 FROM usuarios WHERE lower(email) = lower(?)&quot;;</span>
+<span class="fc" id="L27">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L28">            statement.setString(1, email);</span>
+<span class="fc" id="L29">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc" id="L30">                return resultSet.next();</span>
             }
         }
     }
 
     public Optional&lt;UserAccount&gt; findByEmail(String email) throws SQLException {
-<span class="fc" id="L31">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L36">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L37">            return findByEmail(connection, email);</span>
+        }
+    }
+
+    public Optional&lt;UserAccount&gt; findByEmail(Connection connection, String email) throws SQLException {
+<span class="fc" id="L42">        String sql = &quot;&quot;&quot;</span>
                 SELECT id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role, email_verificado
                 FROM usuarios
                 WHERE lower(email) = lower(?)
                 &quot;&quot;&quot;;
-<span class="fc" id="L36">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L37">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L38">            statement.setString(1, email);</span>
-<span class="fc" id="L39">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L40" title="All 2 branches covered.">                if (!resultSet.next()) return Optional.empty();</span>
-<span class="fc" id="L41">                return Optional.of(mapUser(resultSet));</span>
-<span class="pc bpc" id="L42" title="1 of 2 branches missed.">            }</span>
-<span class="pc bpc" id="L43" title="2 of 4 branches missed.">        }</span>
+<span class="fc" id="L47">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L48">            statement.setString(1, email);</span>
+<span class="fc" id="L49">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                if (!resultSet.next()) return Optional.empty();</span>
+<span class="fc" id="L51">                return Optional.of(mapUser(resultSet));</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        }</span>
     }
 
     public UserAccount createUser(String externalId, String name, String email, String passwordHash, String role) throws SQLException {
-<span class="fc" id="L47">        return createUser(externalId, name, email, passwordHash, role, false);</span>
+<span class="fc" id="L57">        return createUser(externalId, name, email, passwordHash, role, false);</span>
     }
 
     public UserAccount createUser(String externalId, String name, String email, String passwordHash, String role, boolean emailVerificado) throws SQLException {
-<span class="fc" id="L51">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L61">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L62">            return createUser(connection, externalId, name, email, passwordHash, role, emailVerificado);</span>
+        }
+    }
+
+    public UserAccount createUser(
+            Connection connection,
+            String externalId,
+            String name,
+            String email,
+            String passwordHash,
+            String role,
+            boolean emailVerificado) throws SQLException {
+<span class="fc" id="L74">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO usuarios (external_id, nome, email, senha_hash, role, email_verificado)
                 VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING id, COALESCE(external_id, 'u_' || id::text) AS external_id, nome, email, senha_hash, role, email_verificado
                 &quot;&quot;&quot;;
-<span class="fc" id="L56">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L57">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L58">            statement.setString(1, externalId);</span>
-<span class="fc" id="L59">            statement.setString(2, name);</span>
-<span class="fc" id="L60">            statement.setString(3, email);</span>
-<span class="fc" id="L61">            statement.setString(4, passwordHash);</span>
-<span class="fc" id="L62">            statement.setString(5, role);</span>
-<span class="fc" id="L63">            statement.setBoolean(6, emailVerificado);</span>
+<span class="fc" id="L79">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L80">            statement.setString(1, externalId);</span>
+<span class="fc" id="L81">            statement.setString(2, name);</span>
+<span class="fc" id="L82">            statement.setString(3, email);</span>
+<span class="fc" id="L83">            statement.setString(4, passwordHash);</span>
+<span class="fc" id="L84">            statement.setString(5, role);</span>
+<span class="fc" id="L85">            statement.setBoolean(6, emailVerificado);</span>
 
-<span class="fc" id="L65">            try (ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L66" title="All 2 branches covered.">                if (resultSet.next()) return mapUser(resultSet);</span>
-<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            }</span>
-<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        }</span>
+<span class="fc" id="L87">            try (ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (resultSet.next()) return mapUser(resultSet);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            }</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        }</span>
 
-<span class="fc" id="L70">        throw new SQLException(&quot;Failed to create user in database&quot;);</span>
+<span class="fc" id="L92">        throw new SQLException(&quot;Failed to create user in database&quot;);</span>
     }
 
     public void verifyEmail(long userId) throws SQLException {
-<span class="fc" id="L74">        String sql = &quot;UPDATE usuarios SET email_verificado = TRUE WHERE id = ?&quot;;</span>
-<span class="fc" id="L75">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L76">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L77">            statement.setLong(1, userId);</span>
-<span class="fc" id="L78">            statement.executeUpdate();</span>
+<span class="fc" id="L96">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L97">            verifyEmail(connection, userId);</span>
         }
-<span class="fc" id="L80">    }</span>
+<span class="fc" id="L99">    }</span>
+
+    public void verifyEmail(Connection connection, long userId) throws SQLException {
+<span class="fc" id="L102">        String sql = &quot;UPDATE usuarios SET email_verificado = TRUE WHERE id = ?&quot;;</span>
+<span class="fc" id="L103">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L104">            statement.setLong(1, userId);</span>
+<span class="fc" id="L105">            statement.executeUpdate();</span>
+        }
+<span class="fc" id="L107">    }</span>
 
 
     public String createAuthToken(long userId) throws SQLException {
-<span class="fc" id="L84">        String token = java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString().replace(&quot;-&quot;, &quot;&quot;);</span>
-<span class="fc" id="L85">        String sql = &quot;&quot;&quot;</span>
+<span class="fc" id="L111">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L112">            return createAuthToken(connection, userId);</span>
+        }
+    }
+
+    public String createAuthToken(Connection connection, long userId) throws SQLException {
+<span class="fc" id="L117">        String token = java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString().replace(&quot;-&quot;, &quot;&quot;);</span>
+<span class="fc" id="L118">        String sql = &quot;&quot;&quot;</span>
                 INSERT INTO auth_tokens (token, usuario_id, expires_at)
                 VALUES (?, ?, CURRENT_TIMESTAMP + INTERVAL '7 days')
                 &quot;&quot;&quot;;
-<span class="fc" id="L89">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L90">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L91">            statement.setString(1, token);</span>
-<span class="fc" id="L92">            statement.setLong(2, userId);</span>
-<span class="fc" id="L93">            statement.executeUpdate();</span>
-<span class="fc" id="L94">            return token;</span>
+<span class="fc" id="L122">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L123">            statement.setString(1, token);</span>
+<span class="fc" id="L124">            statement.setLong(2, userId);</span>
+<span class="fc" id="L125">            statement.executeUpdate();</span>
+<span class="fc" id="L126">            return token;</span>
         }
     }
 
     public void updatePassword(String email, String passwordHash) throws SQLException {
-<span class="fc" id="L99">        String sql = &quot;UPDATE usuarios SET senha_hash = ? WHERE lower(email) = lower(?)&quot;;</span>
-<span class="fc" id="L100">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L101">             PreparedStatement statement = connection.prepareStatement(sql)) {</span>
-<span class="fc" id="L102">            statement.setString(1, passwordHash);</span>
-<span class="fc" id="L103">            statement.setString(2, email);</span>
-<span class="fc" id="L104">            int updated = statement.executeUpdate();</span>
-<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (updated == 0) throw new SQLException(&quot;No user updated&quot;);</span>
+<span class="fc" id="L131">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L132">            updatePassword(connection, email, passwordHash);</span>
         }
-<span class="fc" id="L107">    }</span>
+<span class="fc" id="L134">    }</span>
+
+    public void updatePassword(Connection connection, String email, String passwordHash) throws SQLException {
+<span class="fc" id="L137">        String sql = &quot;UPDATE usuarios SET senha_hash = ? WHERE lower(email) = lower(?)&quot;;</span>
+<span class="fc" id="L138">        try (PreparedStatement statement = connection.prepareStatement(sql)) {</span>
+<span class="fc" id="L139">            statement.setString(1, passwordHash);</span>
+<span class="fc" id="L140">            statement.setString(2, email);</span>
+<span class="fc" id="L141">            int updated = statement.executeUpdate();</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (updated == 0) throw new SQLException(&quot;No user updated&quot;);</span>
+        }
+<span class="fc" id="L144">    }</span>
 
     private static UserAccount mapUser(ResultSet resultSet) throws SQLException {
-<span class="fc" id="L110">        return new UserAccount(</span>
-<span class="fc" id="L111">                resultSet.getLong(&quot;id&quot;),</span>
-<span class="fc" id="L112">                resultSet.getString(&quot;external_id&quot;),</span>
-<span class="fc" id="L113">                resultSet.getString(&quot;nome&quot;),</span>
-<span class="fc" id="L114">                resultSet.getString(&quot;email&quot;),</span>
-<span class="fc" id="L115">                resultSet.getString(&quot;senha_hash&quot;),</span>
-<span class="fc" id="L116">                resultSet.getString(&quot;role&quot;),</span>
-<span class="fc" id="L117">                resultSet.getBoolean(&quot;email_verificado&quot;)</span>
+<span class="fc" id="L147">        return new UserAccount(</span>
+<span class="fc" id="L148">                resultSet.getLong(&quot;id&quot;),</span>
+<span class="fc" id="L149">                resultSet.getString(&quot;external_id&quot;),</span>
+<span class="fc" id="L150">                resultSet.getString(&quot;nome&quot;),</span>
+<span class="fc" id="L151">                resultSet.getString(&quot;email&quot;),</span>
+<span class="fc" id="L152">                resultSet.getString(&quot;senha_hash&quot;),</span>
+<span class="fc" id="L153">                resultSet.getString(&quot;role&quot;),</span>
+<span class="fc" id="L154">                resultSet.getBoolean(&quot;email_verificado&quot;)</span>
         );
     }
 }
