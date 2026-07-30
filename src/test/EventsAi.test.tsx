@@ -14,6 +14,7 @@ vi.mock('../services/api', async importOriginal => {
     getServerState: vi.fn(),
     saveServerState: vi.fn(),
     generateEventDraft: vi.fn(),
+    refineEventDraft: vi.fn(),
   };
 });
 
@@ -26,6 +27,7 @@ describe('Events AI draft assistant', () => {
     vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
     vi.mocked(api.saveServerState).mockResolvedValue();
     vi.mocked(api.generateEventDraft).mockReset();
+    vi.mocked(api.refineEventDraft).mockReset();
   });
 
   it('disables empty prompt, blocks duplicate calls and fills editable fields without saving', async () => {
@@ -37,6 +39,7 @@ describe('Events AI draft assistant', () => {
 
     const generate = screen.getByRole('button', { name: /Preencher formulário com IA/i });
     expect(generate).toBeDisabled();
+    expect(api.generateEventDraft).not.toHaveBeenCalled();
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
     await user.click(generate);
     expect(api.generateEventDraft).toHaveBeenCalledTimes(1);
@@ -86,5 +89,43 @@ describe('Events AI draft assistant', () => {
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     expect(await screen.findByText(/temporariamente indisponível/i)).toBeInTheDocument();
     expect(screen.queryByText(/database host secret/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the temporary quota message for a usage limit', async () => {
+    vi.mocked(api.generateEventDraft).mockRejectedValue(
+      new ApiError(429, 'internal quota detail', 'AI_USAGE_LIMIT_REACHED', '{"error":"internal quota detail"}'),
+    );
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Xadrez na sexta');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+    expect(await screen.findByText(/limite temporário de gerações com IA/i)).toBeInTheDocument();
+    expect(screen.queryByText(/internal quota detail/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the same quota message on refinement and preserves every field', async () => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue({
+      gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
+      location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
+    });
+    vi.mocked(api.refineEventDraft).mockRejectedValue(
+      new ApiError(429, 'quota detail', 'AI_USAGE_LIMIT_REACHED', '{"error":"quota detail"}'),
+    );
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+    await screen.findByRole('heading', { name: /Refinar com IA/i });
+    await user.type(screen.getByLabelText(/Alteração desejada/i), 'Troque para domingo');
+    await user.click(screen.getByRole('button', { name: /Aplicar alteração/i }));
+
+    expect(await screen.findByText(/limite temporário de gerações com IA/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Biblioteca')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Mesa aberta.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2026-08-01')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('18:00')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Alteração desejada/i)).toHaveValue('Troque para domingo');
   });
 });

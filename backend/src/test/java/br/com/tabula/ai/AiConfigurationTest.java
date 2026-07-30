@@ -12,6 +12,11 @@ class AiConfigurationTest {
         assertFalse(config.configured());
         assertEquals("gpt-4o-mini", config.model());
         assertEquals(15, config.timeout().toSeconds());
+        assertEquals(300, config.maxCompletionTokens());
+        assertFalse(config.retryEnabled());
+        assertEquals(15, config.maxCandidateGames());
+        assertEquals(3, config.maxRequestsPerUserHour());
+        assertEquals(10, config.maxRequestsPerDay());
     }
 
     @Test void validatesUrlTimeoutAndTimezone() {

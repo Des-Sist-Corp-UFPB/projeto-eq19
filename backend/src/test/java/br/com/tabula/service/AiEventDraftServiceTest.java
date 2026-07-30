@@ -1,7 +1,9 @@
 package br.com.tabula.service;
 
 import br.com.tabula.ai.AiChatClient;
+import br.com.tabula.ai.AiChatResult;
 import br.com.tabula.ai.AiProviderException;
+import br.com.tabula.ai.AiUsage;
 import br.com.tabula.dto.AiEventDraftResponse;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import java.sql.ResultSet;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.contains;
@@ -36,7 +39,7 @@ class AiEventDraftServiceTest {
         AiEventDraftResponse draft = service(client, validJson()).generate("  Mesa sábado  ");
         assertEquals("g2", draft.gameId());
         assertEquals(4, draft.maxParticipants());
-        verify(client).chat(contains("Catálogo de jogos"), eq("Mesa sábado"));
+        verify(client).chat(contains("Candidatos="), eq("Mesa sábado"));
     }
 
     @Test void acceptsOneJsonObjectInsideMarkdownOrSurroundingText() throws Exception {
@@ -80,6 +83,48 @@ class AiEventDraftServiceTest {
         AiProviderException error = assertThrows(AiProviderException.class,
                 () -> service(client, validJson()).generate("Mesa sábado"));
         assertEquals(AiProviderException.Category.TIMEOUT, error.category());
+    }
+
+    @Test void refinementCapturesUsageAndProviderCallCount() throws Exception {
+        AiChatClient client = mock(AiChatClient.class);
+        when(client.chatWithUsage(anyString(), anyString())).thenReturn(
+                new AiChatResult(validJson(), new AiUsage(90, 25, 115), 2));
+        AiEventDraftResponse current = new AiEventDraftResponse("g2", "Magic: The Gathering",
+                "2026-08-01", "18:00", "Biblioteca", 4, "Mesa de Magic.", List.of());
+
+        AiEventDraftService.GenerationResult result =
+                service(client, validJson()).refineWithUsage("Troque o horário", current);
+
+        assertEquals(90, result.usage().promptTokens());
+        assertEquals(25, result.usage().completionTokens());
+        assertEquals(115, result.usage().totalTokens());
+        assertEquals(2, result.providerCalls());
+    }
+
+    @Test void limitsCandidatesAndFiltersByName() {
+        List<AiEventDraftService.Game> catalog = java.util.stream.IntStream.range(0, 30)
+                .mapToObj(index -> new AiEventDraftService.Game("g" + index,
+                        index == 22 ? "Magic Arena" : "Jogo " + index,
+                        index % 2 == 0 ? "Cartas" : "Estratégia", 2, 6, 30 + index, 2.0))
+                .toList();
+        List<AiEventDraftService.Game> candidates =
+                AiEventDraftService.selectCandidates("Quero jogar Magic", catalog, 15);
+        assertEquals(15, candidates.size());
+        assertEquals("g22", candidates.get(0).id());
+    }
+
+    @Test void filtersByPlayerCountAndUsesDeterministicFallback() {
+        List<AiEventDraftService.Game> catalog = List.of(
+                new AiEventDraftService.Game("g3", "Zulu", "Estratégia", 2, 4, 60, 3),
+                new AiEventDraftService.Game("g1", "Alpha", "Cartas", 5, 8, 30, 2),
+                new AiEventDraftService.Game("g2", "Beta", "Cartas", 2, 3, 45, 2));
+        assertEquals("g1", AiEventDraftService.selectCandidates("mesa para 6 pessoas", catalog, 2).get(0).id());
+        List<String> first = AiEventDraftService.selectCandidates("vamos jogar", catalog, 3)
+                .stream().map(AiEventDraftService.Game::id).toList();
+        List<String> second = AiEventDraftService.selectCandidates("vamos jogar", catalog, 3)
+                .stream().map(AiEventDraftService.Game::id).toList();
+        assertEquals(List.of("g1", "g2", "g3"), first);
+        assertEquals(first, second);
     }
 
     private static void assertInvalid(String response) throws Exception {

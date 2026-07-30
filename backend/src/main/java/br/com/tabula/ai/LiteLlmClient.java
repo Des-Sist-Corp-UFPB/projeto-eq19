@@ -29,23 +29,36 @@ public final class LiteLlmClient implements AiChatClient {
 
     @Override
     public String chat(String systemPrompt, String userPrompt) throws AiProviderException {
+        return chatWithUsage(systemPrompt, userPrompt).content();
+    }
+
+    @Override
+    public AiChatResult chatWithUsage(String systemPrompt, String userPrompt) throws AiProviderException {
         if (!configuration.configured()) throw new AiProviderException(AiProviderException.Category.NOT_CONFIGURED);
         AiProviderException firstFailure;
         try {
-            return send(systemPrompt, userPrompt);
+            return withProviderCalls(send(systemPrompt, userPrompt), 1);
         } catch (AiProviderException ex) {
             firstFailure = ex;
         }
-        if (!firstFailure.transientFailure()) throw firstFailure;
-        return send(systemPrompt, userPrompt);
+        if (!configuration.retryEnabled() || !firstFailure.transientFailure()) throw firstFailure;
+        try {
+            return withProviderCalls(send(systemPrompt, userPrompt), 2);
+        } catch (AiProviderException secondFailure) {
+            throw secondFailure.withProviderCalls(2);
+        }
     }
 
-    private String send(String systemPrompt, String userPrompt) throws AiProviderException {
+    private static AiChatResult withProviderCalls(AiChatResult result, int calls) {
+        return new AiChatResult(result.content(), result.usage(), calls);
+    }
+
+    private AiChatResult send(String systemPrompt, String userPrompt) throws AiProviderException {
         try {
             ObjectNode body = MAPPER.createObjectNode();
             body.put("model", configuration.model());
-            body.put("temperature", 0.2);
-            body.put("max_tokens", 500);
+            body.put("temperature", 0.1);
+            body.put("max_tokens", configuration.maxCompletionTokens());
             body.putObject("response_format").put("type", "json_object");
             ArrayNode messages = body.putArray("messages");
             messages.addObject().put("role", "system").put("content", systemPrompt);
@@ -70,7 +83,12 @@ public final class LiteLlmClient implements AiChatClient {
             JsonNode content = choices.get(0).path("message").get("content");
             if (content == null || !content.isTextual() || content.asText().isBlank())
                 throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);
-            return content.asText();
+            JsonNode usageNode = root.path("usage");
+            AiUsage usage = usageNode.isObject()
+                    ? new AiUsage(nullableInt(usageNode, "prompt_tokens"),
+                            nullableInt(usageNode, "completion_tokens"), nullableInt(usageNode, "total_tokens"))
+                    : AiUsage.empty();
+            return new AiChatResult(content.asText(), usage);
         } catch (AiProviderException ex) { throw ex; }
         catch (HttpTimeoutException ex) { throw new AiProviderException(AiProviderException.Category.TIMEOUT, ex); }
         catch (ConnectException ex) { throw new AiProviderException(AiProviderException.Category.CONNECTION, ex); }
@@ -84,5 +102,10 @@ public final class LiteLlmClient implements AiChatClient {
         } catch (Exception ex) {
             throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE, ex);
         }
+    }
+
+    private static Integer nullableInt(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value != null && value.canConvertToInt() && value.asInt() >= 0 ? value.asInt() : null;
     }
 }

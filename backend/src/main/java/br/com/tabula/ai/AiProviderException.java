@@ -7,18 +7,27 @@ public class AiProviderException extends Exception {
     }
 
     private final Category category;
+    private final int providerCalls;
 
     public AiProviderException(Category category) {
-        super(category.name());
-        this.category = category;
+        this(category, null, category == Category.NOT_CONFIGURED || category == Category.CATALOG_UNAVAILABLE ? 0 : 1);
     }
 
     public AiProviderException(Category category, Throwable cause) {
+        this(category, cause, category == Category.NOT_CONFIGURED || category == Category.CATALOG_UNAVAILABLE ? 0 : 1);
+    }
+
+    public AiProviderException(Category category, Throwable cause, int providerCalls) {
         super(category.name(), cause);
         this.category = category;
+        this.providerCalls = providerCalls;
     }
 
     public Category category() { return category; }
+    public int providerCalls() { return providerCalls; }
+    public AiProviderException withProviderCalls(int calls) {
+        return new AiProviderException(category, getCause(), calls);
+    }
     public boolean transientFailure() {
         return category == Category.TIMEOUT || category == Category.CONNECTION
                 || category == Category.RATE_LIMITED || category == Category.SERVER_ERROR;

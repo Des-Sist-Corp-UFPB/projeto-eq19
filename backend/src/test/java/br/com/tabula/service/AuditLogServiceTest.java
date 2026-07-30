@@ -150,13 +150,19 @@ class AuditLogServiceTest {
     void shouldAllowOnlySafeAiAuditMetadata() {
         AuditLogService service = new AuditLogService(mock(HikariDataSource.class), mock(AuditLogRepository.class));
         AuditLog log = service.build(null, AuditAction.AI_EVENT_DRAFT_REJECTED, "AI_EVENT_DRAFT", null,
-                false, null, null, Map.of(
-                        "model", "gpt-4o-mini", "promptLength", 42, "warningCount", 1,
-                        "durationMs", 123, "failureReason", "provider_failure",
-                        "failureCategory", "timeout", "prompt", "segredo", "authorization", "Bearer token"
+                false, null, null, Map.ofEntries(
+                        Map.entry("model", "gpt-4o-mini"), Map.entry("promptLength", 42),
+                        Map.entry("warningCount", 1), Map.entry("durationMs", 123),
+                        Map.entry("failureReason", "provider_failure"), Map.entry("failureCategory", "timeout"),
+                        Map.entry("promptTokens", 75), Map.entry("completionTokens", 120),
+                        Map.entry("totalTokens", 195), Map.entry("prompt", "segredo"),
+                        Map.entry("authorization", "Bearer token")
                 ));
         assertEquals(123, log.getDetails().get("durationMs").asInt());
         assertEquals("timeout", log.getDetails().get("failureCategory").asText());
+        assertEquals(75, log.getDetails().get("promptTokens").asInt());
+        assertEquals(120, log.getDetails().get("completionTokens").asInt());
+        assertEquals(195, log.getDetails().get("totalTokens").asInt());
         assertFalse(log.getDetails().has("prompt"));
         assertFalse(log.getDetails().has("authorization"));
     }

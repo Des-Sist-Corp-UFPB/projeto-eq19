@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import type { Event } from '../types';
 import { PlusIcon, CalendarIcon, MapPinIcon, ClockIcon, UsersIcon, CrownIcon, TrophyIcon, CloseIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
-import { ApiError, generateEventDraft } from '../services/api';
+import { ApiError, generateEventDraft, refineEventDraft } from '../services/api';
 
 export const Events: React.FC = () => {
   const { state, addEvent, joinEvent, leaveEvent, completeEvent } = useDatabase();
@@ -33,6 +33,8 @@ export const Events: React.FC = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const [refinementInstruction, setRefinementInstruction] = useState('');
+  const [hasAiDraft, setHasAiDraft] = useState(false);
 
   // Complete Event Form State
   const [winnerId, setWinnerId] = useState('');
@@ -143,6 +145,8 @@ export const Events: React.FC = () => {
     setAiPrompt('');
     setAiError('');
     setAiWarnings([]);
+    setRefinementInstruction('');
+    setHasAiDraft(false);
   };
 
   const handleGenerateDraft = async () => {
@@ -159,12 +163,44 @@ export const Events: React.FC = () => {
       setMaxParticipants(draft.maxParticipants);
       setDescription(draft.description);
       setAiWarnings(draft.warnings);
+      setHasAiDraft(true);
     } catch (error) {
       let message = 'Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.';
       if (error instanceof ApiError) {
         if (error.status === 401) message = 'Sua sessão expirou. Entre novamente para usar o assistente.';
         else if (error.status === 422) message = 'A IA não conseguiu montar um rascunho válido. Tente descrever o encontro com mais detalhes.';
-        else if (error.status === 429) message = 'Muitas solicitações à IA. Aguarde alguns instantes e tente novamente.';
+        else if (error.status === 429) message = 'O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde.';
+        else if (error.status === 502 || error.status === 503) message = 'O assistente de IA está temporariamente indisponível. Tente novamente mais tarde.';
+      }
+      setAiError(message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRefineDraft = async () => {
+    if (aiLoading || !hasAiDraft || refinementInstruction.trim().length < 3) return;
+    const gameName = state.boardGames.find(game => game.id === gameId)?.name ?? '';
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const draft = await refineEventDraft(refinementInstruction, {
+        gameId, gameName, date, time, location, maxParticipants, description, warnings: aiWarnings,
+      });
+      setGameId(draft.gameId);
+      setDate(draft.date);
+      setTime(draft.time);
+      setLocation(draft.location);
+      setMaxParticipants(draft.maxParticipants);
+      setDescription(draft.description);
+      setAiWarnings(draft.warnings);
+      setRefinementInstruction('');
+    } catch (error) {
+      let message = 'Não foi possível refinar o rascunho agora. Seus dados atuais foram mantidos.';
+      if (error instanceof ApiError) {
+        if (error.status === 401) message = 'Sua sessão expirou. Entre novamente para usar o assistente.';
+        else if (error.status === 422) message = 'A IA não conseguiu aplicar essa alteração. O rascunho foi mantido.';
+        else if (error.status === 429) message = 'O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde.';
         else if (error.status === 502 || error.status === 503) message = 'O assistente de IA está temporariamente indisponível. Tente novamente mais tarde.';
       }
       setAiError(message);
@@ -481,6 +517,9 @@ export const Events: React.FC = () => {
                   {aiLoading ? 'Gerando rascunho...' : 'Preencher formulário com IA'}
                 </button>
                 <small style={{ color: 'var(--color-text-muted)' }}>Revise as informações antes de agendar</small>
+                <small style={{ color: 'var(--color-text-muted)' }}>
+                  Para preservar a cota da equipe, gere um rascunho e ajuste os campos manualmente antes de salvar.
+                </small>
                 <div aria-live="polite" aria-atomic="true">
                   {aiLoading && <span className="sr-only">Gerando rascunho do evento</span>}
                   {aiError && <div role="alert" style={{ color: 'var(--color-danger, #b42318)' }}>{aiError}</div>}
@@ -489,6 +528,32 @@ export const Events: React.FC = () => {
                   <div role="status" aria-live="polite" style={{ color: 'var(--color-text-muted)' }}>
                     <strong>Atenção:</strong>
                     <ul>{aiWarnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul>
+                  </div>
+                )}
+                {hasAiDraft && (
+                  <div style={{ display: 'grid', gap: '8px', borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
+                    <h4 style={{ margin: 0 }}>Refinar com IA</h4>
+                    <label className="form-label" htmlFor="ai-refinement-instruction">Alteração desejada</label>
+                    <textarea
+                      id="ai-refinement-instruction"
+                      className="form-textarea"
+                      value={refinementInstruction}
+                      minLength={3}
+                      maxLength={500}
+                      onChange={event => setRefinementInstruction(event.target.value)}
+                      placeholder="Ex.: troque para domingo às 15h e aumente para oito pessoas"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={aiLoading || refinementInstruction.trim().length < 3}
+                      onClick={handleRefineDraft}
+                    >
+                      {aiLoading ? 'Aplicando alteração...' : 'Aplicar alteração'}
+                    </button>
+                    <small style={{ color: 'var(--color-text-muted)' }}>
+                      Cada refinamento usa uma nova chamada e participa da mesma cota da geração inicial.
+                    </small>
                   </div>
                 )}
               </section>

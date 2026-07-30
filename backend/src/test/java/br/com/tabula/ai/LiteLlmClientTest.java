@@ -46,14 +46,16 @@ class LiteLlmClientTest {
                     call == 1 ? "{}" : "{\"choices\":[{\"message\":{\"content\":\"{}\"}}]}");
         });
         server.start();
-        assertEquals("{}", client().chat("s", "u"));
+        AiChatResult result = client(true).chatWithUsage("s", "u");
+        assertEquals("{}", result.content());
+        assertEquals(2, result.providerCalls());
         assertEquals(2, calls.get());
     }
 
     @Test void classifiesServerErrorAfterSingleRetry() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         startStatusServer(calls, 500, "{}");
-        AiProviderException error = assertThrows(AiProviderException.class, () -> client().chat("s", "u"));
+        AiProviderException error = assertThrows(AiProviderException.class, () -> client(true).chat("s", "u"));
         assertEquals(AiProviderException.Category.SERVER_ERROR, error.category());
         assertEquals(2, calls.get());
     }
@@ -78,6 +80,29 @@ class LiteLlmClientTest {
         assertEquals(AiProviderException.Category.NOT_CONFIGURED, error.category());
     }
 
+    @Test void retryIsDisabledByDefault() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        startStatusServer(calls, 500, "{}");
+        assertThrows(AiProviderException.class, () -> client().chat("s", "u"));
+        assertEquals(1, calls.get());
+    }
+
+    @Test void extractsUsageAndAllowsMissingUsage() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        startStatusServer(calls, 200, """
+                {"choices":[{"message":{"content":"{}"}}],
+                 "usage":{"prompt_tokens":120,"completion_tokens":30,"total_tokens":150}}
+                """);
+        AiChatResult result = client().chatWithUsage("s", "u");
+        assertEquals(120, result.usage().promptTokens());
+        assertEquals(30, result.usage().completionTokens());
+        assertEquals(150, result.usage().totalTokens());
+
+        server.stop(0);
+        startStatusServer(new AtomicInteger(), 200, "{\"choices\":[{\"message\":{\"content\":\"{}\"}}]}");
+        assertNull(client().chatWithUsage("s", "u").usage().totalTokens());
+    }
+
     private void startStatusServer(AtomicInteger calls, int status, String body) throws Exception {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/chat/completions", exchange -> {
@@ -88,9 +113,14 @@ class LiteLlmClientTest {
     }
 
     private LiteLlmClient client() {
+        return client(false);
+    }
+
+    private LiteLlmClient client(boolean retryEnabled) {
         AiConfiguration config = new AiConfiguration("test-key",
                 URI.create("http://localhost:" + server.getAddress().getPort()), "gpt-4o-mini",
-                Duration.ofSeconds(2), ZoneId.of("America/Sao_Paulo"));
+                Duration.ofSeconds(2), ZoneId.of("America/Sao_Paulo"),
+                300, retryEnabled, 15, 5, 50);
         return new LiteLlmClient(config, HttpClient.newHttpClient());
     }
 

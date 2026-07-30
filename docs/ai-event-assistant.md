@@ -2,12 +2,15 @@
 
 ## Objetivo e fluxo
 
-O assistente transforma uma descrição em linguagem natural em um rascunho editável de evento. Ele nunca salva o evento: o usuário revisa todos os campos no modal e somente o botão normal **Agendar Encontro** confirma a criação.
+O assistente transforma uma descrição em linguagem natural em um rascunho editável e permite refiná-lo. A geração inicial e cada refinamento correspondem, cada um, a uma nova chamada à LLM. O usuário revisa os campos e somente o botão normal **Agendar Encontro** salva o evento.
 
 ```text
-Events.tsx → POST /api/ai/event-drafts → AiEventDraftService
-           → catálogo relacional de jogos → LiteLlmClient → LiteLLM
+Events.tsx → POST /api/ai/event-drafts → limite de uso
+           → pré-filtro local do catálogo → LiteLLM (gpt-4o-mini)
            ← rascunho validado no backend ← JSON do modelo
+
+Events.tsx → POST /api/ai/event-drafts/refine → o mesmo limite de uso
+           → rascunho atual + instrução → LiteLLM → rascunho refinado
 ```
 
 ## Endpoint
@@ -35,9 +38,9 @@ Response:
 }
 ```
 
-Erros esperados: `400` para prompt inválido, `401` para sessão inválida, `422` para saída da IA não validável, `429` para limite do provedor, `502` para resposta externa inválida e `503` para configuração ausente ou indisponibilidade transitória.
+O limite local responde `429` com o código `AI_USAGE_LIMIT_REACHED`. Também são esperados `400` para prompt inválido, `401` para sessão inválida, `422` para saída não validável, `429` para limite do provedor, `502` para resposta externa inválida e `503` para configuração ausente ou indisponibilidade transitória.
 
-## Configuração
+## Configuração econômica
 
 Somente o backend lê:
 
@@ -46,38 +49,49 @@ LITELLM_API_KEY=<CHAVE_LITELLM_DA_EQUIPE>
 LITELLM_BASE_URL=https://llm.rodrigor.com
 LITELLM_MODEL=gpt-4o-mini
 AI_REQUEST_TIMEOUT_SECONDS=15
+AI_MAX_COMPLETION_TOKENS=300
+AI_RETRY_ENABLED=false
+AI_MAX_CANDIDATE_GAMES=15
+AI_MAX_REQUESTS_PER_USER_HOUR=3
+AI_MAX_REQUESTS_PER_DAY=10
 APP_TIME_ZONE=America/Sao_Paulo
 ```
 
-O modelo padrão é `gpt-4o-mini`, com temperatura `0.2`, resposta JSON e limite pequeno de tokens. Não existe variável `VITE_LITELLM_API_KEY`.
+Os padrões priorizam o orçamento total de US$ 2: `gpt-4o-mini`, temperatura `0.1`, no máximo 300 tokens de conclusão e retry desativado. Se `AI_RETRY_ENABLED=true`, ocorre no máximo uma nova tentativa, apenas para timeout, conexão, `429` ou `5xx`; nunca para `400`, `401` ou `403`.
 
-## Validações e segurança
+Os limites são mantidos em memória de forma thread-safe: três chamadas por usuário por hora e dez globais por dia. Geração e refinamentos usam a mesma instância do limitador e compartilham ambas as cotas. A identidade vem exclusivamente do Bearer token validado. Uma rejeição pelo limite acontece antes da chamada à LiteLLM. Os contadores reiniciam com o backend e não são adequados para múltiplas instâncias sem armazenamento compartilhado.
 
-O prompt é aparado e deve ter de 5 a 1000 caracteres. O system prompt trata o texto como dado não confiável, ignora tentativas de mudar instruções e proíbe SQL, comandos, HTML e markdown.
+## Redução de tokens e validação
 
-São enviados à LLM no máximo 200 jogos, somente com ID externo, nome, categoria, mínimo/máximo de jogadores, duração média e complexidade. Nunca são enviados usuários, e-mails, credenciais, tokens, comentários, sessões, eventos, auditoria ou o estado completo.
+Antes da chamada externa, Java pontua o catálogo por nome, categoria, quantidade de jogadores, duração e complexidade. Somente os 15 candidatos mais relevantes são enviados, em ordem determinística, com os campos compactos `id`, `nome`, `categoria`, `minPlayers`, `maxPlayers`, `duracao` e `complexidade`. O fallback não é aleatório.
 
-A saída precisa conter exatamente um objeto JSON. O backend verifica jogo e nome contra o banco, data/fuso, horário, limites globais e do jogo, localização, descrição e warnings. Campos desconhecidos são ignorados pelo parser, mas não influenciam o rascunho.
+O prompt deve ter de 5 a 1000 caracteres. A saída precisa conter um objeto JSON; o backend verifica o jogo contra o banco, data e fuso, horário, limites de participantes, localização, descrição e warnings. O rascunho continua editável e não é salvo automaticamente.
 
-## Confiabilidade, auditoria e logs
+## Auditoria e logs
 
-O cliente reutiliza `HttpClient`, aplica timeout e faz no máximo uma tentativa adicional para timeout, conexão, `429` ou `5xx`; não repete `400`, `401` ou `403`. Interrupções de thread são preservadas.
+Na geração e no refinamento, quando a LiteLLM devolve `usage`, o backend extrai `prompt_tokens`, `completion_tokens` e `total_tokens`. A telemetria também registra quantas chamadas ao provedor ocorreram, incluindo retry. A ausência de `usage` não quebra a operação. Prompt, instrução, rascunho, resposta bruta, chave e cabeçalho de autorização nunca são auditados ou logados.
 
-A auditoria registra apenas modelo, comprimento do prompt, gameId, quantidade de warnings, duração, sucesso e categoria genérica de falha. Prompt, resposta bruta, chave e Authorization nunca são auditados ou logados. A falha da auditoria não altera a resposta principal.
+## Refinamento e confirmação humana
 
-## Testes e chamada real
+Depois da geração, o frontend envia a instrução e os valores atuais do formulário para `POST /ai/event-drafts/refine`. Edições manuais também entram no rascunho atual. Em caso de `429` ou outra falha, todos os campos e a instrução permanecem intactos. Cada refinamento consome uma nova chamada e participa do mesmo limite da geração inicial.
 
-Os testes usam clientes falsos e servidores HTTP locais; nunca consomem a LiteLLM. Execute:
+Exemplo: gere “Crie uma mesa de Xadrez sábado às 18h”; refine com “Troque para domingo às 15h”; revise e confirme manualmente.
+
+## Testes e operação
+
+Os testes usam clientes falsos e servidores HTTP locais, sem consumir a LiteLLM:
 
 ```bash
 cd backend
 mvn test
 cd ..
 npm test
+npm run lint
+npm run build
 ```
 
-Para um teste manual, configure as variáveis somente no processo do backend, autentique-se normalmente, abra **Agendar Novo Encontro → Criar com IA**, descreva o encontro e revise o rascunho. Não coloque a chave em arquivos versionados, no frontend ou na linha de comando compartilhada.
+Para um teste manual, configure as variáveis no processo do backend, autentique-se, abra **Agendar Novo Encontro**, descreva o encontro e clique uma vez em **Preencher formulário com IA**. Ajuste os campos manualmente antes de salvar. Não coloque a chave no frontend, em arquivos versionados ou em uma linha de comando compartilhada.
 
 ## Limitações
 
-O resultado depende da qualidade da descrição e do catálogo relacional estar sincronizado. Informações ausentes ou ambíguas podem produzir warnings ou `422`; não há escolha aleatória de jogo nem criação automática.
+A seleção local é heurística e o resultado depende da descrição e do catálogo relacional. Informações ausentes ou ambíguas podem gerar warnings ou `422`. Não há escolha aleatória, criação automática, MCP, moderação ou detecção de anomalias nesta etapa.

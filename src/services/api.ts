@@ -63,6 +63,11 @@ export interface AiEventDraftResponse {
   warnings: string[];
 }
 
+export interface AiEventRefinementRequest {
+  instruction: string;
+  currentDraft: AiEventDraftResponse;
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
 
 const getAuthToken = () => {
@@ -148,6 +153,16 @@ export async function generateEventDraft(prompt: string): Promise<AiEventDraftRe
   return requestJson<AiEventDraftResponse>('/ai/event-drafts', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function refineEventDraft(
+  instruction: string,
+  currentDraft: AiEventDraftResponse,
+): Promise<AiEventDraftResponse> {
+  return requestJson<AiEventDraftResponse>('/ai/event-drafts/refine', {
+    method: 'POST',
+    body: JSON.stringify({ instruction, currentDraft }),
   });
 }
 
