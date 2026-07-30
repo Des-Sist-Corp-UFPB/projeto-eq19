@@ -346,13 +346,13 @@ Os testes automatizados do backend foram executados com Maven e JaCoCo.
 
 Resultado da última execução:
 
-- Testes executados: 196
-- Testes aprovados: 196
+- Testes executados: 201
+- Testes aprovados: 201
 - Falhas: 0
 - Erros: 0
 - Ignorados: 0
-- Cobertura por instruções: 86,60% (13.520/15.612)
-- Cobertura por branches: 70,06% (1.006/1.436)
+- Cobertura por instruções: 88,14% (14.993/17.010)
+- Cobertura por branches: 71,32% (1.094/1.534)
 - Pacote `br.com.tabula.ai`: 90,65% de instruções e 71,95% de branches
 
 Os testes incluem cenários específicos da trilha de auditoria e da integração com IA, como autenticação, limites de consumo, retry e telemetria de tokens. Os testes da IA usam clientes simulados e servidores HTTP locais; não consomem a cota LiteLLM.
@@ -380,10 +380,10 @@ Resultado da última execução:
 * Arquivos de teste: 14
 * Testes aprovados: 46
 * Falhas: 0
-* Cobertura por statements: 87,01% (1.199/1.378)
-* Cobertura por linhas: 89,02% (1.119/1.257)
-* Cobertura por branches: 76,96% (508/660)
-* Cobertura por funções: 76,98% (291/378)
+* Cobertura por statements: 86,49% (1.191/1.377)
+* Cobertura por linhas: 88,67% (1.112/1.254)
+* Cobertura por branches: 76,52% (502/656)
+* Cobertura por funções: 75,65% (289/382)
 
 Os testes de interface cobrem também a auditoria, os fluxos manuais de eventos e os fluxos de geração e refinamento por IA, inclusive refinamentos sucessivos, erros do provedor e preservação do formulário.
 
@@ -413,3 +413,10 @@ Detalhes, limitações e links para os relatórios estão em [docs/testing-and-c
 * Credenciais reais, como `.env`, senhas de banco e senhas de SMTP, não devem ser versionadas no Git.
 * Pastas geradas automaticamente, como `node_modules/`, `coverage/`, `backend/target/` e `dist/`, também não devem ser versionadas.
 * Os relatórios finais de cobertura ficam versionados apenas na pasta `cobertura/`.
+### Persistência de partidas
+
+Partidas e seus participantes usam PostgreSQL relacional como fonte
+autoritativa, com endpoints `/api/sessions`. A conclusão de um evento cria a
+partida na mesma transação e a unicidade do vínculo com o evento é protegida
+no banco. O `GET /api/state` mantém uma projeção temporária para telas legadas;
+`app_state` ainda não foi removido.

@@ -80,3 +80,9 @@ O backend registra somente o endereço da conexão retornado por Javalin. Cabeç
 como `X-Forwarded-For` e `X-Real-IP` não são usados enquanto não houver configuração
 explícita de proxies confiáveis. Somente o valor truncado de `User-Agent` é
 armazenado; `Authorization`, cookies e demais cabeçalhos nunca são capturados.
+## Auditoria de partidas
+
+As ações `SESSION_CREATED`, `SESSION_DELETED` e
+`SESSION_OPERATION_REJECTED` registram ator, tipo e identificador do recurso,
+resultado e motivo técnico seguro. Tokens, payload completo e dados pessoais
+desnecessários não são registrados.

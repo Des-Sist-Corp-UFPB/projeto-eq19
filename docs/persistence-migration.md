@@ -38,3 +38,44 @@ Migrar, uma fatia por vez, partidas, comentários, favoritos e perfis para
 endpoints específicos. Depois que consumidores e dados forem validados, o
 respectivo trecho poderá ser removido do `PUT /api/state`; `app_state` só deve ser
 retirado quando nenhuma seção depender dele.
+## Etapa 2 — partidas e participantes
+
+Partidas (`sessions` na API, `partidas` no PostgreSQL) e seus participantes
+passaram a ter fonte autoritativa relacional. A API própria expõe `GET
+/sessions`, `GET /sessions/{id}`, `POST /sessions` e `DELETE /sessions/{id}`.
+
+A conclusão de evento bloqueia o evento, cria uma única partida e seus
+participantes confirmados, altera o evento e grava auditoria na mesma
+transação. O índice único parcial de `partidas.evento_id` impede duplicidade
+mesmo entre requisições concorrentes. Não existe mais escrita em
+`app_state.sessions` nesse fluxo.
+
+O `GET /state` ainda projeta as partidas relacionais para Stats, PlayerProfile,
+Games, Home, busca global e detalhes legados. O `PUT /state` rejeita com 409
+uma seção `sessions` divergente; sua ausência é tolerada para que perfis,
+favoritos e catálogo continuem no fluxo legado. O shadow sync normal ignora
+partidas. A importação do JSON antigo só ocorre no bootstrap explícito.
+
+O contrato escolhido é rejeitar integralmente com HTTP 409 qualquer snapshot
+que tente alterar a seção `sessions`. Assim, uma alteração de perfil ou
+favorito não é persistida parcialmente quando o mesmo payload contém partidas
+divergentes; o cliente deve reenviar apenas o domínio legado. O frontend atual
+faz isso: `saveServerState` não inclui `sessions`. Quando a seção é omitida, a
+alteração legada é salva e as partidas relacionais permanecem intactas.
+
+Após uma exclusão relacional, cópias antigas eventualmente mantidas dentro de
+`app_state` não são devolvidas: `GET /state` sempre sobrepõe a seção com a
+projeção relacional. Sincronizações normais também não executam o bootstrap e,
+portanto, não conseguem recriar a partida excluída.
+
+| Domínio | Fonte atual | Endpoints próprios | Situação |
+|---|---|---|---|
+| Eventos | Relacional | Sim | Migrado |
+| Participantes de eventos | Relacional | Sim | Migrado |
+| Fila de espera | Relacional | Sim | Migrado |
+| Partidas/sessões | Relacional | Sim | Migrado |
+| Participantes das partidas | Relacional | Sim | Migrado |
+| Demais domínios | Legado | Não ou parcial | Pendente |
+
+`app_state` continua existindo. Perfis, favoritos, comentários, catálogo e
+outros domínios ainda serão migrados em etapas posteriores.

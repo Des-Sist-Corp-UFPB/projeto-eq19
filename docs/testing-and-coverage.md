@@ -13,10 +13,10 @@ mvn clean test jacoco:report
 
 Resultado:
 
-- 196 testes executados e aprovados;
+- 201 testes executados e aprovados;
 - 0 falhas, 0 erros e 0 ignorados;
-- 86,60% de instruções (13.520 de 15.612);
-- 70,06% de branches (1.006 de 1.436);
+- 88,14% de instruções (14.993 de 17.010);
+- 71,32% de branches (1.094 de 1.534);
 - pacote `br.com.tabula.ai`: 90,65% de instruções (708 de 781) e 71,95% de branches (59 de 82).
 
 Relatórios versionados:
@@ -45,10 +45,10 @@ Resultado:
 
 - 14 arquivos de teste;
 - 46 testes aprovados;
-- statements: 87,01% (1.199 de 1.378);
-- branches: 76,96% (508 de 660);
-- functions: 76,98% (291 de 378);
-- lines: 89,02% (1.119 de 1.257).
+- statements: 86,49% (1.191 de 1.377);
+- branches: 76,52% (502 de 656);
+- functions: 75,65% (289 de 382);
+- lines: 88,67% (1.112 de 1.254).
 
 Relatórios versionados:
 
@@ -76,3 +76,10 @@ git diff --check
 ```
 
 Os relatórios gerados fora de `cobertura/`, como `backend/target/` e `coverage/`, são artefatos locais e não devem ser versionados.
+## Migração relacional de partidas
+
+Os testes PostgreSQL usam Testcontainers sem `disabledWithoutDocker` e cobrem
+criação, consulta, listagem, autenticação, identidade do organizador,
+participantes, vencedor, autorização de exclusão, auditoria e proteção contra
+restauração pelo shadow sync legado. Os testes frontend verificam o cliente de
+sessões e que operações do domínio não dependem de `PUT /state`.

@@ -18,3 +18,10 @@ Nos endpoints de eventos:
 O serviço autoriza toda a operação antes do commit. O `PUT /api/state` continua
 protegido pela autorização granular legada e não pode ser usado para contornar
 as regras dos endpoints relacionais de eventos.
+## Partidas
+
+Todos os endpoints `/sessions` exigem Bearer token válido. Na criação, o
+organizador é sempre o usuário autenticado; `organizerId` enviado pelo cliente
+não é aceito como identidade. Participantes e vencedor precisam existir, o
+vencedor precisa estar na partida e apenas o organizador (ou ADMIN conforme o
+privilégio já existente) pode excluir o registro.
