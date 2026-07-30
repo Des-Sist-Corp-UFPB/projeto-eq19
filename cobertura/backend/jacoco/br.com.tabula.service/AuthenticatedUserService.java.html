@@ -51,7 +51,7 @@ public class AuthenticatedUserService {
     }
 
     private static String extractBearer(String authorization) {
-<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return null;</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        if (authorization == null || !authorization.startsWith(&quot;Bearer &quot;)) return null;</span>
 <span class="fc" id="L55">        String token = authorization.substring(&quot;Bearer &quot;.length()).trim();</span>
 <span class="pc bpc" id="L56" title="1 of 2 branches missed.">        return token.isEmpty() ? null : token;</span>
     }

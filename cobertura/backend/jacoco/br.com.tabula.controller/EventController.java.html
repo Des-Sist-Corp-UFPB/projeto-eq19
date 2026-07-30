@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">EventController.java</span></div><h1>EventController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.EventRepository;
+import br.com.tabula.repository.EventRepository.EventData;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
+import br.com.tabula.service.EventService;
+import br.com.tabula.service.EventService.CompletionInput;
+import br.com.tabula.service.EventService.EventException;
+import br.com.tabula.service.EventService.EventInput;
+import br.com.tabula.service.EventService.RequestMetadata;
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+public final class EventController {
+    private EventController() {}
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L26">        AuthenticatedUserService auth = new AuthenticatedUserService(dataSource);</span>
+<span class="fc" id="L27">        EventRepository repository = new EventRepository(dataSource);</span>
+<span class="fc" id="L28">        EventService service = new EventService(dataSource, repository, new AuditLogService(dataSource));</span>
+
+<span class="fc" id="L30">        app.get(&quot;/events&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; ctx.json(</span>
+<span class="fc" id="L31">                service.list().stream().map(EventResponse::from).toList())));</span>
+<span class="fc" id="L32">        app.get(&quot;/events/{id}&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt;</span>
+<span class="fc" id="L33">                ctx.json(EventResponse.from(service.get(ctx.pathParam(&quot;id&quot;))))));</span>
+<span class="fc" id="L34">        app.post(&quot;/events&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
+<span class="fc" id="L35">            EventRequest request = body(ctx, EventRequest.class);</span>
+<span class="fc" id="L36">            EventData event = service.create(principal, request.toInput(), metadata(ctx));</span>
+<span class="fc" id="L37">            ctx.status(201).json(EventResponse.from(event));</span>
+<span class="fc" id="L38">        }));</span>
+<span class="pc" id="L39">        app.patch(&quot;/events/{id}&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
+<span class="nc" id="L40">            EventRequest request = body(ctx, EventRequest.class);</span>
+<span class="nc" id="L41">            ctx.json(EventResponse.from(service.update(</span>
+<span class="nc" id="L42">                    principal, ctx.pathParam(&quot;id&quot;), request.toInput(), metadata(ctx))));</span>
+<span class="nc" id="L43">        }));</span>
+<span class="pc" id="L44">        app.post(&quot;/events/{id}/join&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
+<span class="nc" id="L45">            var result = service.join(principal, ctx.pathParam(&quot;id&quot;), metadata(ctx));</span>
+<span class="nc" id="L46">            ctx.json(Map.of(&quot;event&quot;, EventResponse.from(result.event()), &quot;waitlisted&quot;, result.waitlisted()));</span>
+<span class="nc" id="L47">        }));</span>
+<span class="pc" id="L48">        app.post(&quot;/events/{id}/leave&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
+<span class="nc" id="L49">            var result = service.leave(principal, ctx.pathParam(&quot;id&quot;), metadata(ctx));</span>
+<span class="nc" id="L50">            ctx.json(Map.of(&quot;event&quot;, EventResponse.from(result.event()), &quot;promoted&quot;, result.promoted()));</span>
+<span class="nc" id="L51">        }));</span>
+<span class="pc" id="L52">        app.post(&quot;/events/{id}/cancel&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt;</span>
+<span class="nc" id="L53">                ctx.json(EventResponse.from(service.cancel(</span>
+<span class="nc" id="L54">                        principal, ctx.pathParam(&quot;id&quot;), metadata(ctx))))));</span>
+<span class="pc" id="L55">        app.post(&quot;/events/{id}/complete&quot;, ctx -&gt; withPrincipal(ctx, auth, service, principal -&gt; {</span>
+<span class="nc" id="L56">            CompleteRequest request = body(ctx, CompleteRequest.class);</span>
+<span class="nc" id="L57">            ctx.json(EventResponse.from(service.complete(</span>
+<span class="nc" id="L58">                    principal, ctx.pathParam(&quot;id&quot;), request.toInput(), metadata(ctx))));</span>
+<span class="nc" id="L59">        }));</span>
+<span class="fc" id="L60">    }</span>
+
+    private static void withPrincipal(Context ctx, AuthenticatedUserService auth, EventService service,
+                                      EventHandler handler)
+            throws Exception {
+<span class="fc" id="L65">        Optional&lt;AuthenticatedPrincipal&gt; principal = auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (principal.isEmpty()) {</span>
+<span class="fc" id="L67">            ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="fc" id="L68">            return;</span>
+        }
+        try {
+<span class="fc" id="L71">            handler.handle(principal.get());</span>
+<span class="fc" id="L72">        } catch (InvalidBodyException ex) {</span>
+<span class="fc" id="L73">            ctx.status(422).json(Map.of(&quot;error&quot;, &quot;Payload inválido.&quot;));</span>
+<span class="fc" id="L74">        } catch (EventException ex) {</span>
+<span class="pc bpc" id="L75" title="3 of 4 branches missed.">            int status = switch (ex.kind()) {</span>
+<span class="nc" id="L76">                case FORBIDDEN -&gt; 403;</span>
+<span class="fc" id="L77">                case NOT_FOUND -&gt; 404;</span>
+<span class="nc" id="L78">                case CONFLICT -&gt; 409;</span>
+<span class="pc" id="L79">                case INVALID -&gt; 422;</span>
+            };
+<span class="fc" id="L81">            service.auditRejected(principal.get(), ctx.pathParamMap().get(&quot;id&quot;), ex.reason(), metadata(ctx));</span>
+<span class="fc" id="L82">            ctx.status(status).json(Map.of(&quot;error&quot;, publicMessage(ex.kind())));</span>
+<span class="fc" id="L83">        }</span>
+<span class="fc" id="L84">    }</span>
+
+    private static String publicMessage(EventException.Kind kind) {
+<span class="pc bpc" id="L87" title="3 of 4 branches missed.">        return switch (kind) {</span>
+<span class="nc" id="L88">            case FORBIDDEN -&gt; &quot;Operação não permitida.&quot;;</span>
+<span class="fc" id="L89">            case NOT_FOUND -&gt; &quot;Evento não encontrado.&quot;;</span>
+<span class="nc" id="L90">            case CONFLICT -&gt; &quot;A operação conflita com o estado atual do evento.&quot;;</span>
+<span class="nc" id="L91">            case INVALID -&gt; &quot;Dados ou transição inválidos.&quot;;</span>
+        };
+    }
+
+    private static &lt;T&gt; T body(Context ctx, Class&lt;T&gt; type) throws InvalidBodyException {
+        try {
+<span class="fc" id="L97">            return ctx.bodyAsClass(type);</span>
+<span class="fc" id="L98">        } catch (Exception ex) {</span>
+<span class="fc" id="L99">            throw new InvalidBodyException();</span>
+        }
+    }
+
+    private static RequestMetadata metadata(Context ctx) {
+<span class="fc" id="L104">        return new RequestMetadata(ctx.ip(), ctx.userAgent());</span>
+    }
+
+<span class="fc" id="L107">    private record EventRequest(String gameId, String date, String time, String location,</span>
+                                int maxParticipants, String description) {
+        EventInput toInput() {
+<span class="fc" id="L110">            return new EventInput(gameId, date, time, location, maxParticipants, description);</span>
+        }
+    }
+
+<span class="nc" id="L114">    private record CompleteRequest(String winnerId, int duration, String notes,</span>
+                                   String initialComment, String photoUrl) {
+        CompletionInput toInput() {
+<span class="nc" id="L117">            return new CompletionInput(winnerId, duration, notes, initialComment, photoUrl);</span>
+        }
+    }
+
+<span class="fc" id="L121">    private record EventResponse(</span>
+            String id, String gameId, String date, String time, String location,
+            int maxParticipants, List&lt;String&gt; participantIds, List&lt;String&gt; waitingListIds,
+            String description, String organizerId, String status
+    ) {
+<span class="fc" id="L126">        private static final DateTimeFormatter DATE = DateTimeFormatter.ISO_LOCAL_DATE;</span>
+<span class="fc" id="L127">        private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern(&quot;HH:mm&quot;);</span>
+
+        static EventResponse from(EventData event) {
+<span class="fc" id="L130">            return new EventResponse(event.externalId(), event.gameExternalId(),</span>
+<span class="fc" id="L131">                    event.dateTime().toLocalDate().format(DATE), event.dateTime().toLocalTime().format(TIME),</span>
+<span class="fc" id="L132">                    event.location(), event.maxParticipants(), event.participantIds(), event.waitingListIds(),</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                    event.description() == null ? &quot;&quot; : event.description(), event.organizerExternalId(),</span>
+<span class="fc" id="L134">                    event.status());</span>
+        }
+    }
+
+    @FunctionalInterface
+    private interface EventHandler {
+        void handle(AuthenticatedPrincipal principal) throws Exception;
+    }
+
+    private static final class InvalidBodyException extends Exception {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

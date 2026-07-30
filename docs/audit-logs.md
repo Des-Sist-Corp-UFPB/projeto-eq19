@@ -65,6 +65,15 @@ Eventos de rejeição, que não acompanham uma mutação a confirmar, são best-
 falha de auditoria nesses casos é registrada no log técnico e não altera o status
 HTTP originalmente devido ao cliente.
 
+## Eventos relacionais
+
+As ações `EVENT_CREATED`, `EVENT_UPDATED`, `EVENT_JOINED`, `EVENT_LEFT`,
+`EVENT_WAITLISTED`, `EVENT_WAITLIST_PROMOTED`, `EVENT_CANCELLED` e
+`EVENT_COMPLETED` são registradas na mesma transação da mutação. Recusas
+relevantes usam `EVENT_OPERATION_REJECTED` em gravação best-effort posterior ao
+rollback. Os registros contêm somente ator autenticado, ação, recurso, resultado
+e motivo genérico; token, senha e payload completo nunca são persistidos.
+
 ## Metadados de rede
 
 O backend registra somente o endereço da conexão retornado por Javalin. Cabeçalhos

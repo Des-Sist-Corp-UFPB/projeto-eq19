@@ -78,6 +78,10 @@ Externamente, os endpoints são acessados pelo prefixo `/api`:
 * `POST /api/auth/change-password` — alteração de senha.
 * `GET /api/state` — carrega os dados persistidos no PostgreSQL.
 * `PUT /api/state` — salva o estado da aplicação no PostgreSQL, exigindo sessão autenticada após a inicialização.
+* `GET /api/events` e `GET /api/events/{id}` — consultam eventos relacionais.
+* `POST /api/events` e `PATCH /api/events/{id}` — criam e editam eventos.
+* `POST /api/events/{id}/join` e `POST /api/events/{id}/leave` — gerenciam a própria participação e fila.
+* `POST /api/events/{id}/cancel` e `POST /api/events/{id}/complete` — encerram eventos do organizador.
 
 Internamente, o backend registra as rotas sem o prefixo `/api`, pois esse prefixo é tratado pelo Nginx.
 
@@ -91,7 +95,9 @@ Gerações e refinamentos são auditados, mas nunca salvam o evento automaticame
 
 O Tabula persiste os dados no PostgreSQL por meio do backend.
 
-Atualmente, os dados principais da aplicação, como jogos, eventos, partidas, participantes, ranking, comentários e logs de auditoria, são mantidos no estado persistido `app_state.data`, em formato JSONB.
+Eventos, participantes e fila de espera usam as tabelas relacionais como fonte
+canônica. Os demais domínios ainda mantidos no fluxo agregado usam
+`app_state.data`; a auditoria oficial usa exclusivamente `audit_logs`.
 
 Tabela principal usada pelo estado da aplicação:
 
@@ -107,7 +113,18 @@ data
 updated_at
 ```
 
-A aplicação também possui migrations para tabelas relacionais, como `jogos`, `eventos`, `partidas`, `comentarios`, `favoritos` e `logs`. Essas tabelas foram criadas de forma não destrutiva para evolução da modelagem, mas o fluxo principal atual da aplicação ainda utiliza o estado persistido via `/api/state`.
+A aplicação também possui migrations para tabelas relacionais, como `jogos`,
+`eventos`, `evento_participantes`, `partidas`, `comentarios`, `favoritos` e
+`audit_logs`. A migração é incremental: eventos já usam endpoints específicos,
+enquanto as fatias restantes preservam compatibilidade via `/api/state`. Veja
+[docs/persistence-migration.md](docs/persistence-migration.md).
+
+| Domínio | Fonte atual | Endpoints específicos | Situação |
+| --- | --- | --- | --- |
+| Eventos | Relacional | Sim | Migrado |
+| Participantes | Relacional | Sim | Migrado |
+| Fila de espera | Relacional | Sim | Migrado |
+| Demais domínios | `app_state`/legado | Não ou parcial | Pendente |
 
 ## Migração Relacional
 
@@ -115,12 +132,16 @@ Este projeto utiliza uma estratégia de migração segura, incremental e toleran
 
 ### 1. Arquitetura da Migração Atual
 
-Atualmente, a aplicação utiliza a tabela `app_state` (coluna `data` do tipo JSONB) como fonte de dados e fallback seguro. 
+Para os domínios ainda não migrados, a aplicação utiliza `app_state` (coluna
+`data` do tipo JSONB) como fonte de dados e fallback. Eventos, participantes e
+fila já são canônicos no relacional e não fazem rollback para o JSON legado.
 
 O fluxo de escrita ocorre da seguinte forma:
 1. **Salvamento Principal**: O endpoint `PUT /state` recebe o JSON do frontend e o salva diretamente no banco de dados na tabela `app_state.data`.
 2. **Sincronização em Sombra (Shadow Sync)**: Após o salvamento com sucesso, o backend inicia uma sincronização em segundo plano (shadow mode) utilizando o `RelationalStateSyncService`.
-3. Sincroniza e insere as informações mapeadas nas tabelas relacionais (`usuarios`, `jogos`, `eventos`, `evento_participantes`, `partidas`, `partida_participantes`, `partida_fotos`, `comentarios`, `favoritos` e `logs`).
+3. Sincroniza as fatias legadas mapeadas. Eventos e participantes são
+explicitamente ignorados nesse shadow sync e só são importados pelo bootstrap ou
+backfill administrativo.
 
 Pontos importantes:
 - A tabela `app_state.data` **não foi removida** e continua sendo atualizada.
@@ -196,7 +217,8 @@ RELATIONAL_STATE_COMPARISON_ENABLED=false
 RELATIONAL_STATE_BACKFILL_ENABLED=false
 ```
 
-A aplicação voltará instantaneamente a usar o `app_state.data` legado como única fonte de leitura e escrita, anulando qualquer risco de indisponibilidade.
+As fatias ainda legadas voltarão a usar `app_state.data`. Essa configuração não
+reverte eventos, participantes ou fila, que permanecem relacionais.
 
 ### 8. Explicação para Avaliação / Professor
 
@@ -324,13 +346,13 @@ Os testes automatizados do backend foram executados com Maven e JaCoCo.
 
 Resultado da última execução:
 
-- Testes executados: 171
-- Testes aprovados: 171
+- Testes executados: 196
+- Testes aprovados: 196
 - Falhas: 0
 - Erros: 0
 - Ignorados: 0
-- Cobertura por instruções: 87,31% (10.020/11.477)
-- Cobertura por branches: 71,17% (706/992)
+- Cobertura por instruções: 86,60% (13.520/15.612)
+- Cobertura por branches: 70,06% (1.006/1.436)
 - Pacote `br.com.tabula.ai`: 90,65% de instruções e 71,95% de branches
 
 Os testes incluem cenários específicos da trilha de auditoria e da integração com IA, como autenticação, limites de consumo, retry e telemetria de tokens. Os testes da IA usam clientes simulados e servidores HTTP locais; não consomem a cota LiteLLM.
@@ -358,10 +380,10 @@ Resultado da última execução:
 * Arquivos de teste: 14
 * Testes aprovados: 46
 * Falhas: 0
-* Cobertura por statements: 87,66% (1.244/1.419)
-* Cobertura por linhas: 89,13% (1.157/1.298)
-* Cobertura por branches: 76,02% (536/705)
-* Cobertura por funções: 79,62% (297/373)
+* Cobertura por statements: 87,01% (1.199/1.378)
+* Cobertura por linhas: 89,02% (1.119/1.257)
+* Cobertura por branches: 76,96% (508/660)
+* Cobertura por funções: 76,98% (291/378)
 
 Os testes de interface cobrem também a auditoria, os fluxos manuais de eventos e os fluxos de geração e refinamento por IA, inclusive refinamentos sucessivos, erros do provedor e preservação do formulário.
 
