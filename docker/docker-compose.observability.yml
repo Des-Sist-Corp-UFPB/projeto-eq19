@@ -1,0 +1,24 @@
+services:
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.6.0
+    ports:
+      - "3000:3000"
+      - "4317:4317"
+      - "4318:4318"
+
+  tabula:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      JAVA_TOOL_OPTIONS: "-javaagent:/app/opentelemetry-javaagent.jar"
+      OTEL_SERVICE_NAME: dsc-eq19
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED: "true"
+      OTEL_INSTRUMENTATION_LOGBACK_APPENDER_EXPERIMENTAL_CAPTURE_KEY_VALUE_PAIR_ATTRIBUTES: "true"
+    depends_on:
+      - otel-lgtm

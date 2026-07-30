@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-eq19}
+      POSTGRES_USER: ${DB_USER:-eq19}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-eq19} -d ${DB_NAME:-eq19}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  tabula:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-eq19}
+      DB_USER: ${DB_USER:-eq19}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      BACKEND_PORT: "8119"
+    ports:
+      - "127.0.0.1:8119:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  postgres_data:
