@@ -238,42 +238,22 @@ Para rodar a aplicação local com coleta de traces via OpenTelemetry, Grafana e
 
 ## Log de Auditoria
 
-O Tabula possui um módulo de log de auditoria para registrar ações importantes realizadas na aplicação.
+O Tabula mantém a trilha oficial na tabela relacional append-only `audit_logs`.
+Somente o backend cria esses eventos. Enquanto as alterações de domínio ainda
+chegam agregadas pelo `PUT /api/state`, elas são registradas como `STATE_UPDATED`
+com `changedSections`.
 
-As ações auditadas incluem, por exemplo:
-
-* criação de conta;
-* alteração de dados de perfil;
-* criação, edição e remoção de jogos;
-* criação de eventos;
-* entrada e saída de participantes em eventos;
-* conclusão de eventos;
-* registro de partidas concluídas;
-* comentários em partidas;
-* promoção ou alteração de usuários;
-* alterações relevantes no estado da aplicação.
-
-Atualmente, os logs são armazenados junto ao estado persistido da aplicação no PostgreSQL, dentro de `app_state.data`, no array `logs`.
-
-Cada registro de auditoria contém informações como:
-
-```json
-{
-  "id": "l1",
-  "userId": "u1",
-  "userName": "Nome do usuário",
-  "action": "ação realizada",
-  "timestamp": "2026-06-08T10:00:00Z"
-}
-```
-
-A implementação do log está integrada ao fluxo de atualização do estado da aplicação, principalmente no contexto responsável pelas ações de banco no frontend.
+A tabela `logs` e um eventual array `app_state.data.logs` são preservados apenas
+para compatibilidade temporária com clientes antigos. O frontend atual descarta
+esse campo ao carregar o estado, nunca o inclui no `PUT /api/state` e não cria
+novos registros legados. A página administrativa consulta exclusivamente
+`GET /api/audit-logs`.
 
 Arquivos relacionados:
 
-* `src/context/DatabaseContext.tsx`
-* `src/db/database.ts`
-* `src/db/initialData.ts`
+* `docs/audit-logs.md`
+* `src/pages/AuditLogs.tsx`
+* `backend/src/main/java/br/com/tabula/service/AuditLogService.java`
 * `backend/src/main/java/br/com/tabula/controller/StateController.java`
 
 ## Integração com Serviço Externo
