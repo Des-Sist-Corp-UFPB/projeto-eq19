@@ -21,6 +21,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_KEY = 'tabula_auth_session';
 
+const authErrorMessage = (error: unknown, fallback: string) => {
+  if (!(error instanceof Error)) return fallback;
+  const match = error.message.match(/API request failed \((\d+)\): (.*)/);
+  if (!match) return fallback;
+
+  const body = match[2];
+  try {
+    const parsed = JSON.parse(body) as { error?: string };
+    return parsed.error || fallback;
+  } catch {
+    return body.trim() || fallback;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { state, addUser, editUser } = useDatabase();
   const { showToast } = useToast();
@@ -78,23 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       showToast(`Bem-vindo, ${response.user.name.split(' ')[0]}!`, 'success');
       return { ok: true, message: response.message || 'Login realizado com sucesso.' };
     } catch (err) {
-      let message = 'Credenciais inválidas ou servidor indisponível.';
-      if (err instanceof Error) {
-        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
-        if (match) {
-          const body = match[2];
-          try {
-            const parsed = JSON.parse(body);
-            if (parsed.error) {
-              message = parsed.error;
-            }
-          } catch {
-            if (body && body.trim()) {
-              message = body;
-            }
-          }
-        }
-      }
+      const message = authErrorMessage(err, 'Credenciais inválidas ou servidor indisponível.');
       showToast(message, 'error');
       return { ok: false, message };
     }
@@ -137,23 +135,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { ok: true, message: response.message || 'Conta criada com sucesso.' };
     } catch (err) {
-      let message = 'Não foi possível criar a conta. Verifique se o e-mail já está cadastrado.';
-      if (err instanceof Error) {
-        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
-        if (match) {
-          const body = match[2];
-          try {
-            const parsed = JSON.parse(body);
-            if (parsed.error) {
-              message = parsed.error;
-            }
-          } catch {
-            if (body && body.trim()) {
-              message = body;
-            }
-          }
-        }
-      }
+      const message = authErrorMessage(
+        err,
+        'Não foi possível criar a conta. Verifique se o e-mail já está cadastrado.',
+      );
       showToast(message, 'error');
       return { ok: false, message };
     }
@@ -172,23 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       showToast(response.message || 'E-mail de verificação reenviado.', 'success');
       return { ok: true, message: response.message || 'E-mail reenviado com sucesso.' };
     } catch (err) {
-      let message = 'Não foi possível reenviar o e-mail de verificação.';
-      if (err instanceof Error) {
-        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
-        if (match) {
-          const body = match[2];
-          try {
-            const parsed = JSON.parse(body);
-            if (parsed.error) {
-              message = parsed.error;
-            }
-          } catch {
-            if (body && body.trim()) {
-              message = body;
-            }
-          }
-        }
-      }
+      const message = authErrorMessage(err, 'Não foi possível reenviar o e-mail de verificação.');
       showToast(message, 'error');
       return { ok: false, message };
     }
@@ -283,23 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       showToast(response.message || 'E-mail verificado com sucesso.', 'success');
       return { ok: true, message: response.message || 'E-mail verificado com sucesso.' };
     } catch (err) {
-      let message = 'Não foi possível verificar o e-mail.';
-      if (err instanceof Error) {
-        const match = err.message.match(/API request failed \((\d+)\): (.*)/);
-        if (match) {
-          const body = match[2];
-          try {
-            const parsed = JSON.parse(body);
-            if (parsed.error) {
-              message = parsed.error;
-            }
-          } catch {
-            if (body && body.trim()) {
-              message = body;
-            }
-          }
-        }
-      }
+      const message = authErrorMessage(err, 'Não foi possível verificar o e-mail.');
       showToast(message, 'error');
       return { ok: false, message };
     }

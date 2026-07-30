@@ -6,6 +6,7 @@ import type { Event } from '../types';
 import { PlusIcon, CalendarIcon, MapPinIcon, ClockIcon, UsersIcon, CrownIcon, TrophyIcon, CloseIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
 import { ApiError, generateEventDraft, refineEventDraft } from '../services/api';
+import type { AiEventDraftResponse } from '../services/api';
 
 export const Events: React.FC = () => {
   const { state, addEvent, joinEvent, leaveEvent, completeEvent } = useDatabase();
@@ -149,6 +150,16 @@ export const Events: React.FC = () => {
     setHasAiDraft(false);
   };
 
+  const applyAiDraft = (draft: AiEventDraftResponse) => {
+    setGameId(draft.gameId);
+    setDate(draft.date);
+    setTime(draft.time);
+    setLocation(draft.location);
+    setMaxParticipants(draft.maxParticipants);
+    setDescription(draft.description);
+    setAiWarnings(draft.warnings);
+  };
+
   const handleGenerateDraft = async () => {
     if (aiLoading || aiPrompt.trim().length < 5) return;
     setAiLoading(true);
@@ -156,13 +167,7 @@ export const Events: React.FC = () => {
     setAiWarnings([]);
     try {
       const draft = await generateEventDraft(aiPrompt);
-      setGameId(draft.gameId);
-      setDate(draft.date);
-      setTime(draft.time);
-      setLocation(draft.location);
-      setMaxParticipants(draft.maxParticipants);
-      setDescription(draft.description);
-      setAiWarnings(draft.warnings);
+      applyAiDraft(draft);
       setHasAiDraft(true);
     } catch (error) {
       let message = 'Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.';
@@ -187,13 +192,7 @@ export const Events: React.FC = () => {
       const draft = await refineEventDraft(refinementInstruction, {
         gameId, gameName, date, time, location, maxParticipants, description, warnings: aiWarnings,
       });
-      setGameId(draft.gameId);
-      setDate(draft.date);
-      setTime(draft.time);
-      setLocation(draft.location);
-      setMaxParticipants(draft.maxParticipants);
-      setDescription(draft.description);
-      setAiWarnings(draft.warnings);
+      applyAiDraft(draft);
       setRefinementInstruction('');
     } catch (error) {
       let message = 'Não foi possível refinar o rascunho agora. Seus dados atuais foram mantidos.';

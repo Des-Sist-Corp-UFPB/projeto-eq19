@@ -5,6 +5,7 @@ import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.service.AuditLogService;
 import br.com.tabula.service.AuthenticatedUserService;
 import br.com.tabula.service.StateAuthorizationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -22,6 +23,7 @@ import java.util.Optional;
 
 public class StateController {
     private static final Logger LOGGER = LoggerFactory.getLogger(StateController.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private StateController() {
     }
@@ -129,11 +131,10 @@ public class StateController {
 
             String comparisonReport = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);
 
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.node.ObjectNode responseNode = mapper.createObjectNode();
+            com.fasterxml.jackson.databind.node.ObjectNode responseNode = MAPPER.createObjectNode();
             
             try {
-                com.fasterxml.jackson.databind.JsonNode comparisonNode = mapper.readTree(comparisonReport);
+                com.fasterxml.jackson.databind.JsonNode comparisonNode = MAPPER.readTree(comparisonReport);
                 boolean comparisonOk = comparisonNode.has("ok") && comparisonNode.get("ok").asBoolean(false);
                 responseNode.put("ok", comparisonOk);
                 responseNode.put("message", comparisonOk ? "Relational backfill completed" : "Relational backfill completed with validation errors");
@@ -189,8 +190,7 @@ public class StateController {
             }
 
             if (readError != null) {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                com.fasterxml.jackson.databind.node.ObjectNode report = mapper.createObjectNode();
+                com.fasterxml.jackson.databind.node.ObjectNode report = MAPPER.createObjectNode();
                 report.put("ok", false);
                 report.putObject("summary");
                 report.putArray("warnings");
@@ -225,8 +225,7 @@ public class StateController {
                                 String relationalJson = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
                                 String comparisonReport = br.com.tabula.service.RelationalStateComparisonService.compareStateJson(legacyJson, relationalJson);
                                 
-                                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                                com.fasterxml.jackson.databind.JsonNode comparisonNode = mapper.readTree(comparisonReport);
+                                com.fasterxml.jackson.databind.JsonNode comparisonNode = MAPPER.readTree(comparisonReport);
                                 boolean comparisonOk = comparisonNode.has("ok") && comparisonNode.get("ok").asBoolean(false);
 
                                 if (comparisonOk) {
@@ -415,11 +414,10 @@ public class StateController {
     private static List<String> changedSections(String previousPayload, String nextPayload) {
         List<String> changed = new ArrayList<>();
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             com.fasterxml.jackson.databind.JsonNode previous = previousPayload == null
-                    ? mapper.createObjectNode()
-                    : mapper.readTree(previousPayload);
-            com.fasterxml.jackson.databind.JsonNode next = mapper.readTree(nextPayload);
+                    ? MAPPER.createObjectNode()
+                    : MAPPER.readTree(previousPayload);
+            com.fasterxml.jackson.databind.JsonNode next = MAPPER.readTree(nextPayload);
             for (String section : List.of("users", "boardGames", "sessions", "events")) {
                 if (!java.util.Objects.equals(previous.get(section), next.get(section))) {
                     changed.add(section);
