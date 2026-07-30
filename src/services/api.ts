@@ -70,6 +70,18 @@ const getAuthToken = () => {
   return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY);
 };
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(status: number, message: string, code?: string, body?: string) {
+    super(`API request failed (${status}): ${body || message}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -82,8 +94,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const message = await response.text().catch(() => 'Request failed');
-    throw new Error(`API request failed (${response.status}): ${message}`);
+    const body = await response.text().catch(() => '');
+    let message = 'Request failed';
+    let code: string | undefined;
+    try {
+      const parsed = JSON.parse(body) as { error?: string; code?: string };
+      message = parsed.error || message;
+      code = parsed.code;
+    } catch {
+      // External details are intentionally not surfaced by callers.
+    }
+    throw new ApiError(response.status, message, code, body);
   }
 
   const text = await response.text();

@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import type { Event } from '../types';
 import { PlusIcon, CalendarIcon, MapPinIcon, ClockIcon, UsersIcon, CrownIcon, TrophyIcon, CloseIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
-import { generateEventDraft } from '../services/api';
+import { ApiError, generateEventDraft } from '../services/api';
 
 export const Events: React.FC = () => {
   const { state, addEvent, joinEvent, leaveEvent, completeEvent } = useDatabase();
@@ -146,6 +146,7 @@ export const Events: React.FC = () => {
   };
 
   const handleGenerateDraft = async () => {
+    if (aiLoading || aiPrompt.trim().length < 5) return;
     setAiLoading(true);
     setAiError('');
     setAiWarnings([]);
@@ -158,8 +159,15 @@ export const Events: React.FC = () => {
       setMaxParticipants(draft.maxParticipants);
       setDescription(draft.description);
       setAiWarnings(draft.warnings);
-    } catch {
-      setAiError('Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.');
+    } catch (error) {
+      let message = 'Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.';
+      if (error instanceof ApiError) {
+        if (error.status === 401) message = 'Sua sessão expirou. Entre novamente para usar o assistente.';
+        else if (error.status === 422) message = 'A IA não conseguiu montar um rascunho válido. Tente descrever o encontro com mais detalhes.';
+        else if (error.status === 429) message = 'Muitas solicitações à IA. Aguarde alguns instantes e tente novamente.';
+        else if (error.status === 502 || error.status === 503) message = 'O assistente de IA está temporariamente indisponível. Tente novamente mais tarde.';
+      }
+      setAiError(message);
     } finally {
       setAiLoading(false);
     }
@@ -473,9 +481,12 @@ export const Events: React.FC = () => {
                   {aiLoading ? 'Gerando rascunho...' : 'Preencher formulário com IA'}
                 </button>
                 <small style={{ color: 'var(--color-text-muted)' }}>Revise as informações antes de agendar</small>
-                {aiError && <div role="alert" style={{ color: 'var(--color-danger, #b42318)' }}>{aiError}</div>}
+                <div aria-live="polite" aria-atomic="true">
+                  {aiLoading && <span className="sr-only">Gerando rascunho do evento</span>}
+                  {aiError && <div role="alert" style={{ color: 'var(--color-danger, #b42318)' }}>{aiError}</div>}
+                </div>
                 {aiWarnings.length > 0 && (
-                  <div role="status" style={{ color: 'var(--color-text-muted)' }}>
+                  <div role="status" aria-live="polite" style={{ color: 'var(--color-text-muted)' }}>
                     <strong>Atenção:</strong>
                     <ul>{aiWarnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul>
                   </div>
@@ -508,8 +519,8 @@ export const Events: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Local de Encontro *</label>
-                <input type="text" className="form-input" required value={location} onChange={e => setLocation(e.target.value)} placeholder="Ex: Biblioteca Universitária - Sala 4" />
+                <label className="form-label" htmlFor="event-location">Local de Encontro *</label>
+                <input id="event-location" type="text" className="form-input" required value={location} onChange={e => setLocation(e.target.value)} placeholder="Ex: Biblioteca Universitária - Sala 4" />
               </div>
 
               <div className="form-group">

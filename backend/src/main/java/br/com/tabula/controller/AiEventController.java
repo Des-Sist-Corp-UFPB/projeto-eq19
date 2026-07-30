@@ -40,45 +40,86 @@ public final class AiEventController {
                          AuditLogService audit, boolean configured, String model) {
         app.post("/ai/event-drafts", ctx -> {
             long started = System.nanoTime();
+            LOGGER.atInfo().addKeyValue("operation", "ai_event_draft").addKeyValue("model", model)
+                    .log("AI event draft started");
             Optional<AuthenticatedPrincipal> principal = auth.resolve(ctx.header("Authorization"));
-            if (principal.isEmpty()) { ctx.status(401).json(Map.of("error", "Sessão inválida ou expirada.")); return; }
+            if (principal.isEmpty()) {
+                ctx.status(401).json(error("UNAUTHORIZED", "Sessão inválida ou expirada."));
+                return;
+            }
             AiEventDraftRequest request;
             try { request = ctx.bodyAsClass(AiEventDraftRequest.class); }
-            catch (Exception ex) { ctx.status(400).json(Map.of("error", "Corpo da requisição inválido.")); return; }
+            catch (Exception ex) {
+                ctx.status(400).json(error("INVALID_REQUEST", "Corpo da requisição inválido."));
+                return;
+            }
             int promptLength = request.prompt() == null ? 0 : request.prompt().trim().length();
+            try {
+                AiEventDraftService.validatePrompt(request.prompt());
+            } catch (AiDraftValidationException ex) {
+                long duration = durationMs(started);
+                reject(audit, principal.get(), model, promptLength, "invalid_prompt", "validation",
+                        duration, ctx.ip(), ctx.userAgent());
+                log(model, false, started, null, "invalid_prompt");
+                ctx.status(400).json(error("INVALID_PROMPT", ex.getMessage()));
+                return;
+            }
             if (!configured) {
-                reject(audit, principal.get(), model, promptLength, "not_configured", ctx.ip(), ctx.userAgent());
-                ctx.status(503).json(Map.of("error", "Assistente de IA não configurado.")); return;
+                reject(audit, principal.get(), model, promptLength, "not_configured", "configuration",
+                        durationMs(started), ctx.ip(), ctx.userAgent());
+                ctx.status(503).json(error("AI_NOT_CONFIGURED", "Assistente de IA não configurado."));
+                return;
             }
             try {
                 AiEventDraftResponse response = service.generate(request.prompt());
+                long duration = durationMs(started);
                 audit.recordBestEffort(principal.get(), AuditAction.AI_EVENT_DRAFT_GENERATED, "AI_EVENT_DRAFT",
                         null, true, ctx.ip(), ctx.userAgent(), Map.of("model", model, "promptLength", promptLength,
-                                "resultGameId", response.gameId(), "warningCount", response.warnings().size(), "success", true));
+                                "resultGameId", response.gameId(), "warningCount", response.warnings().size(),
+                                "durationMs", duration, "success", true));
                 log(model, true, started, response.gameId(), null);
                 ctx.json(response);
             } catch (AiDraftValidationException ex) {
-                String reason = promptLength < 5 || promptLength > 1000 ? "invalid_prompt" : "invalid_ai_response";
-                reject(audit, principal.get(), model, promptLength, reason, ctx.ip(), ctx.userAgent());
-                log(model, false, started, null, reason);
-                ctx.status("invalid_prompt".equals(reason) ? 400 : 422).json(Map.of("error", ex.getMessage()));
+                reject(audit, principal.get(), model, promptLength, "invalid_ai_response", "validation",
+                        durationMs(started), ctx.ip(), ctx.userAgent());
+                log(model, false, started, null, "invalid_ai_response");
+                ctx.status(422).json(error("INVALID_AI_RESPONSE", "A resposta da IA não pôde ser validada."));
             } catch (AiProviderException ex) {
-                reject(audit, principal.get(), model, promptLength, "provider_failure", ctx.ip(), ctx.userAgent());
-                log(model, false, started, null, "provider_failure");
-                ctx.status(502).json(Map.of("error", "O provedor de IA está temporariamente indisponível."));
+                int status = providerStatus(ex.category());
+                String category = ex.category().name().toLowerCase(java.util.Locale.ROOT);
+                reject(audit, principal.get(), model, promptLength, "provider_failure", category,
+                        durationMs(started), ctx.ip(), ctx.userAgent());
+                log(model, false, started, null, category);
+                ctx.status(status).json(error("AI_PROVIDER_UNAVAILABLE",
+                        status == 429 ? "O limite de solicitações da IA foi atingido. Tente novamente em instantes."
+                                : "O assistente de IA está temporariamente indisponível."));
             }
         });
     }
 
     private static void reject(AuditLogService audit, AuthenticatedPrincipal actor, String model, int promptLength,
-                               String reason, String ip, String userAgent) {
+                               String reason, String category, long duration, String ip, String userAgent) {
         audit.recordBestEffort(actor, AuditAction.AI_EVENT_DRAFT_REJECTED, "AI_EVENT_DRAFT", null,
                 false, ip, userAgent, Map.of("model", model, "promptLength", promptLength,
-                        "warningCount", 0, "success", false, "failureReason", reason));
+                        "warningCount", 0, "success", false, "failureReason", reason,
+                        "failureCategory", category, "durationMs", duration));
     }
     private static void log(String model, boolean success, long started, String gameId, String reason) {
         LOGGER.atInfo().addKeyValue("operation", "ai_event_draft").addKeyValue("model", model)
                 .addKeyValue("success", success).addKeyValue("duration_ms", (System.nanoTime()-started)/1_000_000)
                 .addKeyValue("game_id", gameId).addKeyValue("failure_reason", reason).log("AI event draft completed");
+    }
+    private static long durationMs(long started) { return (System.nanoTime() - started) / 1_000_000; }
+    private static Map<String, String> error(String code, String message) {
+        return Map.of("code", code, "error", message);
+    }
+    private static int providerStatus(AiProviderException.Category category) {
+        if (category == AiProviderException.Category.RATE_LIMITED) return 429;
+        if (category == AiProviderException.Category.NOT_CONFIGURED
+                || category == AiProviderException.Category.TIMEOUT
+                || category == AiProviderException.Category.CONNECTION
+                || category == AiProviderException.Category.SERVER_ERROR
+                || category == AiProviderException.Category.CATALOG_UNAVAILABLE) return 503;
+        return 502;
     }
 }

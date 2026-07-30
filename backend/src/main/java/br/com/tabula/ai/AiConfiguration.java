@@ -20,7 +20,9 @@ public record AiConfiguration(String apiKey, URI baseUrl, String model, Duration
         ZoneId zone;
         try { uri = URI.create(url.replaceAll("/+$", "")); }
         catch (Exception ex) { throw new IllegalArgumentException("LITELLM_BASE_URL inválida."); }
-        if (!"http".equals(uri.getScheme()) && !"https".equals(uri.getScheme()))
+        if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme()))
+            throw new IllegalArgumentException("LITELLM_BASE_URL inválida.");
+        if (uri.getHost() == null || uri.getQuery() != null || uri.getFragment() != null)
             throw new IllegalArgumentException("LITELLM_BASE_URL inválida.");
         try { zone = ZoneId.of(value(env, "APP_TIME_ZONE", "America/Sao_Paulo")); }
         catch (Exception ex) { throw new IllegalArgumentException("APP_TIME_ZONE inválida."); }

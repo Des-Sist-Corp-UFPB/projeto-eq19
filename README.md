@@ -81,6 +81,10 @@ Externamente, os endpoints são acessados pelo prefixo `/api`:
 
 Internamente, o backend registra as rotas sem o prefixo `/api`, pois esse prefixo é tratado pelo Nginx.
 
+## Assistente de eventos com IA
+
+O fluxo **Criar com IA** gera um rascunho editável a partir de linguagem natural, usando LiteLLM somente pelo backend. O evento continua exigindo revisão e confirmação manual. Consulte [docs/ai-event-assistant.md](docs/ai-event-assistant.md).
+
 ## Persistência dos dados
 
 O Tabula persiste os dados no PostgreSQL por meio do backend.

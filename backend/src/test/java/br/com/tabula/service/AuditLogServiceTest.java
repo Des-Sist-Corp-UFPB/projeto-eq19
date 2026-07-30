@@ -145,4 +145,19 @@ class AuditLogServiceTest {
 
         assertFalse(recorded);
     }
+
+    @Test
+    void shouldAllowOnlySafeAiAuditMetadata() {
+        AuditLogService service = new AuditLogService(mock(HikariDataSource.class), mock(AuditLogRepository.class));
+        AuditLog log = service.build(null, AuditAction.AI_EVENT_DRAFT_REJECTED, "AI_EVENT_DRAFT", null,
+                false, null, null, Map.of(
+                        "model", "gpt-4o-mini", "promptLength", 42, "warningCount", 1,
+                        "durationMs", 123, "failureReason", "provider_failure",
+                        "failureCategory", "timeout", "prompt", "segredo", "authorization", "Bearer token"
+                ));
+        assertEquals(123, log.getDetails().get("durationMs").asInt());
+        assertEquals("timeout", log.getDetails().get("failureCategory").asText());
+        assertFalse(log.getDetails().has("prompt"));
+        assertFalse(log.getDetails().has("authorization"));
+    }
 }

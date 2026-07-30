@@ -125,8 +125,10 @@ public class AuditLogService {
         copySafeString(sanitized, details, "model", 80);
         copySafeString(sanitized, details, "resultGameId", 80);
         copySafeString(sanitized, details, "failureReason", 80);
+        copySafeString(sanitized, details, "failureCategory", 80);
         copySafeInteger(sanitized, details, "promptLength");
         copySafeInteger(sanitized, details, "warningCount");
+        copySafeInteger(sanitized, details, "durationMs");
         Object success = details.get("success");
         if (success instanceof Boolean bool) sanitized.put("success", bool);
 

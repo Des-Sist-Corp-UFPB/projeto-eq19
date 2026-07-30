@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.ConnectException;
+import java.net.http.HttpTimeoutException;
 
 public final class LiteLlmClient implements AiChatClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -27,7 +29,18 @@ public final class LiteLlmClient implements AiChatClient {
 
     @Override
     public String chat(String systemPrompt, String userPrompt) throws AiProviderException {
-        if (!configuration.configured()) throw new AiProviderException("AI_NOT_CONFIGURED");
+        if (!configuration.configured()) throw new AiProviderException(AiProviderException.Category.NOT_CONFIGURED);
+        AiProviderException firstFailure;
+        try {
+            return send(systemPrompt, userPrompt);
+        } catch (AiProviderException ex) {
+            firstFailure = ex;
+        }
+        if (!firstFailure.transientFailure()) throw firstFailure;
+        return send(systemPrompt, userPrompt);
+    }
+
+    private String send(String systemPrompt, String userPrompt) throws AiProviderException {
         try {
             ObjectNode body = MAPPER.createObjectNode();
             body.put("model", configuration.model());
@@ -37,25 +50,39 @@ public final class LiteLlmClient implements AiChatClient {
             ArrayNode messages = body.putArray("messages");
             messages.addObject().put("role", "system").put("content", systemPrompt);
             messages.addObject().put("role", "user").put("content", userPrompt);
-            HttpRequest request = HttpRequest.newBuilder(configuration.baseUrl().resolve("/chat/completions"))
-                    .timeout(configuration.timeout())
-                    .header("Authorization", "Bearer " + configuration.apiKey())
+            String endpoint = configuration.baseUrl().toString() + "/chat/completions";
+            HttpRequest request = HttpRequest.newBuilder(java.net.URI.create(endpoint))
+                    .timeout(configuration.timeout()).header("Authorization", "Bearer " + configuration.apiKey())
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
-                    .build();
+                    .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body))).build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300)
-                throw new AiProviderException("AI_PROVIDER_FAILURE");
-            JsonNode content = MAPPER.readTree(response.body()).path("choices").path(0).path("message").path("content");
-            if (!content.isTextual() || content.asText().isBlank()) throw new AiProviderException("AI_PROVIDER_INVALID_RESPONSE");
+            int status = response.statusCode();
+            if (status == 401 || status == 403) throw new AiProviderException(AiProviderException.Category.UNAUTHORIZED);
+            if (status == 429) throw new AiProviderException(AiProviderException.Category.RATE_LIMITED);
+            if (status >= 500) throw new AiProviderException(AiProviderException.Category.SERVER_ERROR);
+            if (status < 200 || status >= 300) throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);
+            if (response.body() == null || response.body().isBlank())
+                throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);
+            JsonNode root = MAPPER.readTree(response.body());
+            JsonNode choices = root.get("choices");
+            if (choices == null || !choices.isArray() || choices.isEmpty())
+                throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);
+            JsonNode content = choices.get(0).path("message").get("content");
+            if (content == null || !content.isTextual() || content.asText().isBlank())
+                throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE);
             return content.asText();
-        } catch (AiProviderException ex) {
-            throw ex;
-        } catch (InterruptedException ex) {
+        } catch (AiProviderException ex) { throw ex; }
+        catch (HttpTimeoutException ex) { throw new AiProviderException(AiProviderException.Category.TIMEOUT, ex); }
+        catch (ConnectException ex) { throw new AiProviderException(AiProviderException.Category.CONNECTION, ex); }
+        catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new AiProviderException("AI_PROVIDER_INTERRUPTED", ex);
+            throw new AiProviderException(AiProviderException.Category.INTERRUPTED, ex);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE, ex);
+        } catch (java.io.IOException ex) {
+            throw new AiProviderException(AiProviderException.Category.CONNECTION, ex);
         } catch (Exception ex) {
-            throw new AiProviderException("AI_PROVIDER_FAILURE", ex);
+            throw new AiProviderException(AiProviderException.Category.INVALID_RESPONSE, ex);
         }
     }
 }
