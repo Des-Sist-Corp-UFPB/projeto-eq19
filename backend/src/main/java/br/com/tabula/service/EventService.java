@@ -136,9 +136,12 @@ public final class EventService {
                     && (winnerId == null || !event.participantIds().contains(input.winnerId()))) {
                 throw EventException.invalid("invalid_winner");
             }
-            repository.createSession(connection, event, "s_" + UUID.randomUUID(), winnerId,
+            String sessionExternalId = "s_" + UUID.randomUUID();
+            repository.createSession(connection, event, sessionExternalId, winnerId,
                     input.duration(), clean(input.notes()), clean(input.initialComment()), clean(input.photoUrl()));
             repository.updateStatus(connection, event.databaseId(), "completed");
+            audit.record(connection, actor, AuditAction.SESSION_CREATED, "SESSION", sessionExternalId, true,
+                    metadata.ipAddress(), metadata.userAgent(), Map.of());
             record(connection, actor, AuditAction.EVENT_COMPLETED, id, true, null, metadata);
             return repository.findByExternalId(connection, id, false).orElseThrow();
         });
@@ -211,8 +214,14 @@ public final class EventService {
                 T result = work.run(connection);
                 connection.commit();
                 return result;
-            } catch (EventException | SQLException ex) {
+            } catch (EventException ex) {
                 connection.rollback();
+                throw ex;
+            } catch (SQLException ex) {
+                connection.rollback();
+                if ("23505".equals(ex.getSQLState())) {
+                    throw EventException.conflict("duplicate_event_resource");
+                }
                 throw ex;
             } catch (Exception ex) {
                 connection.rollback();

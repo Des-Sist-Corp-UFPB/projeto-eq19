@@ -50,19 +50,21 @@ public class RelationalStateSyncService {
                 try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM favoritos")) {
                     stmt.executeUpdate();
                 }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM comentarios")) {
-                    stmt.executeUpdate();
-                }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partida_fotos")) {
-                    stmt.executeUpdate();
-                }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partida_participantes")) {
-                    stmt.executeUpdate();
-                }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partidas")) {
-                    stmt.executeUpdate();
-                }
                 if (bootstrapEvents) {
+                    // Bootstrap is the only explicit legacy-import path. Normal
+                    // shadow synchronization never mutates authoritative sessions.
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM comentarios")) {
+                        stmt.executeUpdate();
+                    }
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partida_fotos")) {
+                        stmt.executeUpdate();
+                    }
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partida_participantes")) {
+                        stmt.executeUpdate();
+                    }
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partidas")) {
+                        stmt.executeUpdate();
+                    }
                     try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM evento_participantes")) {
                         stmt.executeUpdate();
                     }
@@ -412,7 +414,7 @@ public class RelationalStateSyncService {
 
                 // 5) Sync sessions (partidas)
                 JsonNode sessionsNode = root.path("sessions");
-                if (sessionsNode.isArray()) {
+                if (bootstrapEvents && sessionsNode.isArray()) {
                     String insSessionSql = """
                             INSERT INTO partidas (external_id, jogo_id, evento_id, data_hora, local, organizador_id, vencedor_id, duracao_minutos, notas, criado_em)
                             VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)

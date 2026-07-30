@@ -1,7 +1,6 @@
 package br.com.tabula.repository;
 
 import br.com.tabula.model.AuthenticatedPrincipal;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.Connection;
@@ -13,11 +12,9 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 public final class EventRepository {
-    private static final ObjectMapper JSON = new ObjectMapper();
     private final HikariDataSource dataSource;
 
     public EventRepository(HikariDataSource dataSource) {
@@ -317,69 +314,6 @@ public final class EventRepository {
                 statement.setString(2, photoUrl);
                 statement.executeUpdate();
             }
-        }
-        try (PreparedStatement statement = connection.prepareStatement("""
-                UPDATE app_state
-                SET data = jsonb_set(
-                    data,
-                    '{sessions}',
-                    jsonb_build_array(jsonb_build_object(
-                        'id', ?,
-                        'gameId', ?,
-                        'date', to_char(?::timestamp, 'YYYY-MM-DD"T"HH24:MI:SS'),
-                        'location', ?,
-                        'organizerId', ?,
-                        'participantIds', to_jsonb(?::text[]),
-                        'winnerId', ?,
-                        'duration', ?,
-                        'notes', COALESCE(?, ''),
-                        'photos', to_jsonb(?::text[]),
-                        'comments', ?::jsonb
-                    )) || COALESCE(data->'sessions', '[]'::jsonb),
-                    true
-                ),
-                updated_at = CURRENT_TIMESTAMP
-                WHERE id = 1
-                """)) {
-            statement.setString(1, sessionExternalId);
-            statement.setString(2, event.gameExternalId());
-            statement.setTimestamp(3, Timestamp.valueOf(event.dateTime()));
-            statement.setString(4, event.location());
-            statement.setString(5, event.organizerExternalId());
-            statement.setArray(6, connection.createArrayOf("text", event.participantIds().toArray()));
-            statement.setString(7, winnerDatabaseId == null ? null : externalUserId(connection, winnerDatabaseId));
-            statement.setInt(8, duration);
-            statement.setString(9, notes);
-            statement.setArray(10, connection.createArrayOf("text",
-                    photoUrl == null || photoUrl.isBlank() ? new String[0] : new String[]{photoUrl}));
-            statement.setString(11, legacyCommentsJson(event, initialComment));
-            statement.executeUpdate();
-        }
-    }
-
-    private String externalUserId(Connection connection, long databaseId) throws SQLException {
-        try (PreparedStatement statement =
-                     connection.prepareStatement("SELECT external_id FROM usuarios WHERE id = ?")) {
-            statement.setLong(1, databaseId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? resultSet.getString(1) : null;
-            }
-        }
-    }
-
-    private static String legacyCommentsJson(EventData event, String comment) {
-        if (comment == null || comment.isBlank()) return "[]";
-        try {
-            return JSON.writeValueAsString(List.of(Map.of(
-                    "id", "c_" + java.util.UUID.randomUUID(),
-                    "userId", event.organizerExternalId(),
-                    "userName", "",
-                    "userAvatar", "",
-                    "content", comment,
-                    "createdAt", java.time.Instant.now().toString()
-            )));
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
-            return "[]";
         }
     }
 

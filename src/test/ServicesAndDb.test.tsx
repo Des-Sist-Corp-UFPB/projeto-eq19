@@ -120,10 +120,10 @@ describe('API helpers and database utilities', () => {
     expect(payload).toEqual({
       users: stateWithLegacyLogs.users,
       boardGames: stateWithLegacyLogs.boardGames,
-      sessions: stateWithLegacyLogs.sessions,
     });
     expect(payload).not.toHaveProperty('logs');
     expect(payload).not.toHaveProperty('events');
+    expect(payload).not.toHaveProperty('sessions');
   });
 
   it('normalizes cover URLs and sanitizes legacy database state', () => {

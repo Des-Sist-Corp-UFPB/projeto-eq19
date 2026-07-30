@@ -30,6 +30,7 @@ import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 class EventServicePostgreSqlTest {
     @Container
     private static final PostgreSQLContainer<?> POSTGRES =
@@ -178,6 +179,80 @@ class EventServicePostgreSqlTest {
     }
 
     @Test
+    void concurrentHttpCompletionCreatesExactlyOneSessionAndRejectsTheOther() throws Exception {
+        var event = service.create(users.get(0), input(3), metadata);
+        service.join(users.get(1), event.externalId(), metadata);
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO auth_tokens (token, usuario_id, expires_at)
+                     VALUES ('concurrent-complete-token', ?, CURRENT_TIMESTAMP + INTERVAL '1 hour')
+                     """)) {
+            statement.setLong(1, users.get(0).getDatabaseId());
+            statement.executeUpdate();
+        }
+        int sessionsCreatedBefore;
+        int eventsCompletedBefore;
+        int eventsRejectedBefore;
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            sessionsCreatedBefore = scalar(statement,
+                    "SELECT COUNT(*) FROM audit_logs WHERE acao = 'SESSION_CREATED' AND sucesso = TRUE");
+            eventsCompletedBefore = scalar(statement,
+                    "SELECT COUNT(*) FROM audit_logs WHERE acao = 'EVENT_COMPLETED' AND sucesso = TRUE");
+            eventsRejectedBefore = scalar(statement,
+                    "SELECT COUNT(*) FROM audit_logs WHERE acao = 'EVENT_OPERATION_REJECTED' AND sucesso = FALSE");
+        }
+
+        io.javalin.Javalin app = io.javalin.Javalin.create();
+        EventController.register(app, dataSource);
+        app.start(0);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            String completion = """
+                    {"winnerId":"u1","duration":45,"notes":"Concluída uma vez"}
+                    """;
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch start = new CountDownLatch(1);
+            Callable<HttpResponse<String>> request = () -> {
+                ready.countDown();
+                start.await();
+                return request(app, "POST", "/events/" + event.externalId() + "/complete",
+                        completion, "concurrent-complete-token");
+            };
+            var first = executor.submit(request);
+            var second = executor.submit(request);
+            assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            start.countDown();
+            List<Integer> statuses = new ArrayList<>(List.of(
+                    first.get().statusCode(), second.get().statusCode()));
+            statuses.sort(Integer::compareTo);
+            assertEquals(List.of(200, 409), statuses);
+        } finally {
+            executor.shutdownNow();
+            app.stop();
+        }
+
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            assertEquals(1, count(statement, "partidas"));
+            assertEquals(2, count(statement, "partida_participantes"));
+            assertEquals(1, scalar(statement, """
+                    SELECT COUNT(*) FROM eventos WHERE external_id = '%s' AND status = 'completed'
+                    """.formatted(event.externalId())));
+            assertEquals(sessionsCreatedBefore + 1, scalar(statement, """
+                    SELECT COUNT(*) FROM audit_logs
+                    WHERE acao = 'SESSION_CREATED' AND sucesso = TRUE
+                    """));
+            assertEquals(eventsCompletedBefore + 1, scalar(statement, """
+                    SELECT COUNT(*) FROM audit_logs
+                    WHERE acao = 'EVENT_COMPLETED' AND sucesso = TRUE
+                    """));
+            assertEquals(eventsRejectedBefore + 1, scalar(statement, """
+                    SELECT COUNT(*) FROM audit_logs
+                    WHERE acao = 'EVENT_OPERATION_REJECTED' AND sucesso = FALSE
+                    """));
+        }
+    }
+
+    @Test
     void rollsBackInvalidCompletionAndSupportsCancellation() throws Exception {
         var event = service.create(users.get(0), input(3), metadata);
         assertEquals(EventException.Kind.INVALID,
@@ -275,7 +350,11 @@ class EventServicePostgreSqlTest {
     }
 
     private static int count(Statement statement, String table) throws Exception {
-        try (ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+        return scalar(statement, "SELECT COUNT(*) FROM " + table);
+    }
+
+    private static int scalar(Statement statement, String sql) throws Exception {
+        try (ResultSet resultSet = statement.executeQuery(sql)) {
             resultSet.next();
             return resultSet.getInt(1);
         }

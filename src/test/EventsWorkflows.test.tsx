@@ -18,6 +18,8 @@ vi.mock('../services/api', async importOriginal => {
     joinEventRequest: vi.fn(),
     leaveEventRequest: vi.fn(),
     completeEventRequest: vi.fn(),
+    getEvents: vi.fn(),
+    getSessions: vi.fn(),
   };
 });
 
@@ -30,6 +32,9 @@ describe('Events workflows', () => {
     vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
     vi.mocked(api.saveServerState).mockResolvedValue();
     let events = structuredClone(getDefaultDatabaseState().events);
+    let sessions = structuredClone(getDefaultDatabaseState().sessions);
+    vi.mocked(api.getEvents).mockImplementation(async () => structuredClone(events));
+    vi.mocked(api.getSessions).mockImplementation(async () => structuredClone(sessions));
     vi.mocked(api.createEvent).mockImplementation(async input => {
       const event = {
         ...input, id: 'e_created', organizerId: 'u1', participantIds: ['u1'],
@@ -63,6 +68,12 @@ describe('Events workflows', () => {
       const current = events.find(event => event.id === id)!;
       const event = { ...current, status: 'completed' as const };
       events = events.map(candidate => candidate.id === id ? event : candidate);
+      sessions = [{
+        id: 's_completed', gameId: event.gameId, date: `${event.date}T${event.time}:00`,
+        location: event.location, organizerId: event.organizerId,
+        participantIds: event.participantIds, winnerId: event.participantIds[0] ?? null,
+        duration: 60, notes: 'Vitória', photos: [], comments: [],
+      }, ...sessions];
       return event;
     });
   });

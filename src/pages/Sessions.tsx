@@ -52,7 +52,7 @@ export const Sessions: React.FC = () => {
   };
 
   // Submit recorded session
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gameId) {
       alert('Por favor, selecione um jogo.');
@@ -71,7 +71,7 @@ export const Sessions: React.FC = () => {
     // Combine date and time using the local browser timezone
     const sessionDateTime = `${date}T${time}:00`;
 
-    addSession(
+    await addSession(
       {
         gameId,
         date: sessionDateTime,
@@ -150,10 +150,10 @@ export const Sessions: React.FC = () => {
     if (currentPage > 1) setCurrentPage(prev => prev - 1);
   };
 
-  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (window.confirm('Tem certeza que deseja apagar permanentemente este registro de partida? Isso reverterá as estatísticas dos jogadores.')) {
-      deleteSession(sessionId);
+      await deleteSession(sessionId);
       showToast('Registro de partida removido.', 'info');
       // Adjust current page if empty
       if (currentItems.length === 1 && currentPage > 1) {

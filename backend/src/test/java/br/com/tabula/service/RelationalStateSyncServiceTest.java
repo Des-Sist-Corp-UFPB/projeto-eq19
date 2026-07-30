@@ -293,7 +293,7 @@ class RelationalStateSyncServiceTest {
                 }
                 """;
 
-        assertDoesNotThrow(() -> RelationalStateSyncService.syncFromStateJson(ds, payload));
+        assertDoesNotThrow(() -> RelationalStateSyncService.syncFromStateJson(ds, payload, true));
         verify(conn).commit();
     }
 

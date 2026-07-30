@@ -3,8 +3,11 @@ import type { DatabaseState, BoardGame, Session, Event, Comment, User, UserRole 
 import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
 import {
   completeEventRequest,
+  createSession,
   createEvent,
+  deleteSessionRequest,
   getEvents,
+  getSessions,
   getServerState,
   joinEventRequest,
   leaveEventRequest,
@@ -22,7 +25,6 @@ const generateId = (prefix: string) => {
 const serializeLegacyState = (state: DatabaseState) => JSON.stringify({
   users: state.users,
   boardGames: state.boardGames,
-  sessions: state.sessions,
 });
 
 interface DatabaseContextType {
@@ -31,8 +33,8 @@ interface DatabaseContextType {
   addUser: (user: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { id?: string; passwordHash?: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => User | null;
   editGame: (game: BoardGame) => void;
   deleteGame: (gameId: string) => void;
-  addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => void;
-  deleteSession: (sessionId: string) => void;
+  addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => Promise<Session>;
+  deleteSession: (sessionId: string) => Promise<void>;
   addComment: (sessionId: string, userId: string, content: string) => void;
   addEvent: (event: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => Promise<Event>;
   joinEvent: (eventId: string, userId: string) => Promise<boolean>;
@@ -67,9 +69,12 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const serverState = await getServerState();
         let nextState = serverState ? sanitizeDatabaseState(serverState) : getDefaultDatabaseState();
         try {
-          const relationalEvents = await getEvents();
+          const [relationalEvents, relationalSessions] = await Promise.all([getEvents(), getSessions()]);
           if (Array.isArray(relationalEvents)) {
             nextState = { ...nextState, events: relationalEvents };
+          }
+          if (Array.isArray(relationalSessions)) {
+            nextState = { ...nextState, sessions: relationalSessions };
           }
         } catch {
           // Public screens may load before authentication; GET /state already
@@ -168,45 +173,22 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Session actions
-  const addSession = (sessionData: Omit<Session, 'id' | 'comments'>, initialComment?: string) => {
-    const sessionId = generateId('s');
-    const organizer = state.users.find(u => u.id === sessionData.organizerId);
-    
-    const comments: Comment[] = [];
-    if (initialComment && organizer) {
-      comments.push({
-        id: generateId('c'),
-        userId: organizer.id,
-        userName: organizer.name,
-        userAvatar: organizer.avatar,
-        content: initialComment,
-        createdAt: new Date().toISOString()
-      });
-    }
-
-    const newSession: Session = {
-      ...sessionData,
-      id: sessionId,
-      comments
-    };
-
-    setState(prev => {
-      const updated = {
-        ...prev,
-        sessions: [newSession, ...prev.sessions]
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const addSession = async (sessionData: Omit<Session, 'id' | 'comments'>, initialComment?: string) => {
+    void initialComment;
+    const created = await createSession(sessionData);
+    setState(prev => syncDatabaseCalculations({
+      ...prev,
+      sessions: [created, ...prev.sessions.filter(session => session.id !== created.id)],
+    }));
+    return created;
   };
 
-  const deleteSession = (sessionId: string) => {
-    setState(prev => {
-      const updated = {
-        ...prev,
-        sessions: prev.sessions.filter(s => s.id !== sessionId)
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const deleteSession = async (sessionId: string) => {
+    await deleteSessionRequest(sessionId);
+    setState(prev => syncDatabaseCalculations({
+      ...prev,
+      sessions: prev.sessions.filter(s => s.id !== sessionId),
+    }));
   };
 
   const addComment = (sessionId: string, userId: string, content: string) => {
@@ -289,12 +271,8 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       winnerId, duration, notes, initialComment, photoUrl,
     });
     replaceEvent(completed);
-    const refreshed = await getServerState();
-    if (refreshed) {
-      const synchronized = syncDatabaseCalculations(sanitizeDatabaseState(refreshed));
-      lastSavedJsonRef.current = serializeLegacyState(synchronized);
-      setState(synchronized);
-    }
+    const refreshedSessions = await getSessions();
+    setState(prev => syncDatabaseCalculations({ ...prev, sessions: refreshedSessions }));
   };
 
   const addUser = (userData: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { id?: string; passwordHash?: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => {

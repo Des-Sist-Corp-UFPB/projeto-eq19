@@ -271,7 +271,7 @@ public class StateController {
                     ctx.status(404).json(Map.of("error", "Estado ainda não inicializado."));
                     return;
                 }
-                if (!relationalPayload) payload = overlayRelationalEvents(dataSource, payload);
+                if (!relationalPayload) payload = overlayRelationalSlices(dataSource, payload);
                 ctx.contentType("application/json").result(payload);
             } catch (SQLException ex) {
                 LOGGER.atError()
@@ -311,6 +311,7 @@ public class StateController {
 
                 if (snapshot.exists()) {
                     payload = ensureEventsSection(snapshot.payload(), payload);
+                    payload = ensureSessionsSection(snapshot.payload(), payload);
                     StateAuthorizationService.AuthorizationDecision authorization =
                             stateAuthorizationService.authorize(
                                     snapshot.payload(), payload, principal.orElseThrow());
@@ -338,6 +339,19 @@ public class StateController {
                         );
                         ctx.status(409).json(Map.of(
                                 "error", "Eventos devem ser alterados pelos endpoints específicos."
+                        ));
+                        return;
+                    }
+                    try {
+                        payload = protectRelationalSessions(dataSource, snapshot.payload(), payload);
+                    } catch (SessionSliceConflictException ex) {
+                        auditLogService.recordBestEffort(
+                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,
+                                "SESSION", null, false, ctx.ip(), ctx.header("User-Agent"),
+                                Map.of("reason", "relational_sessions_are_authoritative")
+                        );
+                        ctx.status(409).json(Map.of(
+                                "error", "Partidas devem ser alteradas pelos endpoints específicos."
                         ));
                         return;
                     }
@@ -449,17 +463,50 @@ public class StateController {
         return changed;
     }
 
-    private static String overlayRelationalEvents(HikariDataSource dataSource, String legacyPayload)
+    private static String overlayRelationalSlices(HikariDataSource dataSource, String legacyPayload)
             throws SQLException {
         try {
             com.fasterxml.jackson.databind.JsonNode legacy = MAPPER.readTree(legacyPayload);
-            if (!legacy.isObject() || !legacy.path("events").isArray()) return legacyPayload;
-            com.fasterxml.jackson.databind.JsonNode events = relationalEvents(dataSource);
-            ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)
-                    .set("events", events);
+            if (!legacy.isObject()) return legacyPayload;
+            if (legacy.path("events").isArray()) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)
+                        .set("events", relationalEvents(dataSource));
+            }
+            try {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)
+                        .set("sessions", relationalSessions(dataSource));
+            } catch (Exception ex) {
+                LOGGER.atWarn().addKeyValue("operation", "session_projection")
+                        .log("Relational session projection unavailable; preserving legacy slice");
+            }
             return MAPPER.writeValueAsString(legacy);
         } catch (Exception ex) {
             throw new SQLException("Failed to overlay relational events", ex);
+        }
+    }
+
+    private static String protectRelationalSessions(HikariDataSource dataSource, String previousPayload,
+                                                    String candidatePayload)
+            throws SQLException, SessionSliceConflictException {
+        try {
+            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
+            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
+            if (!previous.isObject() || !candidate.isObject()) throw new SessionSliceConflictException();
+            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get("sessions");
+            if (java.util.Objects.equals(previous.get("sessions"), supplied)) {
+                return MAPPER.writeValueAsString(candidate);
+            }
+            com.fasterxml.jackson.databind.JsonNode authoritative = relationalSessions(dataSource);
+            if (supplied != null && !supplied.equals(authoritative)) throw new SessionSliceConflictException();
+            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
+                    .set("sessions", authoritative.deepCopy());
+            return MAPPER.writeValueAsString(candidate);
+        } catch (SessionSliceConflictException ex) {
+            throw ex;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new SessionSliceConflictException();
+        } catch (Exception ex) {
+            throw new SQLException("Failed to protect relational sessions", ex);
         }
     }
 
@@ -510,6 +557,24 @@ public class StateController {
         }
     }
 
+    private static String ensureSessionsSection(String previousPayload, String candidatePayload)
+            throws SessionSliceConflictException {
+        try {
+            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
+            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
+            if (!previous.isObject() || !candidate.isObject()) throw new SessionSliceConflictException();
+            if (!candidate.has("sessions")) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
+                        .set("sessions", previous.path("sessions").deepCopy());
+            }
+            return MAPPER.writeValueAsString(candidate);
+        } catch (SessionSliceConflictException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new SessionSliceConflictException();
+        }
+    }
+
     private static com.fasterxml.jackson.databind.node.ArrayNode relationalEvents(HikariDataSource dataSource)
             throws SQLException {
         try {
@@ -522,9 +587,22 @@ public class StateController {
         }
     }
 
+    private static com.fasterxml.jackson.databind.node.ArrayNode relationalSessions(HikariDataSource dataSource)
+            throws Exception {
+        com.fasterxml.jackson.databind.JsonNode state = MAPPER.readTree(
+                br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource));
+        if (!state.path("sessions").isArray()) {
+            throw new SQLException("Relational sessions projection is not an array");
+        }
+        return (com.fasterxml.jackson.databind.node.ArrayNode) state.path("sessions");
+    }
+
     private record StateSnapshot(boolean exists, String payload) {
     }
 
     private static final class EventSliceConflictException extends RuntimeException {
+    }
+
+    private static final class SessionSliceConflictException extends RuntimeException {
     }
 }

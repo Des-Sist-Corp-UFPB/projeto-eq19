@@ -95,6 +95,22 @@ describe('Auth and database contexts', () => {
     vi.mocked(api.saveServerState).mockImplementation(async state => {
       serverState = { ...structuredClone(state), events: serverState.events };
     });
+    vi.mocked(api.getEvents).mockImplementation(async () => structuredClone(serverState.events));
+    vi.mocked(api.getSessions).mockImplementation(async () => structuredClone(serverState.sessions));
+    vi.mocked(api.createSession).mockImplementation(async input => {
+      const session = {
+        ...input,
+        id: 's_local',
+        organizerId: 'u1',
+        photos: [],
+        comments: [],
+      };
+      serverState.sessions = [session, ...serverState.sessions];
+      return session;
+    });
+    vi.mocked(api.deleteSessionRequest).mockImplementation(async id => {
+      serverState.sessions = serverState.sessions.filter(session => session.id !== id);
+    });
     vi.mocked(api.createEvent).mockImplementation(async input => {
       const event = {
         ...input, id: `e_test_${serverState.events.length}`, organizerId: 'u1',

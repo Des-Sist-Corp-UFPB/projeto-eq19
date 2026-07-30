@@ -1,4 +1,4 @@
-import type { DatabaseState, Event, User } from '../types';
+import type { DatabaseState, Event, Session, User } from '../types';
 
 export const AUTH_TOKEN_KEY = 'tabula_auth_token';
 
@@ -135,10 +135,9 @@ export async function getServerState(): Promise<DatabaseState | null> {
 }
 
 export async function saveServerState(state: DatabaseState, includeEvents = false): Promise<void> {
-  const payload: Omit<DatabaseState, 'events'> & { events?: Event[] } = {
+  const payload: Omit<DatabaseState, 'events' | 'sessions'> & { events?: Event[] } = {
     users: state.users,
     boardGames: state.boardGames,
-    sessions: state.sessions,
   };
   if (includeEvents) payload.events = state.events;
 
@@ -146,6 +145,23 @@ export async function saveServerState(state: DatabaseState, includeEvents = fals
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+}
+
+export type SessionWriteRequest = Pick<
+  Session,
+  'gameId' | 'date' | 'location' | 'participantIds' | 'winnerId' | 'duration' | 'notes'
+>;
+
+export async function getSessions(): Promise<Session[]> {
+  return requestJson<Session[]>('/sessions', { method: 'GET', headers: { Accept: 'application/json' } });
+}
+
+export async function createSession(session: SessionWriteRequest): Promise<Session> {
+  return requestJson<Session>('/sessions', { method: 'POST', body: JSON.stringify(session) });
+}
+
+export async function deleteSessionRequest(id: string): Promise<void> {
+  await requestJson<void>(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export type EventWriteRequest = Pick<
