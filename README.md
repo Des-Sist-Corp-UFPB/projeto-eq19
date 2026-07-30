@@ -209,12 +209,8 @@ Esta migração seguiu uma estratégia incremental recomendada para sistemas em 
 
 ## Conta administrativa inicial
 
-A aplicação cria uma conta administrativa inicial via migration do banco.
-
-* E-mail: `admin@tabula.com`
-* Senha: `Tabula@2026`
-
-Troque essa senha após o primeiro acesso em um ambiente real.
+A conta administrativa inicial é criada pela migration. As credenciais devem ser
+obtidas por meio da configuração segura do ambiente e alteradas no primeiro acesso.
 
 ## Teste local opcional
 
@@ -239,7 +235,7 @@ No ambiente local, o compose usa um container PostgreSQL próprio e expõe a apl
 ## Observabilidade Local (OpenTelemetry)
 
 Para rodar a aplicação local com coleta de traces via OpenTelemetry, Grafana e Tempo, consulte o guia detalhado:
-- [Guia de Instrumentação OpenTelemetry Local](file:///c:/Users/cauab/Downloads/Tabula/docs/opentelemetry-local.md)
+- [Guia de Instrumentação OpenTelemetry Local](docs/opentelemetry-local.md)
 
 
 ## Log de Auditoria
