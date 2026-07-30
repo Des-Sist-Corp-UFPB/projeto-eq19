@@ -3,6 +3,7 @@ package br.com.tabula;
 import br.com.tabula.config.DatabaseConfig;
 import br.com.tabula.controller.AuthController;
 import br.com.tabula.controller.AuditLogController;
+import br.com.tabula.controller.AiEventController;
 import br.com.tabula.controller.PingController;
 import br.com.tabula.controller.StateController;
 import com.zaxxer.hikari.HikariDataSource;
@@ -57,6 +58,7 @@ public class App {
             AuthController.register(app, dataSource);
             StateController.register(app, dataSource);
             AuditLogController.register(app, dataSource);
+            AiEventController.register(app, dataSource);
 
             app.exception(Exception.class, (e, ctx) -> {
                 LOGGER.error("Unhandled backend error", e);

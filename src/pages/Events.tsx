@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import type { Event } from '../types';
 import { PlusIcon, CalendarIcon, MapPinIcon, ClockIcon, UsersIcon, CrownIcon, TrophyIcon, CloseIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
+import { generateEventDraft } from '../services/api';
 
 export const Events: React.FC = () => {
   const { state, addEvent, joinEvent, leaveEvent, completeEvent } = useDatabase();
@@ -28,6 +29,10 @@ export const Events: React.FC = () => {
   const [location, setLocation] = useState('Vivência do Bloco C');
   const [maxParticipants, setMaxParticipants] = useState(4);
   const [description, setDescription] = useState('');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
 
   // Complete Event Form State
   const [winnerId, setWinnerId] = useState('');
@@ -135,6 +140,29 @@ export const Events: React.FC = () => {
     setLocation('Vivência do Bloco C');
     setMaxParticipants(4);
     setDescription('');
+    setAiPrompt('');
+    setAiError('');
+    setAiWarnings([]);
+  };
+
+  const handleGenerateDraft = async () => {
+    setAiLoading(true);
+    setAiError('');
+    setAiWarnings([]);
+    try {
+      const draft = await generateEventDraft(aiPrompt);
+      setGameId(draft.gameId);
+      setDate(draft.date);
+      setTime(draft.time);
+      setLocation(draft.location);
+      setMaxParticipants(draft.maxParticipants);
+      setDescription(draft.description);
+      setAiWarnings(draft.warnings);
+    } catch {
+      setAiError('Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // 4. Complete Event Workflow triggers
@@ -424,6 +452,35 @@ export const Events: React.FC = () => {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h2 className="mb-lg" style={{ fontFamily: 'var(--font-title)' }}>Agendar Encontro de Jogo</h2>
             <form onSubmit={handleScheduleSubmit}>
+              <section style={aiAssistantStyle}>
+                <h3 style={{ margin: 0, fontSize: '1rem' }}>Criar com IA</h3>
+                <label className="form-label" htmlFor="ai-event-prompt">Descreva o encontro que deseja organizar</label>
+                <textarea
+                  id="ai-event-prompt"
+                  className="form-textarea"
+                  value={aiPrompt}
+                  minLength={5}
+                  maxLength={1000}
+                  onChange={e => setAiPrompt(e.target.value)}
+                  placeholder="Ex: Crie uma mesa de Xadrez sexta às 18h para seis pessoas na biblioteca."
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={aiLoading || aiPrompt.trim().length < 5}
+                  onClick={handleGenerateDraft}
+                >
+                  {aiLoading ? 'Gerando rascunho...' : 'Preencher formulário com IA'}
+                </button>
+                <small style={{ color: 'var(--color-text-muted)' }}>Revise as informações antes de agendar</small>
+                {aiError && <div role="alert" style={{ color: 'var(--color-danger, #b42318)' }}>{aiError}</div>}
+                {aiWarnings.length > 0 && (
+                  <div role="status" style={{ color: 'var(--color-text-muted)' }}>
+                    <strong>Atenção:</strong>
+                    <ul>{aiWarnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul>
+                  </div>
+                )}
+              </section>
               
               <div className="form-group">
                 <label className="form-label">Escolher Jogo *</label>
@@ -446,7 +503,7 @@ export const Events: React.FC = () => {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Vagas Máximas *</label>
-                  <input type="number" className="form-input" min={2} max={30} value={maxParticipants} onChange={e => setMaxParticipants(Number(e.target.value))} />
+                  <input type="number" className="form-input" min={2} max={100} value={maxParticipants} onChange={e => setMaxParticipants(Number(e.target.value))} />
                 </div>
               </div>
 
@@ -778,6 +835,17 @@ const formActionsStyle: React.CSSProperties = {
   marginTop: '24px',
   borderTop: '1px solid var(--color-border)',
   paddingTop: '16px',
+};
+
+const aiAssistantStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '10px',
+  padding: '16px',
+  marginBottom: '20px',
+  border: '1px solid var(--color-border)',
+  borderRadius: '10px',
+  background: 'var(--color-primary-light, #f4f1ff)',
 };
 
 const recordModalContentStyle: React.CSSProperties = {

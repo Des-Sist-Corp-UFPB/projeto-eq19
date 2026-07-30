@@ -122,6 +122,14 @@ public class AuditLogService {
             sanitized.put("initialization", bool);
         }
 
+        copySafeString(sanitized, details, "model", 80);
+        copySafeString(sanitized, details, "resultGameId", 80);
+        copySafeString(sanitized, details, "failureReason", 80);
+        copySafeInteger(sanitized, details, "promptLength");
+        copySafeInteger(sanitized, details, "warningCount");
+        Object success = details.get("success");
+        if (success instanceof Boolean bool) sanitized.put("success", bool);
+
         Object changedSections = details.get("changedSections");
         if (changedSections instanceof Collection<?> values) {
             ArrayNode array = sanitized.putArray("changedSections");
@@ -133,6 +141,19 @@ public class AuditLogService {
                     .forEach(array::add);
         }
         return sanitized;
+    }
+
+    private static void copySafeString(ObjectNode target, Map<String, ?> source, String key, int limit) {
+        Object value = source.get(key);
+        if (value instanceof String text) {
+            String safe = safeText(text, limit);
+            if (safe != null) target.put(key, safe);
+        }
+    }
+
+    private static void copySafeInteger(ObjectNode target, Map<String, ?> source, String key) {
+        Object value = source.get(key);
+        if (value instanceof Number number) target.put(key, Math.max(0, number.intValue()));
     }
 
     private static String currentTraceId() {

@@ -48,6 +48,21 @@ export interface AuditLogFilters {
   endDate?: string;
 }
 
+export interface AiEventDraftRequest {
+  prompt: string;
+}
+
+export interface AiEventDraftResponse {
+  gameId: string;
+  gameName: string;
+  date: string;
+  time: string;
+  location: string;
+  maxParticipants: number;
+  description: string;
+  warnings: string[];
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '');
 
 const getAuthToken = () => {
@@ -103,6 +118,14 @@ export async function saveServerState(state: DatabaseState): Promise<void> {
 
   await requestJson<{ ok: boolean }>('/state', {
     method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function generateEventDraft(prompt: string): Promise<AiEventDraftResponse> {
+  const payload: AiEventDraftRequest = { prompt };
+  return requestJson<AiEventDraftResponse>('/ai/event-drafts', {
+    method: 'POST',
     body: JSON.stringify(payload),
   });
 }
