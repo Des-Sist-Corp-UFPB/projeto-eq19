@@ -23,6 +23,10 @@ import java.util.Optional;
 
 public final class AiEventController {
     private static final Logger LOGGER = LoggerFactory.getLogger(AiEventController.class);
+    private static final Map<String, String> USAGE_LIMIT_RESPONSE = Map.of(
+            "code", "AI_USAGE_LIMIT_REACHED",
+            "message", "O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde."
+    );
     private AiEventController() {}
 
     public static void register(Javalin app, HikariDataSource dataSource) {
@@ -85,10 +89,7 @@ public final class AiEventController {
             }
             if (!limiter.tryAcquire(principal.get().getExternalId())) {
                 log(model, false, started, null, "usage_limit");
-                ctx.status(429).json(Map.of(
-                        "code", "AI_USAGE_LIMIT_REACHED",
-                        "message", "O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde."
-                ));
+                ctx.status(429).json(USAGE_LIMIT_RESPONSE);
                 return;
             }
             try {
@@ -146,10 +147,7 @@ public final class AiEventController {
             if (!limiter.tryAcquire(principal.get().getExternalId())) {
                 logRefinement(model, false, started, null, "usage_limit",
                         br.com.tabula.ai.AiUsage.empty(), 0);
-                ctx.status(429).json(Map.of(
-                        "code", "AI_USAGE_LIMIT_REACHED",
-                        "message", "O limite temporário de gerações com IA foi atingido. Tente novamente mais tarde."
-                ));
+                ctx.status(429).json(USAGE_LIMIT_RESPONSE);
                 return;
             }
             try {
