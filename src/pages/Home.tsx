@@ -33,7 +33,7 @@ export const Home: React.FC = () => {
     .slice(0, 3);
 
   // Attendance click handler
-  const handleAttendance = (eventId: string, isJoining: boolean) => {
+  const handleAttendance = async (eventId: string, isJoining: boolean) => {
     if (!currentUser) return;
 
     const event = state.events.find(e => e.id === eventId);
@@ -42,19 +42,20 @@ export const Home: React.FC = () => {
       return;
     }
 
-    if (isJoining) {
-      joinEvent(eventId, currentUser.id);
-      const gameName = state.boardGames.find(g => g.id === event?.gameId)?.name || 'Jogo';
-      const isFull = event ? event.participantIds.length >= event.maxParticipants : false;
-      
-      if (isFull) {
-        showToast(`Adicionado à lista de espera de ${gameName}!`, 'warning');
+    try {
+      if (isJoining) {
+        const waitlisted = await joinEvent(eventId, currentUser.id);
+        const gameName = state.boardGames.find(g => g.id === event?.gameId)?.name || 'Jogo';
+        showToast(
+          waitlisted ? `Adicionado à lista de espera de ${gameName}!` : `Inscrição realizada em ${gameName}! 🎲`,
+          waitlisted ? 'warning' : 'success',
+        );
       } else {
-        showToast(`Inscrição realizada em ${gameName}! 🎲`, 'success');
+        await leaveEvent(eventId, currentUser.id);
+        showToast('Inscrição cancelada com sucesso.', 'info');
       }
-    } else {
-      leaveEvent(eventId, currentUser.id);
-      showToast('Inscrição cancelada com sucesso.', 'info');
+    } catch {
+      showToast('Não foi possível atualizar sua inscrição agora.', 'error');
     }
   };
 

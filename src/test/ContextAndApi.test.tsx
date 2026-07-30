@@ -90,6 +90,49 @@ describe('Auth and database contexts', () => {
     localStorage.clear();
     sessionStorage.clear();
     vi.clearAllMocks();
+    let serverState = structuredClone(getDefaultDatabaseState());
+    vi.mocked(api.getServerState).mockImplementation(async () => structuredClone(serverState));
+    vi.mocked(api.saveServerState).mockImplementation(async state => {
+      serverState = { ...structuredClone(state), events: serverState.events };
+    });
+    vi.mocked(api.createEvent).mockImplementation(async input => {
+      const event = {
+        ...input, id: `e_test_${serverState.events.length}`, organizerId: 'u1',
+        participantIds: ['u1'], waitingListIds: [], status: 'active' as const,
+      };
+      serverState.events = [event, ...serverState.events];
+      return event;
+    });
+    vi.mocked(api.joinEventRequest).mockImplementation(async id => {
+      const current = serverState.events.find(event => event.id === id)!;
+      const waitlisted = current.participantIds.length >= current.maxParticipants;
+      const event = {
+        ...current,
+        participantIds: waitlisted ? current.participantIds : [...current.participantIds, 'u2'],
+        waitingListIds: waitlisted ? [...current.waitingListIds, 'u3'] : current.waitingListIds,
+      };
+      serverState.events = serverState.events.map(candidate => candidate.id === id ? event : candidate);
+      return { event, waitlisted };
+    });
+    vi.mocked(api.leaveEventRequest).mockImplementation(async id => {
+      const event = serverState.events.find(candidate => candidate.id === id)!;
+      return { event, promoted: false };
+    });
+    vi.mocked(api.completeEventRequest).mockImplementation(async id => {
+      const current = serverState.events.find(event => event.id === id)!;
+      const event = { ...current, status: 'completed' as const };
+      serverState.events = serverState.events.map(candidate => candidate.id === id ? event : candidate);
+      serverState.sessions = [{
+        id: 's_completed', gameId: event.gameId, date: `${event.date}T${event.time}:00`,
+        location: event.location, organizerId: event.organizerId, participantIds: event.participantIds,
+        winnerId: event.participantIds[0] ?? null, duration: 30, notes: 'Finalizado', photos: [], comments: [],
+      }, {
+        id: 's_local', gameId: event.gameId, date: `${event.date}T${event.time}:00`,
+        location: event.location, organizerId: event.organizerId, participantIds: event.participantIds,
+        winnerId: event.participantIds[0] ?? null, duration: 45, notes: 'Test session', photos: [], comments: [],
+      }, ...getDefaultDatabaseState().sessions];
+      return event;
+    });
   });
 
   it('handles auth lifecycle and password flows', async () => {
@@ -219,6 +262,8 @@ describe('Auth and database contexts', () => {
 describe('API helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(api.getServerState).mockResolvedValue(null);
+    vi.mocked(api.saveServerState).mockResolvedValue();
   });
 
   it('covers the API helpers for health checks and state persistence', async () => {

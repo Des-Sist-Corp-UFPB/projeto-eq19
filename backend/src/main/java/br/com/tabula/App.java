@@ -6,6 +6,7 @@ import br.com.tabula.controller.AuditLogController;
 import br.com.tabula.controller.AiEventController;
 import br.com.tabula.controller.PingController;
 import br.com.tabula.controller.StateController;
+import br.com.tabula.controller.EventController;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import org.slf4j.Logger;
@@ -59,6 +60,7 @@ public class App {
             StateController.register(app, dataSource);
             AuditLogController.register(app, dataSource);
             AiEventController.register(app, dataSource);
+            EventController.register(app, dataSource);
 
             app.exception(Exception.class, (e, ctx) -> {
                 LOGGER.error("Unhandled backend error", e);

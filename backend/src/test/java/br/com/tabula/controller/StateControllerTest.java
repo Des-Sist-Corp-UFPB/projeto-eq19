@@ -57,7 +57,7 @@ class StateControllerTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(statement);
         when(statement.executeQuery()).thenReturn(resultSet);
-        when(resultSet.next()).thenReturn(true);
+        when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString(1)).thenReturn("{\"ready\":true}");
 
         Javalin app = startStateApp(dataSource);
@@ -606,11 +606,8 @@ class StateControllerTest {
         Javalin app = startStateApp(dataSource);
         try {
             HttpResponse<String> response = sendGet(app, "/state");
-            assertEquals(200, response.statusCode());
-
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
-            assertEquals("legacy_user", root.get("users").get(0).get("id").asText());
+            assertEquals(500, response.statusCode());
+            assertTrue(response.body().contains("Não foi possível carregar"));
         } finally {
             app.stop();
         }
@@ -643,11 +640,8 @@ class StateControllerTest {
         Javalin app = startStateApp(dataSource);
         try {
             HttpResponse<String> response = sendGet(app, "/state");
-            assertEquals(200, response.statusCode());
-
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(response.body());
-            assertEquals("legacy_user_on_err", root.get("users").get(0).get("id").asText());
+            assertEquals(500, response.statusCode());
+            assertTrue(response.body().contains("Não foi possível carregar"));
         } finally {
             app.stop();
         }
@@ -918,7 +912,7 @@ class StateControllerTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(statement);
         when(statement.executeQuery()).thenReturn(resultSet);
-        when(resultSet.next()).thenReturn(true);
+        when(resultSet.next()).thenReturn(true, false);
         when(resultSet.getString(1)).thenReturn("{\"ready\":true}");
 
         Javalin app = startStateApp(dataSource);

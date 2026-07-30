@@ -1,4 +1,4 @@
-import type { DatabaseState, User } from '../types';
+import type { DatabaseState, Event, User } from '../types';
 
 export const AUTH_TOKEN_KEY = 'tabula_auth_token';
 
@@ -134,17 +134,69 @@ export async function getServerState(): Promise<DatabaseState | null> {
   return (await response.json()) as DatabaseState;
 }
 
-export async function saveServerState(state: DatabaseState): Promise<void> {
-  const payload: DatabaseState = {
+export async function saveServerState(state: DatabaseState, includeEvents = false): Promise<void> {
+  const payload: Omit<DatabaseState, 'events'> & { events?: Event[] } = {
     users: state.users,
     boardGames: state.boardGames,
     sessions: state.sessions,
-    events: state.events,
   };
+  if (includeEvents) payload.events = state.events;
 
   await requestJson<{ ok: boolean }>('/state', {
     method: 'PUT',
     body: JSON.stringify(payload),
+  });
+}
+
+export type EventWriteRequest = Pick<
+  Event,
+  'gameId' | 'date' | 'time' | 'location' | 'maxParticipants' | 'description'
+>;
+
+export async function getEvents(): Promise<Event[]> {
+  return requestJson<Event[]>('/events', { method: 'GET', headers: { Accept: 'application/json' } });
+}
+
+export async function getEvent(id: string): Promise<Event> {
+  return requestJson<Event>(`/events/${encodeURIComponent(id)}`, { method: 'GET' });
+}
+
+export async function createEvent(event: EventWriteRequest): Promise<Event> {
+  return requestJson<Event>('/events', { method: 'POST', body: JSON.stringify(event) });
+}
+
+export async function updateEvent(id: string, event: EventWriteRequest): Promise<Event> {
+  return requestJson<Event>(`/events/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(event),
+  });
+}
+
+export async function joinEventRequest(id: string): Promise<{ event: Event; waitlisted: boolean }> {
+  return requestJson(`/events/${encodeURIComponent(id)}/join`, { method: 'POST' });
+}
+
+export async function leaveEventRequest(id: string): Promise<{ event: Event; promoted: boolean }> {
+  return requestJson(`/events/${encodeURIComponent(id)}/leave`, { method: 'POST' });
+}
+
+export async function cancelEventRequest(id: string): Promise<Event> {
+  return requestJson(`/events/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+}
+
+export async function completeEventRequest(
+  id: string,
+  completion: {
+    winnerId: string | null;
+    duration: number;
+    notes: string;
+    initialComment?: string;
+    photoUrl?: string;
+  },
+): Promise<Event> {
+  return requestJson(`/events/${encodeURIComponent(id)}/complete`, {
+    method: 'POST',
+    body: JSON.stringify(completion),
   });
 }
 

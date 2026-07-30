@@ -15,6 +15,21 @@ vi.mock('../services/api', async () => {
     resendVerificationBackend: vi.fn(),
     verifyEmailCode: vi.fn(),
     getAuditLogs: vi.fn(),
+    createEvent: vi.fn(async event => ({
+      ...event,
+      id: 'e_mock',
+      organizerId: 'u1',
+      participantIds: ['u1'],
+      waitingListIds: [],
+      status: 'active' as const,
+    })),
+    updateEvent: vi.fn(),
+    joinEventRequest: vi.fn(),
+    leaveEventRequest: vi.fn(),
+    cancelEventRequest: vi.fn(),
+    completeEventRequest: vi.fn(),
+    getEvents: vi.fn(),
+    getEvent: vi.fn(),
   };
 });
 

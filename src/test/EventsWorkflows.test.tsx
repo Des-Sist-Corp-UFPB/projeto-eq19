@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Events } from '../pages/Events';
 import { renderWithProviders } from './renderWithProviders';
@@ -14,6 +14,10 @@ vi.mock('../services/api', async importOriginal => {
     saveServerState: vi.fn(),
     generateEventDraft: vi.fn(),
     refineEventDraft: vi.fn(),
+    createEvent: vi.fn(),
+    joinEventRequest: vi.fn(),
+    leaveEventRequest: vi.fn(),
+    completeEventRequest: vi.fn(),
   };
 });
 
@@ -25,6 +29,42 @@ describe('Events workflows', () => {
     sessionStorage.setItem('tabula_auth_session', 'u1');
     vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
     vi.mocked(api.saveServerState).mockResolvedValue();
+    let events = structuredClone(getDefaultDatabaseState().events);
+    vi.mocked(api.createEvent).mockImplementation(async input => {
+      const event = {
+        ...input, id: 'e_created', organizerId: 'u1', participantIds: ['u1'],
+        waitingListIds: [], status: 'active' as const,
+      };
+      events = [event, ...events];
+      return event;
+    });
+    vi.mocked(api.joinEventRequest).mockImplementation(async id => {
+      const current = events.find(event => event.id === id)!;
+      const waitlisted = current.participantIds.length >= current.maxParticipants;
+      const event = {
+        ...current,
+        participantIds: waitlisted ? current.participantIds : [...current.participantIds, 'u1'],
+        waitingListIds: waitlisted ? [...current.waitingListIds, 'u1'] : current.waitingListIds,
+      };
+      events = events.map(candidate => candidate.id === id ? event : candidate);
+      return { event, waitlisted };
+    });
+    vi.mocked(api.leaveEventRequest).mockImplementation(async id => {
+      const current = events.find(event => event.id === id)!;
+      const event = {
+        ...current,
+        participantIds: current.participantIds.filter(userId => userId !== 'u1'),
+        waitingListIds: current.waitingListIds.filter(userId => userId !== 'u1'),
+      };
+      events = events.map(candidate => candidate.id === id ? event : candidate);
+      return { event, promoted: false };
+    });
+    vi.mocked(api.completeEventRequest).mockImplementation(async id => {
+      const current = events.find(event => event.id === id)!;
+      const event = { ...current, status: 'completed' as const };
+      events = events.map(candidate => candidate.id === id ? event : candidate);
+      return event;
+    });
   });
 
   it('filters the calendar, changes month and clears the selected day', async () => {
@@ -61,6 +101,7 @@ describe('Events workflows', () => {
   it('creates an event only after manual submission and resets the form', async () => {
     renderWithProviders(<Events />);
     const user = userEvent.setup();
+    const stateWritesBefore = vi.mocked(api.saveServerState).mock.calls.length;
     await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
 
     const form = screen.getByRole('heading', { name: /Agendar Encontro de Jogo/i }).closest('.modal-content')!
@@ -75,10 +116,10 @@ describe('Events workflows', () => {
     await user.type(screen.getByLabelText(/Local de Encontro/i), 'Sala 5');
     await user.type(description, 'Evento confirmado manualmente.');
 
-    const callsBeforeSubmit = vi.mocked(api.saveServerState).mock.calls.length;
     await user.click(within(form).getByRole('button', { name: /^Agendar Encontro$/i }));
     expect(await screen.findByText(/agendado com sucesso/i)).toBeInTheDocument();
-    await waitFor(() => expect(vi.mocked(api.saveServerState).mock.calls.length).toBeGreaterThan(callsBeforeSubmit));
+    expect(api.createEvent).toHaveBeenCalled();
+    expect(api.saveServerState).toHaveBeenCalledTimes(stateWritesBefore);
     expect(screen.queryByRole('heading', { name: /Agendar Encontro de Jogo/i })).not.toBeInTheDocument();
   });
 

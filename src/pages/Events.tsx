@@ -8,6 +8,16 @@ import { UserAvatar } from '../components/UserAvatar';
 import { ApiError, generateEventDraft, refineEventDraft } from '../services/api';
 import type { AiEventDraftResponse } from '../services/api';
 
+const eventErrorMessage = (error: unknown) => {
+  if (!(error instanceof ApiError)) return 'Não foi possível concluir a operação agora.';
+  if (error.status === 401) return 'Sua sessão expirou. Entre novamente.';
+  if (error.status === 403) return 'Você não tem permissão para realizar esta operação.';
+  if (error.status === 404) return 'O evento não foi encontrado.';
+  if (error.status === 409) return 'O evento foi alterado por outra operação. Atualize e tente novamente.';
+  if (error.status === 422) return 'Confira os dados informados e tente novamente.';
+  return 'Não foi possível concluir a operação agora.';
+};
+
 export const Events: React.FC = () => {
   const { state, addEvent, joinEvent, leaveEvent, completeEvent } = useDatabase();
   const { currentUser, isAdmin } = useAuth();
@@ -85,7 +95,7 @@ export const Events: React.FC = () => {
   };
 
   // 2. Attendance triggers
-  const handleAttendance = (eventId: string, isJoining: boolean) => {
+  const handleAttendance = async (eventId: string, isJoining: boolean) => {
     if (!currentUser) return;
 
     const event = state.events.find(e => e.id === eventId);
@@ -95,45 +105,53 @@ export const Events: React.FC = () => {
     }
 
     if (isJoining) {
-      joinEvent(eventId, currentUser.id);
-      const gameName = state.boardGames.find(g => g.id === event?.gameId)?.name || 'Jogo';
-      const isFull = event ? event.participantIds.length >= event.maxParticipants : false;
-      
-      if (isFull) {
-        showToast(`Você foi adicionado à lista de espera de ${gameName}!`, 'warning');
-      } else {
-        showToast(`Inscrição confirmada na mesa de ${gameName}! 🎲`, 'success');
+      try {
+        const waitlisted = await joinEvent(eventId, currentUser.id);
+        const gameName = state.boardGames.find(g => g.id === event?.gameId)?.name || 'Jogo';
+        showToast(
+          waitlisted
+            ? `Você foi adicionado à lista de espera de ${gameName}!`
+            : `Inscrição confirmada na mesa de ${gameName}! 🎲`,
+          waitlisted ? 'warning' : 'success',
+        );
+      } catch (error) {
+        showToast(eventErrorMessage(error), 'error');
       }
     } else {
-      leaveEvent(eventId, currentUser.id);
-      showToast('Participação cancelada.', 'info');
+      try {
+        await leaveEvent(eventId, currentUser.id);
+        showToast('Participação cancelada.', 'info');
+      } catch (error) {
+        showToast(eventErrorMessage(error), 'error');
+      }
     }
   };
 
   // 3. Create event submit
-  const handleScheduleSubmit = (e: React.FormEvent) => {
+  const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gameId) {
       alert('Selecione um jogo.');
       return;
     }
 
-    addEvent(
-      {
+    try {
+      await addEvent({
         gameId,
         date,
         time,
         location,
         maxParticipants,
         description
-      },
-      currentUser?.id || 'u1'
-    );
+      }, currentUser?.id || '');
 
-    const gameName = state.boardGames.find(g => g.id === gameId)?.name || 'Jogo';
-    showToast(`Evento de ${gameName} agendado com sucesso!`, 'success');
-    setIsScheduleModalOpen(false);
-    resetScheduleForm();
+      const gameName = state.boardGames.find(g => g.id === gameId)?.name || 'Jogo';
+      showToast(`Evento de ${gameName} agendado com sucesso!`, 'success');
+      setIsScheduleModalOpen(false);
+      resetScheduleForm();
+    } catch (error) {
+      showToast(eventErrorMessage(error), 'error');
+    }
   };
 
   const resetScheduleForm = () => {
@@ -219,7 +237,7 @@ export const Events: React.FC = () => {
     setIsCompleteModalOpen(true);
   };
 
-  const handleCompleteSubmit = (e: React.FormEvent) => {
+  const handleCompleteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!completingEvent) return;
     if (!winnerId) {
@@ -231,19 +249,22 @@ export const Events: React.FC = () => {
       return;
     }
 
-    completeEvent(
-      completingEvent.id,
-      winnerId,
-      duration,
-      notes,
-      initialComment.trim() || undefined,
-      photoUrl.trim() || undefined
-    );
-
-    const gameName = state.boardGames.find(g => g.id === completingEvent.gameId)?.name || 'Jogo';
-    showToast(`Partida de ${gameName} finalizada e arquivada! 🏆`, 'success');
-    setIsCompleteModalOpen(false);
-    setCompletingEvent(null);
+    try {
+      await completeEvent(
+        completingEvent.id,
+        winnerId,
+        duration,
+        notes,
+        initialComment.trim() || undefined,
+        photoUrl.trim() || undefined
+      );
+      const gameName = state.boardGames.find(g => g.id === completingEvent.gameId)?.name || 'Jogo';
+      showToast(`Partida de ${gameName} finalizada e arquivada! 🏆`, 'success');
+      setIsCompleteModalOpen(false);
+      setCompletingEvent(null);
+    } catch (error) {
+      showToast(eventErrorMessage(error), 'error');
+    }
     setSelectedDayEvents(null); // Clear day filter to refresh lists
     setSelectedDayNumber(null);
   };

@@ -5,6 +5,7 @@ import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.service.AuditLogService;
 import br.com.tabula.service.AuthenticatedUserService;
 import br.com.tabula.service.StateAuthorizationService;
+import br.com.tabula.repository.EventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
@@ -97,7 +98,7 @@ public class StateController {
             }
 
             try {
-                br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson);
+                br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson, true);
             } catch (Exception ex) {
                 LOGGER.atError()
                       .addKeyValue("state_id", 1)
@@ -207,6 +208,7 @@ public class StateController {
         app.get("/state", ctx -> {
             try {
                 String payload = null;
+                boolean relationalPayload = false;
                 if (isRelationalReadEnabled()) {
                     if (isRelationalReadGuardEnabled()) {
                         String legacyJson = null;
@@ -230,6 +232,7 @@ public class StateController {
 
                                 if (comparisonOk) {
                                     payload = relationalJson;
+                                    relationalPayload = true;
                                 } else {
                                     LOGGER.atWarn()
                                           .addKeyValue("state_id", 1)
@@ -249,6 +252,7 @@ public class StateController {
                     } else {
                         try {
                             payload = br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource);
+                            relationalPayload = true;
                         } catch (Exception ex) {
                             LOGGER.atError()
                                   .addKeyValue("state_id", 1)
@@ -267,6 +271,7 @@ public class StateController {
                     ctx.status(404).json(Map.of("error", "Estado ainda não inicializado."));
                     return;
                 }
+                if (!relationalPayload) payload = overlayRelationalEvents(dataSource, payload);
                 ctx.contentType("application/json").result(payload);
             } catch (SQLException ex) {
                 LOGGER.atError()
@@ -305,6 +310,7 @@ public class StateController {
                 }
 
                 if (snapshot.exists()) {
+                    payload = ensureEventsSection(snapshot.payload(), payload);
                     StateAuthorizationService.AuthorizationDecision authorization =
                             stateAuthorizationService.authorize(
                                     snapshot.payload(), payload, principal.orElseThrow());
@@ -320,6 +326,19 @@ public class StateController {
                         } else {
                             ctx.status(403).json(Map.of("error", "Operação não permitida."));
                         }
+                        return;
+                    }
+                    try {
+                        payload = protectRelationalEvents(dataSource, snapshot.payload(), payload);
+                    } catch (EventSliceConflictException ex) {
+                        auditLogService.recordBestEffort(
+                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,
+                                "EVENT", null, false, ctx.ip(), ctx.header("User-Agent"),
+                                Map.of("reason", "relational_events_are_authoritative")
+                        );
+                        ctx.status(409).json(Map.of(
+                                "error", "Eventos devem ser alterados pelos endpoints específicos."
+                        ));
                         return;
                     }
                 }
@@ -353,7 +372,8 @@ public class StateController {
                     }
                 }
                 try {
-                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, payload);
+                    br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(
+                            dataSource, payload, !snapshot.exists());
                 } catch (Exception ex) {
                     LOGGER.atError()
                           .addKeyValue("state_id", 1)
@@ -429,6 +449,82 @@ public class StateController {
         return changed;
     }
 
+    private static String overlayRelationalEvents(HikariDataSource dataSource, String legacyPayload)
+            throws SQLException {
+        try {
+            com.fasterxml.jackson.databind.JsonNode legacy = MAPPER.readTree(legacyPayload);
+            if (!legacy.isObject() || !legacy.path("events").isArray()) return legacyPayload;
+            com.fasterxml.jackson.databind.JsonNode events = relationalEvents(dataSource);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)
+                    .set("events", events);
+            return MAPPER.writeValueAsString(legacy);
+        } catch (Exception ex) {
+            throw new SQLException("Failed to overlay relational events", ex);
+        }
+    }
+
+    private static String protectRelationalEvents(HikariDataSource dataSource, String previousPayload,
+                                                    String candidatePayload)
+            throws SQLException, EventSliceConflictException {
+        try {
+            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
+            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
+            if (!previous.isObject() || !candidate.isObject()) {
+                throw new EventSliceConflictException();
+            }
+            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get("events");
+            if (java.util.Objects.equals(previous.get("events"), supplied)) {
+                return MAPPER.writeValueAsString(candidate);
+            }
+            com.fasterxml.jackson.databind.JsonNode authoritative = relationalEvents(dataSource);
+            if (supplied != null && !supplied.equals(authoritative)) {
+                throw new EventSliceConflictException();
+            }
+            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
+                    .set("events", authoritative.deepCopy());
+            return MAPPER.writeValueAsString(candidate);
+        } catch (EventSliceConflictException ex) {
+            throw ex;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new EventSliceConflictException();
+        } catch (Exception ex) {
+            throw new SQLException("Failed to protect relational events", ex);
+        }
+    }
+
+    private static String ensureEventsSection(String previousPayload, String candidatePayload)
+            throws EventSliceConflictException {
+        try {
+            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
+            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
+            if (!previous.isObject() || !candidate.isObject()) throw new EventSliceConflictException();
+            if (!candidate.has("events")) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
+                        .set("events", previous.path("events").deepCopy());
+            }
+            return MAPPER.writeValueAsString(candidate);
+        } catch (EventSliceConflictException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new EventSliceConflictException();
+        }
+    }
+
+    private static com.fasterxml.jackson.databind.node.ArrayNode relationalEvents(HikariDataSource dataSource)
+            throws SQLException {
+        try {
+            com.fasterxml.jackson.databind.JsonNode events = MAPPER.readTree(
+                    new EventRepository(dataSource).findAllAsStateJson());
+            if (!events.isArray()) throw new SQLException("Relational events projection is not an array");
+            return (com.fasterxml.jackson.databind.node.ArrayNode) events;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new SQLException("Failed to parse relational events projection", ex);
+        }
+    }
+
     private record StateSnapshot(boolean exists, String payload) {
+    }
+
+    private static final class EventSliceConflictException extends RuntimeException {
     }
 }

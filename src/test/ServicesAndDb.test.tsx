@@ -121,9 +121,9 @@ describe('API helpers and database utilities', () => {
       users: stateWithLegacyLogs.users,
       boardGames: stateWithLegacyLogs.boardGames,
       sessions: stateWithLegacyLogs.sessions,
-      events: stateWithLegacyLogs.events,
     });
     expect(payload).not.toHaveProperty('logs');
+    expect(payload).not.toHaveProperty('events');
   });
 
   it('normalizes cover URLs and sanitizes legacy database state', () => {

@@ -26,6 +26,11 @@ public class RelationalStateSyncService {
 
     @WithSpan("sync-from-state-json")
     public static void syncFromStateJson(HikariDataSource dataSource, String payload) throws Exception {
+        syncFromStateJson(dataSource, payload, false);
+    }
+
+    public static void syncFromStateJson(HikariDataSource dataSource, String payload, boolean bootstrapEvents)
+            throws Exception {
         if (payload == null || payload.isBlank()) {
             LOGGER.warn("RelationalStateSyncService: Empty or blank payload provided.");
             return;
@@ -57,16 +62,15 @@ public class RelationalStateSyncService {
                 try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM partidas")) {
                     stmt.executeUpdate();
                 }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM evento_participantes")) {
-                    stmt.executeUpdate();
-                }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM eventos")) {
-                    stmt.executeUpdate();
+                if (bootstrapEvents) {
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM evento_participantes")) {
+                        stmt.executeUpdate();
+                    }
+                    try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM eventos")) {
+                        stmt.executeUpdate();
+                    }
                 }
                 try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM logs")) {
-                    stmt.executeUpdate();
-                }
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM jogos WHERE external_id IS NOT NULL")) {
                     stmt.executeUpdate();
                 }
 
@@ -320,7 +324,7 @@ public class RelationalStateSyncService {
 
                 // 4) Sync events
                 JsonNode eventsNode = root.path("events");
-                if (eventsNode.isArray()) {
+                if (bootstrapEvents && eventsNode.isArray()) {
                     String insEventSql = """
                             INSERT INTO eventos (external_id, jogo_id, data_hora, local, descricao, max_participantes, status, organizador_id, criado_em)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)

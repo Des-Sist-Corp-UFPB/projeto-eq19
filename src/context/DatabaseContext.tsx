@@ -1,7 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { DatabaseState, BoardGame, Session, Event, Comment, User, UserRole } from '../types';
 import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
-import { getServerState, saveServerState } from '../services/api';
+import {
+  completeEventRequest,
+  createEvent,
+  getEvents,
+  getServerState,
+  joinEventRequest,
+  leaveEventRequest,
+  saveServerState,
+} from '../services/api';
 import { useToast } from './ToastContext';
 
 const generateId = (prefix: string) => {
@@ -10,6 +18,12 @@ const generateId = (prefix: string) => {
     : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   return `${prefix}_${randomId}`;
 };
+
+const serializeLegacyState = (state: DatabaseState) => JSON.stringify({
+  users: state.users,
+  boardGames: state.boardGames,
+  sessions: state.sessions,
+});
 
 interface DatabaseContextType {
   state: DatabaseState;
@@ -20,9 +34,9 @@ interface DatabaseContextType {
   addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => void;
   deleteSession: (sessionId: string) => void;
   addComment: (sessionId: string, userId: string, content: string) => void;
-  addEvent: (event: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => void;
-  joinEvent: (eventId: string, userId: string) => void;
-  leaveEvent: (eventId: string, userId: string) => void;
+  addEvent: (event: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => Promise<Event>;
+  joinEvent: (eventId: string, userId: string) => Promise<boolean>;
+  leaveEvent: (eventId: string, userId: string) => Promise<void>;
   completeEvent: (
     eventId: string,
     winnerId: string | null,
@@ -30,7 +44,7 @@ interface DatabaseContextType {
     notes: string,
     initialComment?: string,
     photoUrl?: string
-  ) => void;
+  ) => Promise<void>;
   deleteUser: (userId: string) => void;
   promoteUser: (userId: string) => void;
   editUser: (userId: string, updates: Partial<User>) => void;
@@ -51,13 +65,22 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const loadFromServer = async () => {
       try {
         const serverState = await getServerState();
-        const nextState = serverState ? sanitizeDatabaseState(serverState) : getDefaultDatabaseState();
+        let nextState = serverState ? sanitizeDatabaseState(serverState) : getDefaultDatabaseState();
+        try {
+          const relationalEvents = await getEvents();
+          if (Array.isArray(relationalEvents)) {
+            nextState = { ...nextState, events: relationalEvents };
+          }
+        } catch {
+          // Public screens may load before authentication; GET /state already
+          // carries the authoritative relational event projection.
+        }
         if (cancelled) return;
         setState(nextState);
         if (!serverState) {
-          await saveServerState(nextState);
+          await saveServerState(nextState, true);
         }
-        lastSavedJsonRef.current = JSON.stringify(nextState);
+        lastSavedJsonRef.current = serializeLegacyState(nextState);
         serverLoadedRef.current = true;
       } catch (error) {
         if (!cancelled) {
@@ -78,7 +101,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!serverLoadedRef.current) return;
 
-    const serializedState = JSON.stringify(state);
+    const serializedState = serializeLegacyState(state);
     if (serializedState === lastSavedJsonRef.current) return;
 
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
@@ -214,124 +237,45 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Event actions
-  const addEvent = (eventData: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => {
-    const eventId = generateId('e');
-    const newEvent: Event = {
-      ...eventData,
-      id: eventId,
-      organizerId,
-      participantIds: [organizerId], // Organizer is automatically registered
-      waitingListIds: [],
-      status: 'active'
-    };
-
-    setState(prev => {
-      const updated = {
-        ...prev,
-        events: [newEvent, ...prev.events]
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const addEvent = async (
+    eventData: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>,
+    organizerId: string,
+  ) => {
+    void organizerId;
+    const created = await createEvent(eventData);
+    setState(prev => syncDatabaseCalculations({
+      ...prev,
+      events: [created, ...prev.events.filter(event => event.id !== created.id)],
+    }));
+    return created;
   };
 
-  const joinEvent = (eventId: string, userId: string) => {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
-
-    setState(prev => {
-      const eventIndex = prev.events.findIndex(e => e.id === eventId);
-      if (eventIndex === -1) return prev;
-
-      const event = prev.events[eventIndex];
-      const isAlreadyParticipant = event.participantIds.includes(userId);
-      const isAlreadyWaiting = event.waitingListIds.includes(userId);
-
-      if (event.status !== 'active' || isAlreadyParticipant || isAlreadyWaiting) return prev;
-
-      const updatedParticipants = [...event.participantIds];
-      const updatedWaitingList = [...event.waitingListIds];
-
-      if (event.participantIds.length < event.maxParticipants) {
-        updatedParticipants.push(userId);
-      } else {
-        updatedWaitingList.push(userId);
-      }
-
-      const updatedEvents = [...prev.events];
-      updatedEvents[eventIndex] = {
-        ...event,
-        participantIds: updatedParticipants,
-        waitingListIds: updatedWaitingList
-      };
-
-      return {
-        ...prev,
-        events: updatedEvents
-      };
-    });
+  const replaceEvent = (updatedEvent: Event) => {
+    setState(prev => ({
+      ...prev,
+      events: prev.events.map(event => event.id === updatedEvent.id ? updatedEvent : event),
+    }));
   };
 
-  const leaveEvent = (eventId: string, userId: string) => {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
+  const joinEvent = async (eventId: string, userId: string) => {
+    void userId;
+    const result = await joinEventRequest(eventId);
+    replaceEvent(result.event);
+    return result.waitlisted;
+  };
 
-    const event = state.events.find(e => e.id === eventId);
+  const leaveEvent = async (eventId: string, userId: string) => {
+    const event = state.events.find(candidate => candidate.id === eventId);
     if (event?.organizerId === userId) {
       showToast('O organizador não pode sair do evento.', 'warning');
       return;
     }
-
-    setState(prev => {
-      const eventIndex = prev.events.findIndex(e => e.id === eventId);
-      if (eventIndex === -1) return prev;
-
-      const event = prev.events[eventIndex];
-
-      if (event.organizerId === userId) {
-        return prev;
-      }
-
-      const updatedParticipants = event.participantIds.filter(id => id !== userId);
-      const updatedWaitingList = event.waitingListIds.filter(id => id !== userId);
-      const updatedEvents = [...prev.events];
-
-      // If a slot opened in the main participants list and someone was in the waiting list
-      if (
-        event.participantIds.includes(userId) &&
-        updatedParticipants.length < event.maxParticipants &&
-        updatedWaitingList.length > 0
-      ) {
-        const nextUser = updatedWaitingList[0];
-        if (nextUser) {
-          const promotedWaitingList = updatedWaitingList.slice(1);
-          updatedParticipants.push(nextUser);
-          updatedEvents[eventIndex] = {
-            ...event,
-            participantIds: updatedParticipants,
-            waitingListIds: promotedWaitingList
-          };
-          return {
-            ...prev,
-            events: updatedEvents
-          };
-        }
-      }
-
-      updatedEvents[eventIndex] = {
-        ...event,
-        participantIds: updatedParticipants,
-        waitingListIds: updatedWaitingList
-      };
-
-      return {
-        ...prev,
-        events: updatedEvents
-      };
-    });
+    const result = await leaveEventRequest(eventId);
+    replaceEvent(result.event);
   };
 
   // The critical conversion workflow: Event -> Session
-  const completeEvent = (
+  const completeEvent = async (
     eventId: string,
     winnerId: string | null,
     duration: number,
@@ -339,55 +283,18 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     initialComment?: string,
     photoUrl?: string
   ) => {
-    const event = state.events.find(e => e.id === eventId);
-    if (!event || event.status !== 'active') return;
-
-    const organizer = state.users.find(u => u.id === event.organizerId);
-
-    // 1. Create comments array
-    const comments: Comment[] = [];
-    if (initialComment && organizer) {
-      comments.push({
-        id: generateId('c'),
-        userId: organizer.id,
-        userName: organizer.name,
-        userAvatar: organizer.avatar,
-        content: initialComment,
-        createdAt: new Date().toISOString()
-      });
-    }
-
-    // 2. Create the historical session
-    const sessionId = generateId('s');
-    const newSession: Session = {
-      id: sessionId,
-      gameId: event.gameId,
-      date: `${event.date}T${event.time}:00`,
-      location: event.location,
-      organizerId: event.organizerId,
-      participantIds: event.participantIds,
-      winnerId,
-      duration,
-      notes,
-      photos: photoUrl ? [photoUrl] : [],
-      comments
-    };
-
-    setState(prev => {
-      // 3. Mark the event as completed
-      const updatedEvents = prev.events.map(e =>
-        e.id === eventId ? { ...e, status: 'completed' as const } : e
-      );
-
-      const updated = {
-        ...prev,
-        sessions: [newSession, ...prev.sessions],
-        events: updatedEvents
-      };
-
-      // Recalculates wins/favorites
-      return syncDatabaseCalculations(updated);
+    const sourceEvent = state.events.find(event => event.id === eventId);
+    if (!sourceEvent) return;
+    const completed = await completeEventRequest(eventId, {
+      winnerId, duration, notes, initialComment, photoUrl,
     });
+    replaceEvent(completed);
+    const refreshed = await getServerState();
+    if (refreshed) {
+      const synchronized = syncDatabaseCalculations(sanitizeDatabaseState(refreshed));
+      lastSavedJsonRef.current = serializeLegacyState(synchronized);
+      setState(synchronized);
+    }
   };
 
   const addUser = (userData: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { id?: string; passwordHash?: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => {
