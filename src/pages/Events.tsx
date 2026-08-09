@@ -8,6 +8,8 @@ import { UserAvatar } from '../components/UserAvatar';
 import { ApiError, generateEventDraft, refineEventDraft } from '../services/api';
 import type { AiEventDraftResponse } from '../services/api';
 
+const unsupportedAiMessage = 'A IA desta tela é usada apenas para ajudar a criar eventos. Descreva o jogo, data, horário, local ou outras informações do evento.';
+
 const eventErrorMessage = (error: unknown) => {
   if (!(error instanceof ApiError)) return 'Não foi possível concluir a operação agora.';
   if (error.status === 401) return 'Sua sessão expirou. Entre novamente.';
@@ -184,9 +186,13 @@ export const Events: React.FC = () => {
     setAiError('');
     setAiWarnings([]);
     try {
-      const draft = await generateEventDraft(aiPrompt);
-      applyAiDraft(draft);
-      setHasAiDraft(true);
+      const response = await generateEventDraft(aiPrompt);
+      if (response.status === 'draft') {
+        applyAiDraft(response.draft);
+        setHasAiDraft(true);
+      } else {
+        setAiError(response.status === 'needs_clarification' ? response.message : unsupportedAiMessage);
+      }
     } catch (error) {
       let message = 'Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.';
       if (error instanceof ApiError) {
@@ -207,11 +213,15 @@ export const Events: React.FC = () => {
     setAiLoading(true);
     setAiError('');
     try {
-      const draft = await refineEventDraft(refinementInstruction, {
+      const response = await refineEventDraft(refinementInstruction, {
         gameId, gameName, date, time, location, maxParticipants, description, warnings: aiWarnings,
       });
-      applyAiDraft(draft);
-      setRefinementInstruction('');
+      if (response.status === 'draft') {
+        applyAiDraft(response.draft);
+        setRefinementInstruction('');
+      } else {
+        setAiError(response.status === 'needs_clarification' ? response.message : unsupportedAiMessage);
+      }
     } catch (error) {
       let message = 'Não foi possível refinar o rascunho agora. Seus dados atuais foram mantidos.';
       if (error instanceof ApiError) {

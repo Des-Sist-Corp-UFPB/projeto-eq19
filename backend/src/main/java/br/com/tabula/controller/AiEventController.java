@@ -4,7 +4,7 @@ import br.com.tabula.ai.AiConfiguration;
 import br.com.tabula.ai.AiProviderException;
 import br.com.tabula.ai.LiteLlmClient;
 import br.com.tabula.dto.AiEventDraftRequest;
-import br.com.tabula.dto.AiEventDraftResponse;
+import br.com.tabula.dto.AiEventAssistantResponse;
 import br.com.tabula.dto.AiEventRefinementRequest;
 import br.com.tabula.model.AuditAction;
 import br.com.tabula.model.AuthenticatedPrincipal;
@@ -94,13 +94,20 @@ public final class AiEventController {
             }
             try {
                 AiEventDraftService.GenerationResult generation = service.generateWithUsage(request.prompt());
-                AiEventDraftResponse response = generation.draft();
+                AiEventAssistantResponse response = generation.response();
                 long duration = durationMs(started);
                 Map<String, Object> auditDetails = usageDetails(model, promptLength, response, duration,
                         generation.usage(), generation.providerCalls());
-                audit.recordBestEffort(principal.get(), AuditAction.AI_EVENT_DRAFT_GENERATED, "AI_EVENT_DRAFT",
-                        null, true, ctx.ip(), ctx.userAgent(), auditDetails);
-                log(model, true, started, response.gameId(), null, generation.usage(), generation.providerCalls());
+                AuditAction action = switch (response.status()) {
+                    case "draft" -> AuditAction.AI_EVENT_DRAFT_GENERATED;
+                    case "needs_clarification" -> AuditAction.AI_EVENT_DRAFT_NEEDS_CLARIFICATION;
+                    default -> AuditAction.AI_EVENT_DRAFT_UNSUPPORTED;
+                };
+                boolean generated = response.draft() != null;
+                audit.recordBestEffort(principal.get(), action, "AI_EVENT_DRAFT",
+                        null, generated, ctx.ip(), ctx.userAgent(), auditDetails);
+                log(model, generated, started, draftGameId(response),
+                        generated ? null : response.reasonCode(), generation.usage(), generation.providerCalls());
                 ctx.json(response);
             } catch (AiDraftValidationException ex) {
                 reject(audit, principal.get(), model, promptLength, "invalid_ai_response", "validation",
@@ -153,12 +160,15 @@ public final class AiEventController {
             try {
                 AiEventDraftService.GenerationResult refinement =
                         service.refineWithUsage(request.instruction(), request.currentDraft());
-                AiEventDraftResponse response = refinement.draft();
+                AiEventAssistantResponse response = refinement.response();
                 Map<String, Object> details = usageDetails(model, instructionLength, response,
                         durationMs(started), refinement.usage(), refinement.providerCalls());
-                audit.recordBestEffort(principal.get(), AuditAction.AI_EVENT_DRAFT_REFINED,
-                        "AI_EVENT_DRAFT", null, true, ctx.ip(), ctx.userAgent(), details);
-                logRefinement(model, true, started, response.gameId(), null,
+                boolean refined = response.draft() != null;
+                audit.recordBestEffort(principal.get(), refined ? AuditAction.AI_EVENT_DRAFT_REFINED
+                                : AuditAction.AI_EVENT_REFINEMENT_REJECTED,
+                        "AI_EVENT_DRAFT", null, refined, ctx.ip(), ctx.userAgent(), details);
+                logRefinement(model, refined, started, draftGameId(response),
+                        refined ? null : response.reasonCode(),
                         refinement.usage(), refinement.providerCalls());
                 ctx.json(response);
             } catch (AiDraftValidationException ex) {
@@ -207,13 +217,19 @@ public final class AiEventController {
         event.log("AI event draft completed");
     }
     private static Map<String, Object> usageDetails(String model, int promptLength,
-                                                     AiEventDraftResponse response, long duration,
+                                                     AiEventAssistantResponse response, long duration,
                                                      br.com.tabula.ai.AiUsage usage, int providerCalls) {
         Map<String, Object> details = new java.util.HashMap<>();
         details.put("model", model);
         details.put("promptLength", promptLength);
-        details.put("resultGameId", response.gameId());
-        details.put("warningCount", response.warnings().size());
+        if (response.draft() != null) {
+            details.put("resultGameId", response.draft().gameId());
+            details.put("warningCount", response.draft().warnings().size());
+        } else {
+            details.put("warningCount", 0);
+            details.put("reasonCode", response.reasonCode());
+            details.put("failureReason", response.status());
+        }
         details.put("durationMs", duration);
         details.put("success", true);
         details.put("providerCalls", providerCalls);
@@ -221,6 +237,9 @@ public final class AiEventController {
         if (usage.completionTokens() != null) details.put("completionTokens", usage.completionTokens());
         if (usage.totalTokens() != null) details.put("totalTokens", usage.totalTokens());
         return details;
+    }
+    private static String draftGameId(AiEventAssistantResponse response) {
+        return response.draft() == null ? null : response.draft().gameId();
     }
     private static void rejectRefinement(AuditLogService audit, AuthenticatedPrincipal actor, String model,
                                          int instructionLength, String reason, String category, long duration,

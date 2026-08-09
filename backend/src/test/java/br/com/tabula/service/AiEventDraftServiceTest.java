@@ -36,7 +36,7 @@ class AiEventDraftServiceTest {
     @Test void returnsValidatedDraftAndUsesOnlyCompactCatalog() throws Exception {
         AiChatClient client = mock(AiChatClient.class);
         when(client.chat(anyString(), eq("Mesa sábado"))).thenReturn(validJson());
-        AiEventDraftResponse draft = service(client, validJson()).generate("  Mesa sábado  ");
+        AiEventDraftResponse draft = service(client, validJson()).generate("  Mesa sábado  ").draft();
         assertEquals("g2", draft.gameId());
         assertEquals(4, draft.maxParticipants());
         verify(client).chat(contains("Candidatos="), eq("Mesa sábado"));
@@ -45,7 +45,7 @@ class AiEventDraftServiceTest {
     @Test void acceptsOneJsonObjectInsideMarkdownOrSurroundingText() throws Exception {
         AiChatClient client = mock(AiChatClient.class);
         when(client.chat(anyString(), anyString())).thenReturn("```json\n" + validJson() + "\n```");
-        assertEquals("g2", service(client, validJson()).generate("Mesa sábado").gameId());
+        assertEquals("g2", service(client, validJson()).generate("Mesa sábado").draft().gameId());
     }
 
     @Test void rejectsAmbiguousOrMalformedJson() throws Exception {
@@ -57,6 +57,45 @@ class AiEventDraftServiceTest {
     @Test void rejectsUnknownGameAndMismatchedName() throws Exception {
         assertInvalid(validJson().replace("\"g2\"", "\"inventado\""));
         assertInvalid(validJson().replace("Magic: The Gathering", "Xadrez"));
+    }
+
+    @Test void classifiesSupportedIncompleteAndOutOfScopeRequestsInOneProviderCall() throws Exception {
+        assertStatus("Crie um evento de Xadrez amanhã às 19h", validXadrezJson(), "draft");
+        assertStatus("Xadrez amanhã 19h biblioteca", validXadrezJson(), "draft");
+        String clarification = """
+                {"status":"needs_clarification","reasonCode":"missing_required_information",
+                "missingFields":["date","time","location"],"message":"Informe data, horário e local."}
+                """;
+        assertStatus("Quero criar um evento de Magic", clarification, "needs_clarification");
+        String unsupported = """
+                {"status":"unsupported","reasonCode":"not_event_creation_request"}
+                """;
+        assertStatus("Qual o horário do SBT hoje?", unsupported, "unsupported");
+        assertStatus("Qual a previsão do tempo amanhã?", unsupported, "unsupported");
+        assertStatus("Quais eventos têm hoje?", unsupported, "unsupported");
+        assertStatus("Cria qualquer coisa para hoje", clarification, "needs_clarification");
+    }
+
+    @Test void rejectsUnknownFieldsInDraftAndInvalidClassificationShape() throws Exception {
+        assertInvalid(validJson().replace("\"warnings\":[]", "\"warnings\":[],\"extra\":true"));
+        assertInvalid("{\"status\":\"unsupported\",\"reasonCode\":\"not_event_creation_request\",\"draft\":null}");
+    }
+
+    @Test void outOfScopeRefinementReturnsNoDraftAndDoesNotMutateCurrentDraft() throws Exception {
+        AiChatClient client = mock(AiChatClient.class);
+        String unsupported = "{\"status\":\"unsupported\",\"reasonCode\":\"not_event_creation_request\"}";
+        when(client.chatWithUsage(anyString(), anyString()))
+                .thenReturn(new AiChatResult(unsupported, AiUsage.empty(), 1));
+        AiEventDraftResponse current = new AiEventDraftResponse("g2", "Magic: The Gathering",
+                "2026-08-01", "18:00", "Biblioteca", 4, "Mesa de Magic.", List.of());
+
+        AiEventDraftService.GenerationResult result = service(client, unsupported)
+                .refineWithUsage("Qual o horário do SBT hoje?", current);
+
+        assertEquals("unsupported", result.response().status());
+        assertNull(result.response().draft());
+        assertEquals("Biblioteca", current.location());
+        verify(client, times(1)).chatWithUsage(anyString(), anyString());
     }
 
     @Test void rejectsPastDateAndInvalidTime() throws Exception {
@@ -133,6 +172,13 @@ class AiEventDraftServiceTest {
         assertThrows(AiDraftValidationException.class, () -> service(client, response).generate("Mesa sábado"));
     }
 
+    private static void assertStatus(String prompt, String modelResponse, String expectedStatus) throws Exception {
+        AiChatClient client = mock(AiChatClient.class);
+        when(client.chat(anyString(), anyString())).thenReturn(modelResponse);
+        assertEquals(expectedStatus, service(client, modelResponse).generate(prompt).status());
+        verify(client, times(1)).chat(anyString(), anyString());
+    }
+
     private static AiEventDraftService service(AiChatClient client, String ignored) throws Exception {
         HikariDataSource dataSource = mock(HikariDataSource.class);
         Connection connection = mock(Connection.class);
@@ -141,22 +187,30 @@ class AiEventDraftServiceTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(contains("FROM jogos"))).thenReturn(statement);
         when(statement.executeQuery()).thenReturn(result);
-        when(result.next()).thenReturn(true, false);
-        when(result.getString("external_id")).thenReturn("g2");
-        when(result.getString("nome")).thenReturn("Magic: The Gathering");
-        when(result.getString("categoria")).thenReturn("Cartas");
-        when(result.getInt("min_players")).thenReturn(2);
-        when(result.getInt("max_players")).thenReturn(6);
-        when(result.getInt("avg_play_time")).thenReturn(60);
-        when(result.getDouble("complexity")).thenReturn(3.2);
+        when(result.next()).thenReturn(true, true, false);
+        when(result.getString("external_id")).thenReturn("g2", "g1");
+        when(result.getString("nome")).thenReturn("Magic: The Gathering", "Xadrez");
+        when(result.getString("categoria")).thenReturn("Cartas", "Estratégia");
+        when(result.getInt("min_players")).thenReturn(2, 2);
+        when(result.getInt("max_players")).thenReturn(6, 2);
+        when(result.getInt("avg_play_time")).thenReturn(60, 45);
+        when(result.getDouble("complexity")).thenReturn(3.2, 2.5);
         return new AiEventDraftService(client, dataSource, ZONE, CLOCK);
     }
 
     private static String validJson() {
         return """
-                {"gameId":"g2","gameName":"Magic: The Gathering","date":"2026-08-01",
+                {"status":"draft","draft":{"gameId":"g2","gameName":"Magic: The Gathering","date":"2026-08-01",
                 "time":"18:00","location":"Biblioteca","maxParticipants":4,
-                "description":"Mesa de Magic.","warnings":[]}
+                "description":"Mesa de Magic.","warnings":[]}}
+                """;
+    }
+
+    private static String validXadrezJson() {
+        return """
+                {"status":"draft","draft":{"gameId":"g1","gameName":"Xadrez","date":"2026-08-01",
+                "time":"19:00","location":"Biblioteca","maxParticipants":2,
+                "description":"Partida de Xadrez.","warnings":[]}}
                 """;
     }
 }

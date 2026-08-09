@@ -63,6 +63,16 @@ export interface AiEventDraftResponse {
   warnings: string[];
 }
 
+export type AiEventAssistantResponse =
+  | { status: 'draft'; draft: AiEventDraftResponse }
+  | {
+      status: 'needs_clarification';
+      reasonCode: 'missing_required_information';
+      missingFields: string[];
+      message: string;
+    }
+  | { status: 'unsupported'; reasonCode: 'not_event_creation_request' };
+
 export interface AiEventRefinementRequest {
   instruction: string;
   currentDraft: AiEventDraftResponse;
@@ -230,9 +240,9 @@ export async function completeEventRequest(
   });
 }
 
-export async function generateEventDraft(prompt: string): Promise<AiEventDraftResponse> {
+export async function generateEventDraft(prompt: string): Promise<AiEventAssistantResponse> {
   const payload: AiEventDraftRequest = { prompt };
-  return requestJson<AiEventDraftResponse>('/ai/event-drafts', {
+  return requestJson<AiEventAssistantResponse>('/ai/event-drafts', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -241,8 +251,8 @@ export async function generateEventDraft(prompt: string): Promise<AiEventDraftRe
 export async function refineEventDraft(
   instruction: string,
   currentDraft: AiEventDraftResponse,
-): Promise<AiEventDraftResponse> {
-  return requestJson<AiEventDraftResponse>('/ai/event-drafts/refine', {
+): Promise<AiEventAssistantResponse> {
+  return requestJson<AiEventAssistantResponse>('/ai/event-drafts/refine', {
     method: 'POST',
     body: JSON.stringify({ instruction, currentDraft }),
   });

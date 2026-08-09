@@ -3,6 +3,7 @@ package br.com.tabula.controller;
 import br.com.tabula.ai.AiProviderException;
 import br.com.tabula.ai.AiUsage;
 import br.com.tabula.dto.AiEventDraftResponse;
+import br.com.tabula.dto.AiEventAssistantResponse;
 import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.service.AiDraftValidationException;
 import br.com.tabula.service.AiEventDraftService;
@@ -56,12 +57,33 @@ class AiEventControllerTest {
     @Test void returns200ForValidDraft() throws Exception {
         AiEventDraftService service = mock(AiEventDraftService.class);
         when(service.generateWithUsage(any())).thenReturn(new AiEventDraftService.GenerationResult(
-                new AiEventDraftResponse("g2", "Magic", "2026-08-01", "18:00",
-                        "Biblioteca", 4, "Mesa.", List.of()), AiUsage.empty()));
+                draftResponse(), AiUsage.empty()));
         start(authenticated(), service, true);
         HttpResponse<String> response = post("Bearer valid", "{\"prompt\":\"Mesa válida\"}");
         assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"status\":\"draft\""));
         assertTrue(response.body().contains("\"gameId\":\"g2\""));
+    }
+
+    @Test void returnsStructuredClarificationAndUnsupportedWithoutDraft() throws Exception {
+        AiEventDraftService service = mock(AiEventDraftService.class);
+        when(service.generateWithUsage(any()))
+                .thenReturn(new AiEventDraftService.GenerationResult(
+                        AiEventAssistantResponse.needsClarification("missing_required_information",
+                                List.of("date", "location"), "Informe data e local."), AiUsage.empty()))
+                .thenReturn(new AiEventDraftService.GenerationResult(
+                        AiEventAssistantResponse.unsupported("not_event_creation_request"), AiUsage.empty()));
+        start(authenticated(), service, true);
+
+        HttpResponse<String> clarification = post("Bearer valid", "{\"prompt\":\"Quero criar evento de Magic\"}");
+        HttpResponse<String> unsupported = post("Bearer valid", "{\"prompt\":\"Qual o horário do SBT hoje?\"}");
+
+        assertEquals(200, clarification.statusCode());
+        assertTrue(clarification.body().contains("\"status\":\"needs_clarification\""));
+        assertFalse(clarification.body().contains("\"draft\""));
+        assertEquals(200, unsupported.statusCode());
+        assertTrue(unsupported.body().contains("\"status\":\"unsupported\""));
+        assertFalse(unsupported.body().contains("\"draft\""));
     }
 
     @Test void mapsInvalidModelOutputAndProviderFailures() throws Exception {
@@ -83,8 +105,7 @@ class AiEventControllerTest {
         start(authenticated(), service, true,
                 new AiUsageLimiter(1, 1, java.time.ZoneId.of("America/Sao_Paulo")));
         when(service.generateWithUsage(any())).thenReturn(new AiEventDraftService.GenerationResult(
-                new AiEventDraftResponse("g2", "Magic", "2026-08-01", "18:00",
-                        "Biblioteca", 4, "Mesa.", List.of()), AiUsage.empty()));
+                draftResponse(), AiUsage.empty()));
         assertEquals(200, post("Bearer valid", "{\"prompt\":\"Mesa válida\"}").statusCode());
         HttpResponse<String> limited = post("Bearer valid", "{\"prompt\":\"Mesa válida\"}");
         assertEquals(429, limited.statusCode());
@@ -95,8 +116,7 @@ class AiEventControllerTest {
     @Test void generationAndRefinementShareLimitAndRejectedRefinementDoesNotCallProvider() throws Exception {
         AiEventDraftService service = mock(AiEventDraftService.class);
         when(service.generateWithUsage(any())).thenReturn(new AiEventDraftService.GenerationResult(
-                new AiEventDraftResponse("g2", "Magic", "2026-08-01", "18:00",
-                        "Biblioteca", 4, "Mesa.", List.of()), AiUsage.empty()));
+                draftResponse(), AiUsage.empty()));
         start(authenticated(), service, true,
                 new AiUsageLimiter(1, 10, java.time.ZoneId.of("America/Sao_Paulo")));
 
@@ -132,6 +152,11 @@ class AiEventControllerTest {
 
     private HttpResponse<String> post(String authorization, String body) throws Exception {
         return post("/ai/event-drafts", authorization, body);
+    }
+
+    private static AiEventAssistantResponse draftResponse() {
+        return AiEventAssistantResponse.draft(new AiEventDraftResponse("g2", "Magic", "2026-08-01", "18:00",
+                "Biblioteca", 4, "Mesa.", List.of()));
     }
 
     private HttpResponse<String> post(String path, String authorization, String body) throws Exception {

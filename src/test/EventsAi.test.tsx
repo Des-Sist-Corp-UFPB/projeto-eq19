@@ -19,6 +19,8 @@ vi.mock('../services/api', async importOriginal => {
 });
 
 describe('Events AI draft assistant', () => {
+  const assistantDraft = (draft: api.AiEventDraftResponse): api.AiEventAssistantResponse => ({ status: 'draft', draft });
+
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -31,7 +33,7 @@ describe('Events AI draft assistant', () => {
   });
 
   it('disables empty prompt, blocks duplicate calls and fills editable fields without saving', async () => {
-    let resolveDraft!: (value: api.AiEventDraftResponse) => void;
+    let resolveDraft!: (value: api.AiEventAssistantResponse) => void;
     vi.mocked(api.generateEventDraft).mockReturnValue(new Promise(resolve => { resolveDraft = resolve; }));
     renderWithProviders(<Events />);
     const user = userEvent.setup();
@@ -46,11 +48,11 @@ describe('Events AI draft assistant', () => {
     expect(screen.getByRole('button', { name: /Gerando rascunho/i })).toBeDisabled();
     expect(api.generateEventDraft).toHaveBeenCalledTimes(1);
 
-    resolveDraft({
+    resolveDraft(assistantDraft({
       gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
       location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.',
       warnings: ['A data foi interpretada como o próximo sábado.'],
-    });
+    }));
     await waitFor(() => expect(screen.getByDisplayValue('Biblioteca')).toBeInTheDocument());
     expect(screen.getByDisplayValue('Mesa aberta.')).not.toBeDisabled();
     expect(screen.getByText(/próximo sábado/i)).toBeInTheDocument();
@@ -104,11 +106,73 @@ describe('Events AI draft assistant', () => {
     expect(screen.queryByText(/internal quota detail/i)).not.toBeInTheDocument();
   });
 
-  it('shows the same quota message on refinement and preserves every field', async () => {
+  it('shows clarification without treating it as a draft or creating an event', async () => {
     vi.mocked(api.generateEventDraft).mockResolvedValue({
+      status: 'needs_clarification',
+      reasonCode: 'missing_required_information',
+      missingFields: ['date', 'time', 'location'],
+      message: 'Informe data, horário e local.',
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Quero criar um evento de Magic');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+
+    expect(await screen.findByText('Informe data, horário e local.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Refinar com IA/i })).not.toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('/events'),
+      expect.objectContaining({ method: 'POST' }));
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects general questions without creating a draft or calling POST events', async () => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue({
+      status: 'unsupported', reasonCode: 'not_event_creation_request',
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Qual o horário do SBT hoje?');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+
+    expect(await screen.findByText(/A IA desta tela é usada apenas para ajudar a criar eventos/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Refinar com IA/i })).not.toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('/events'),
+      expect.objectContaining({ method: 'POST' }));
+    fetchSpy.mockRestore();
+  });
+
+  it('keeps the existing draft when refinement is outside the event domain', async () => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue(assistantDraft({
       gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
       location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
+    }));
+    vi.mocked(api.refineEventDraft).mockResolvedValue({
+      status: 'unsupported', reasonCode: 'not_event_creation_request',
     });
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+    const instruction = await screen.findByLabelText(/Alteração desejada/i);
+    await user.type(instruction, 'Qual o horário do SBT hoje?');
+    await user.click(screen.getByRole('button', { name: /Aplicar alteração/i }));
+
+    expect(await screen.findByText(/A IA desta tela é usada apenas para ajudar a criar eventos/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Biblioteca')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Mesa aberta.')).toBeInTheDocument();
+    expect(instruction).toHaveValue('Qual o horário do SBT hoje?');
+  });
+
+  it('shows the same quota message on refinement and preserves every field', async () => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue(assistantDraft({
+      gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
+      location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
+    }));
     vi.mocked(api.refineEventDraft).mockRejectedValue(
       new ApiError(429, 'quota detail', 'AI_USAGE_LIMIT_REACHED', '{"error":"quota detail"}'),
     );
@@ -130,19 +194,19 @@ describe('Events AI draft assistant', () => {
   });
 
   it('applies successive refinements, sends edited fields and clears each successful instruction', async () => {
-    vi.mocked(api.generateEventDraft).mockResolvedValue({
+    vi.mocked(api.generateEventDraft).mockResolvedValue(assistantDraft({
       gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
       location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
-    });
+    }));
     vi.mocked(api.refineEventDraft)
-      .mockResolvedValueOnce({
+      .mockResolvedValueOnce(assistantDraft({
         gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-02', time: '15:00',
         location: 'Sala editada', maxParticipants: 4, description: 'Mesa aberta.', warnings: ['Data alterada.'],
-      })
-      .mockResolvedValueOnce({
+      }))
+      .mockResolvedValueOnce(assistantDraft({
         gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-02', time: '16:00',
         location: 'Sala editada', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
-      });
+      }));
     renderWithProviders(<Events />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
@@ -178,10 +242,10 @@ describe('Events AI draft assistant', () => {
     [502, /temporariamente indisponível/i],
     [503, /temporariamente indisponível/i],
   ])('preserves refinement data for HTTP %s', async (status, expectedMessage) => {
-    vi.mocked(api.generateEventDraft).mockResolvedValue({
+    vi.mocked(api.generateEventDraft).mockResolvedValue(assistantDraft({
       gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-01', time: '18:00',
       location: 'Biblioteca', maxParticipants: 4, description: 'Mesa aberta.', warnings: [],
-    });
+    }));
     vi.mocked(api.refineEventDraft).mockRejectedValue(new ApiError(status, 'internal'));
     renderWithProviders(<Events />);
     const user = userEvent.setup();
