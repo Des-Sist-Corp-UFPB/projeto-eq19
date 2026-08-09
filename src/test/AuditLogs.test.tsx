@@ -83,4 +83,43 @@ describe('AuditLogs page', () => {
 
     expect(await screen.findByText('Nenhum evento corresponde aos filtros selecionados.')).toBeInTheDocument();
   });
+
+  it('renders structured validation details and remains compatible with legacy reasons', async () => {
+    mockedGetAuditLogs.mockResolvedValue({
+      ...firstPage,
+      total: 2,
+      items: [
+        {
+          ...firstPage.items[0],
+          id: 20,
+          action: 'STATE_UPDATE_REJECTED',
+          success: false,
+          details: {
+            reason: 'invalid_payload',
+            reasonCode: 'expected_text_array',
+            section: 'sessions',
+            resourceId: 's1',
+            field: 'photos',
+            detail: 'expected array of strings',
+          },
+        },
+        {
+          ...firstPage.items[0],
+          id: 21,
+          action: 'STATE_UPDATE_REJECTED',
+          success: false,
+          details: { reason: 'invalid_payload' },
+        },
+      ],
+    });
+
+    render(<AuditLogs />);
+
+    expect(await screen.findByText('Payload inválido')).toBeInTheDocument();
+    expect(screen.getByText('Seção: partidas')).toBeInTheDocument();
+    expect(screen.getByText('Recurso: s1')).toBeInTheDocument();
+    expect(screen.getByText('Campo: photos')).toBeInTheDocument();
+    expect(screen.getByText('Motivo: esperado array de strings')).toBeInTheDocument();
+    expect(screen.getByText('Motivo: invalid_payload')).toBeInTheDocument();
+  });
 });

@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -302,7 +304,7 @@ public class StateController {
             try {
                 StateSnapshot snapshot = readStateSnapshot(dataSource);
                 Optional<AuthenticatedPrincipal> principal = snapshot.exists()
-                        ? authenticatedUserService.resolve(ctx.header("Authorization"))
+                        ? resolvePrincipal(authenticatedUserService, ctx.header("Authorization"))
                         : Optional.empty();
                 if (snapshot.exists() && principal.isEmpty()) {
                     auditLogService.recordBestEffort(
@@ -343,14 +345,15 @@ public class StateController {
                         return;
                     }
                     StateAuthorizationService.AuthorizationDecision authorization =
-                            stateAuthorizationService.authorize(
-                                    authorizationCurrent, payload, principal.orElseThrow());
+                            authorizeState(stateAuthorizationService, authorizationCurrent,
+                                    payload, principal.orElseThrow());
                     if (!authorization.allowed()) {
+                        recordValidationOnSpan(authorization);
                         auditLogService.recordBestEffort(
                                 principal.orElseThrow(), authorization.auditAction(),
                                 authorization.resourceType(), "1", false,
                                 ctx.ip(), ctx.header("User-Agent"),
-                                Map.of("reason", authorization.reason())
+                                authorizationDetails(authorization)
                         );
                         if (authorization.invalidPayload()) {
                             ctx.status(422).json(Map.of("error", "Payload de estado inválido."));
@@ -425,6 +428,7 @@ public class StateController {
         }
     }
 
+    @WithSpan("state.snapshot.load")
     private static StateSnapshot readStateSnapshot(HikariDataSource dataSource) throws SQLException {
         String sql = "SELECT data::text FROM app_state WHERE id = 1";
         try (Connection connection = dataSource.getConnection();
@@ -435,6 +439,7 @@ public class StateController {
         }
     }
 
+    @WithSpan("state.persist")
     private static void saveState(Connection connection, String payload) throws SQLException {
         String sql = """
                 INSERT INTO app_state (id, data, updated_at)
@@ -489,6 +494,7 @@ public class StateController {
         }
     }
 
+    @WithSpan("state.relational.protect")
     private static RelationallyProtectedState protectRelationalSections(
             HikariDataSource dataSource, String previousPayload, String candidatePayload,
             RelationalSliceReader relationalSliceReader)
@@ -534,6 +540,7 @@ public class StateController {
         }
     }
 
+    @WithSpan("state.relational.events.read")
     private static com.fasterxml.jackson.databind.node.ArrayNode relationalEvents(HikariDataSource dataSource)
             throws SQLException {
         try {
@@ -546,6 +553,7 @@ public class StateController {
         }
     }
 
+    @WithSpan("state.relational.sessions.read")
     private static com.fasterxml.jackson.databind.node.ArrayNode relationalSessions(HikariDataSource dataSource)
             throws Exception {
         com.fasterxml.jackson.databind.JsonNode state = MAPPER.readTree(
@@ -554,6 +562,42 @@ public class StateController {
             throw new SQLException("Relational sessions projection is not an array");
         }
         return (com.fasterxml.jackson.databind.node.ArrayNode) state.path("sessions");
+    }
+
+    @WithSpan("state.authenticate")
+    private static Optional<AuthenticatedPrincipal> resolvePrincipal(
+            AuthenticatedUserService service, String authorizationHeader) throws SQLException {
+        return service.resolve(authorizationHeader);
+    }
+
+    @WithSpan("state.authorize")
+    private static StateAuthorizationService.AuthorizationDecision authorizeState(
+            StateAuthorizationService service, String currentPayload, String requestedPayload,
+            AuthenticatedPrincipal principal) {
+        return service.authorize(currentPayload, requestedPayload, principal);
+    }
+
+    private static Map<String, Object> authorizationDetails(
+            StateAuthorizationService.AuthorizationDecision decision) {
+        Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("reason", decision.reason());
+        if (decision.reasonCode() != null) details.put("reasonCode", decision.reasonCode());
+        if (decision.section() != null) details.put("section", decision.section());
+        if (decision.resourceId() != null) details.put("resourceId", decision.resourceId());
+        if (decision.field() != null) details.put("field", decision.field());
+        if (decision.detail() != null) details.put("detail", decision.detail());
+        return details;
+    }
+
+    private static void recordValidationOnSpan(
+            StateAuthorizationService.AuthorizationDecision decision) {
+        if (!decision.invalidPayload()) return;
+        Span span = Span.current();
+        if (decision.reasonCode() != null) span.setAttribute("validation.reason_code", decision.reasonCode());
+        if (decision.section() != null) span.setAttribute("validation.section", decision.section());
+        if (decision.resourceId() != null) span.setAttribute("validation.resource_id", decision.resourceId());
+        if (decision.field() != null) span.setAttribute("validation.field", decision.field());
+        span.addEvent("state.validation.rejected");
     }
 
     private record StateSnapshot(boolean exists, String payload) {

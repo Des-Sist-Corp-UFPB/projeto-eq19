@@ -1052,6 +1052,29 @@ class StateControllerTest {
         }
     }
 
+    @Test
+    void shouldAuditStructuredValidationDetailsWithoutPayloadOrCredentials() throws Exception {
+        PutFixture fixture = authenticatedPutFixture(
+                stateWithRelationalSections("[]", "[]", "Bio antigo"));
+        String candidate = legacyCandidate("Bio atualizado")
+                .replace("\"name\":\"Jogo 1\"", "\"name\":\"Jogo 1\",\"tags\":[\"secret-tag\"]");
+        Javalin app = startStateApp(fixture.dataSource());
+        try {
+            HttpResponse<String> response = sendPut(app, "/state", candidate, "Bearer token-secret");
+            assertEquals(422, response.statusCode(), response.body());
+            ArgumentCaptor<String> details = ArgumentCaptor.forClass(String.class);
+            verify(fixture.finalStatement()).setString(org.mockito.ArgumentMatchers.eq(6), details.capture());
+            assertTrue(details.getValue().contains("\"reasonCode\":\"unknown_field\""));
+            assertTrue(details.getValue().contains("\"section\":\"boardGames\""));
+            assertTrue(details.getValue().contains("\"resourceId\":\"g1\""));
+            assertTrue(details.getValue().contains("\"field\":\"tags\""));
+            assertFalse(details.getValue().contains("secret-tag"));
+            assertFalse(details.getValue().contains("token-secret"));
+        } finally {
+            app.stop();
+        }
+    }
+
     private static void assertOmittedRelationalSectionsSucceed(String legacySessions, String legacyEvents)
             throws Exception {
         PutFixture fixture = authenticatedPutFixture(

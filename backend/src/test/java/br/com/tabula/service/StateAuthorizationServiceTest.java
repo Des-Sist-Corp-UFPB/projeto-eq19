@@ -196,6 +196,41 @@ class StateAuthorizationServiceTest {
     }
 
     @Test
+    void reportsSafeStructuredValidationDiagnostics() {
+        assertValidation(
+                baseState().replace("\"name\":\"Xadrez\"", "\"name\":\"Xadrez\",\"tags\":[\"strategy\"]"),
+                "unknown_field", "boardGames", "g1", "tags");
+        assertValidation(
+                baseState().replace("\"id\":\"u2\"", "\"id\":\"u1\""),
+                "duplicate_id", "users", "u1", "id");
+        assertValidation(
+                baseState().replaceFirst("\"favoriteGames\":\\[\\]", "\"favoriteGames\":null"),
+                "expected_text_array", "users", "u1", "favoriteGames");
+        assertValidation(
+                baseState().replace("\"participantIds\":[\"u2\"]", "\"participantIds\":[\"u2\",\"u2\"]"),
+                "duplicate_values", "sessions", "s1", "participantIds");
+        assertValidation(
+                baseState().replace("\"photos\":[],\"comments\"", "\"photos\":null,\"comments\""),
+                "expected_text_array", "sessions", "s1", "photos");
+        assertValidation(
+                baseState().replace("\"comments\":[" + comment() + "]", "\"comments\":null"),
+                "expected_entity_array", "sessions", "s1", "comments");
+        assertValidation(
+                baseState().replaceFirst(",\"waitingListIds\":\\[\\]", ""),
+                "expected_text_array", "events", "e1", "waitingListIds");
+    }
+
+    @Test
+    void distinguishesMissingSectionsAndInvalidEntityArrays() {
+        assertValidation(
+                baseState().replace("\"boardGames\":[{\"id\":\"g1\",\"name\":\"Xadrez\"}],", ""),
+                "missing_section", "boardGames", null, null);
+        assertValidation(
+                baseState().replace("\"boardGames\":[{\"id\":\"g1\",\"name\":\"Xadrez\"}]", "\"boardGames\":{}"),
+                "expected_entity_array", "boardGames", null, null);
+    }
+
+    @Test
     void rejectsOrganizerChangingThirdPartyParticipationOrAddingParticipantsOnCreation() {
         String organizerChangesThirdParty = baseState().replace(
                 "\"participantIds\":[\"u1\"],\"waitingListIds\":[]",
@@ -220,6 +255,17 @@ class StateAuthorizationServiceTest {
         assertFalse(decision.invalidPayload());
         assertEquals(action, decision.auditAction());
         assertEquals(resourceType, decision.resourceType());
+    }
+
+    private void assertValidation(
+            String payload, String reasonCode, String section, String resourceId, String field) {
+        var decision = service.authorize(baseState(), payload, admin);
+        assertTrue(decision.invalidPayload(), decision.toString());
+        assertEquals("invalid_payload", decision.reason());
+        assertEquals(reasonCode, decision.reasonCode());
+        assertEquals(section, decision.section());
+        assertEquals(resourceId, decision.resourceId());
+        assertEquals(field, decision.field());
     }
 
     private static String baseState() {

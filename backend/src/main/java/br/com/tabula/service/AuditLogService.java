@@ -116,6 +116,11 @@ public class AuditLogService {
         if (reason instanceof String text && !text.isBlank()) {
             sanitized.put("reason", safeText(text, 80));
         }
+        copySafeString(sanitized, details, "reasonCode", 80);
+        copySafeString(sanitized, details, "section", 80);
+        copySafeString(sanitized, details, "resourceId", 120);
+        copySafeString(sanitized, details, "field", 80);
+        copySafeString(sanitized, details, "detail", 160);
 
         Object initialization = details.get("initialization");
         if (initialization instanceof Boolean bool) {

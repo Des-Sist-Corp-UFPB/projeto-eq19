@@ -356,6 +356,34 @@ function formatDetails(details: Record<string, unknown>): React.ReactNode {
   if (changedSections.length > 0) {
     return `Seções: ${changedSections.map(section => SECTION_LABELS[section] ?? section).join(', ')}`;
   }
+  const reasonCode = typeof details.reasonCode === 'string' ? details.reasonCode : null;
+  if (reasonCode) {
+    const section = typeof details.section === 'string' ? details.section : null;
+    const resourceId = typeof details.resourceId === 'string' ? details.resourceId : null;
+    const field = typeof details.field === 'string' ? details.field : null;
+    const detail = typeof details.detail === 'string' ? details.detail : null;
+    const reasonLabels: Record<string, string> = {
+      unknown_field: 'campo não suportado',
+      duplicate_id: 'identificador duplicado',
+      duplicate_values: 'valores duplicados',
+      expected_text_array: 'esperado array de strings',
+      expected_entity_array: 'esperado array de registros',
+      missing_section: 'seção obrigatória ausente',
+      missing_id: 'identificador ausente',
+      invalid_entity: 'registro inválido',
+      blank_value: 'valor vazio não permitido',
+      invalid_json: 'JSON inválido',
+    };
+    return (
+      <span>
+        <strong>Payload inválido</strong>
+        {section && <span className="audit-table__secondary">Seção: {SECTION_LABELS[section] ?? section}</span>}
+        {resourceId && <span className="audit-table__secondary">Recurso: {resourceId}</span>}
+        {field && <span className="audit-table__secondary">Campo: {field}</span>}
+        <span className="audit-table__secondary">Motivo: {reasonLabels[reasonCode] ?? detail ?? reasonCode}</span>
+      </span>
+    );
+  }
   if (typeof details.reason === 'string') return `Motivo: ${details.reason}`;
   if (details.initialization === true) return 'Inicialização do estado';
   return '—';

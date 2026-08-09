@@ -8,6 +8,7 @@ import br.com.tabula.controller.PingController;
 import br.com.tabula.controller.StateController;
 import br.com.tabula.controller.EventController;
 import br.com.tabula.controller.SessionController;
+import br.com.tabula.observability.HttpObservability;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import org.slf4j.Logger;
@@ -34,6 +35,8 @@ public class App {
                 config.http.defaultContentType = "application/json";
                 config.showJavalinBanner = false;
             });
+
+            HttpObservability.register(app);
 
             app.before(ctx -> {
                 String origin = ctx.header("Origin");

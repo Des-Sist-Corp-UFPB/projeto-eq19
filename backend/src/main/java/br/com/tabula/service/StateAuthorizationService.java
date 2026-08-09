@@ -45,10 +45,10 @@ public final class StateAuthorizationService {
         } catch (Exception ex) {
             return AuthorizationDecision.invalid("invalid_payload");
         }
-        if (!isStateObject(current) || !isStateObject(requested)
-                || !hasValidStructure(current) || !hasValidStructure(requested)) {
-            return AuthorizationDecision.invalid("invalid_payload");
-        }
+        ValidationResult currentValidation = validateState(current);
+        if (!currentValidation.valid()) return AuthorizationDecision.invalid(currentValidation);
+        ValidationResult requestedValidation = validateState(requested);
+        if (!requestedValidation.valid()) return AuthorizationDecision.invalid(requestedValidation);
         if (!Objects.equals(current.get("logs"), requested.get("logs"))
                 || requested.has("audit_logs") || requested.has("auditLogs")) {
             return denied(AuditAction.STATE_UPDATE_REJECTED, "AUDIT_LOG", "official_audit_data");
@@ -282,57 +282,128 @@ public final class StateAuthorizationService {
         return false;
     }
 
-    private static boolean isStateObject(JsonNode node) {
-        if (node == null || !node.isObject()) return false;
-        for (String section : Set.of("users", "boardGames", "sessions", "events")) {
-            if (!node.path(section).isArray()) return false;
+    private static ValidationResult validateState(JsonNode state) {
+        if (state == null || !state.isObject()) {
+            return ValidationResult.invalid("invalid_state_object", null, null, null,
+                    "expected JSON object");
         }
-        return !node.has("logs") || node.path("logs").isArray();
-    }
+        for (String section : Set.of("users", "boardGames", "sessions", "events")) {
+            JsonNode value = state.get(section);
+            if (value == null) {
+                return ValidationResult.invalid("missing_section", section, null, null,
+                        "required section is missing");
+            }
+            if (!value.isArray()) {
+                return ValidationResult.invalid("expected_entity_array", section, null, null,
+                        "expected array of entities");
+            }
+        }
+        if (state.has("logs") && !state.path("logs").isArray()) {
+            return ValidationResult.invalid("expected_entity_array", "logs", null, null,
+                    "expected array of audit records");
+        }
 
-    private static boolean hasValidStructure(JsonNode state) {
-        if (!validEntityArray(state.get("users"), USER_FIELDS)
-                || !validEntityArray(state.get("boardGames"), GAME_FIELDS)
-                || !validEntityArray(state.get("sessions"), SESSION_FIELDS)
-                || !validEntityArray(state.get("events"), EVENT_FIELDS)) return false;
+        ValidationResult result = validateEntityArray(state.get("users"), "users", USER_FIELDS);
+        if (!result.valid()) return result;
+        result = validateEntityArray(state.get("boardGames"), "boardGames", GAME_FIELDS);
+        if (!result.valid()) return result;
+        result = validateEntityArray(state.get("sessions"), "sessions", SESSION_FIELDS);
+        if (!result.valid()) return result;
+        result = validateEntityArray(state.get("events"), "events", EVENT_FIELDS);
+        if (!result.valid()) return result;
 
         for (JsonNode user : state.path("users")) {
-            if (!isUniqueTextArray(user.get("favoriteGames"))) return false;
+            result = validateTextArray(user.get("favoriteGames"), true, "users",
+                    user.path("id").asText(null), "favoriteGames");
+            if (!result.valid()) return result;
         }
         for (JsonNode session : state.path("sessions")) {
-            if (!isUniqueTextArray(session.get("participantIds"))
-                    || !isTextArray(session.get("photos"))
-                    || !validEntityArray(session.get("comments"), COMMENT_FIELDS)) return false;
+            String id = session.path("id").asText(null);
+            result = validateTextArray(session.get("participantIds"), true,
+                    "sessions", id, "participantIds");
+            if (!result.valid()) return result;
+            result = validateTextArray(session.get("photos"), false,
+                    "sessions", id, "photos");
+            if (!result.valid()) return result;
+            result = validateEntityArray(session.get("comments"), "sessions", COMMENT_FIELDS, id, "comments");
+            if (!result.valid()) return result;
         }
         for (JsonNode event : state.path("events")) {
-            if (!isUniqueTextArray(event.get("participantIds"))
-                    || !isUniqueTextArray(event.get("waitingListIds"))) return false;
+            String id = event.path("id").asText(null);
+            result = validateTextArray(event.get("participantIds"), true,
+                    "events", id, "participantIds");
+            if (!result.valid()) return result;
+            result = validateTextArray(event.get("waitingListIds"), true,
+                    "events", id, "waitingListIds");
+            if (!result.valid()) return result;
         }
-        return true;
+        return ValidationResult.ok();
     }
 
-    private static boolean validEntityArray(JsonNode array, Set<String> allowedFields) {
-        if (byId(array) == null) return false;
+    private static ValidationResult validateEntityArray(
+            JsonNode array, String section, Set<String> allowedFields) {
+        return validateEntityArray(array, section, allowedFields, null, null);
+    }
+
+    private static ValidationResult validateEntityArray(
+            JsonNode array, String section, Set<String> allowedFields,
+            String parentResourceId, String parentField) {
+        if (array == null || !array.isArray()) {
+            return ValidationResult.invalid("expected_entity_array", section,
+                    parentResourceId, parentField, "expected array of entities");
+        }
+        Set<String> ids = new HashSet<>();
         for (JsonNode entity : array) {
+            if (!entity.isObject()) {
+                return ValidationResult.invalid("invalid_entity", section,
+                        parentResourceId, parentField, "expected object entity");
+            }
+            String id = entity.path("id").asText("");
+            if (id.isBlank()) {
+                return ValidationResult.invalid("missing_id", section,
+                        parentResourceId, parentField == null ? "id" : parentField, "entity id is required");
+            }
+            if (!ids.add(id)) {
+                return ValidationResult.invalid("duplicate_id", section,
+                        parentResourceId == null ? id : parentResourceId,
+                        parentField == null ? "id" : parentField, "entity id must be unique");
+            }
             Iterator<String> fields = entity.fieldNames();
-            while (fields.hasNext()) if (!allowedFields.contains(fields.next())) return false;
+            while (fields.hasNext()) {
+                String field = fields.next();
+                if (!allowedFields.contains(field)) {
+                    return ValidationResult.invalid("unknown_field", section,
+                            parentResourceId == null ? id : parentResourceId,
+                            parentField == null ? field : parentField,
+                            "field is not supported");
+                }
+            }
         }
-        return true;
+        return ValidationResult.ok();
     }
 
-    private static boolean isUniqueTextArray(JsonNode array) {
-        if (!isTextArray(array)) return false;
+    private static ValidationResult validateTextArray(
+            JsonNode array, boolean unique, String section, String resourceId, String field) {
+        if (array == null || !array.isArray()) {
+            return ValidationResult.invalid("expected_text_array", section, resourceId, field,
+                    "expected array of strings");
+        }
         Set<String> values = new HashSet<>();
         for (JsonNode item : array) {
-            if (item.asText().isBlank() || !values.add(item.asText())) return false;
+            if (!item.isTextual()) {
+                return ValidationResult.invalid("expected_text_array", section, resourceId, field,
+                        "expected array of strings");
+            }
+            if (item.asText().isBlank()) {
+                return ValidationResult.invalid("blank_value", section, resourceId, field,
+                        "blank values are not allowed");
+            }
+            if (unique && !values.add(item.asText())) {
+                return ValidationResult.invalid("duplicate_values", section, resourceId, field,
+                        "array values must be unique");
+            }
         }
-        return true;
-    }
-
-    private static boolean isTextArray(JsonNode array) {
-        if (array == null || !array.isArray()) return false;
-        for (JsonNode item : array) if (!item.isTextual()) return false;
-        return true;
+        return ValidationResult.ok();
     }
 
     private static Map<String, JsonNode> byId(JsonNode array) {
@@ -377,7 +448,8 @@ public final class StateAuthorizationService {
 
     private static AuthorizationDecision denied(
             AuditAction action, String resourceType, String reason) {
-        return new AuthorizationDecision(false, false, action, resourceType, reason);
+        return new AuthorizationDecision(false, false, action, resourceType, reason,
+                null, null, null, null, null);
     }
 
     public record AuthorizationDecision(
@@ -385,14 +457,43 @@ public final class StateAuthorizationService {
             boolean invalidPayload,
             AuditAction auditAction,
             String resourceType,
-            String reason) {
+            String reason,
+            String reasonCode,
+            String section,
+            String resourceId,
+            String field,
+            String detail) {
         public static AuthorizationDecision permit() {
-            return new AuthorizationDecision(true, false, null, null, null);
+            return new AuthorizationDecision(true, false, null, null, null,
+                    null, null, null, null, null);
         }
 
         public static AuthorizationDecision invalid(String reason) {
             return new AuthorizationDecision(false, true, AuditAction.STATE_UPDATE_REJECTED,
-                    "APP_STATE", reason);
+                    "APP_STATE", reason, "invalid_json", null, null, null, "invalid JSON payload");
+        }
+
+        public static AuthorizationDecision invalid(ValidationResult validation) {
+            return new AuthorizationDecision(false, true, AuditAction.STATE_UPDATE_REJECTED,
+                    "APP_STATE", "invalid_payload", validation.reasonCode(), validation.section(),
+                    validation.resourceId(), validation.field(), validation.detail());
+        }
+    }
+
+    public record ValidationResult(
+            boolean valid,
+            String reasonCode,
+            String section,
+            String resourceId,
+            String field,
+            String detail) {
+        static ValidationResult ok() {
+            return new ValidationResult(true, null, null, null, null, null);
+        }
+
+        static ValidationResult invalid(
+                String reasonCode, String section, String resourceId, String field, String detail) {
+            return new ValidationResult(false, reasonCode, section, resourceId, field, detail);
         }
     }
 }

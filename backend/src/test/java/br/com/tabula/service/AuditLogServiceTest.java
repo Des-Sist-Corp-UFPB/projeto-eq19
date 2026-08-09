@@ -166,4 +166,33 @@ class AuditLogServiceTest {
         assertFalse(log.getDetails().has("prompt"));
         assertFalse(log.getDetails().has("authorization"));
     }
+
+    @Test
+    void shouldStoreStructuredValidationMetadataWithoutSensitiveValues() {
+        AuditLogService service = new AuditLogService(
+                mock(HikariDataSource.class), mock(AuditLogRepository.class));
+        AuditLog log = service.build(null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1",
+                false, null, null, Map.ofEntries(
+                        Map.entry("reason", "invalid_payload"),
+                        Map.entry("reasonCode", "unknown_field"),
+                        Map.entry("section", "boardGames"),
+                        Map.entry("resourceId", "g1"),
+                        Map.entry("field", "tags"),
+                        Map.entry("detail", "field is not supported"),
+                        Map.entry("passwordHash", "hash-secret"),
+                        Map.entry("token", "token-secret"),
+                        Map.entry("authorization", "Bearer secret"),
+                        Map.entry("body", "{\"password\":\"secret\"}")
+                ));
+
+        assertEquals("unknown_field", log.getDetails().path("reasonCode").asText());
+        assertEquals("boardGames", log.getDetails().path("section").asText());
+        assertEquals("g1", log.getDetails().path("resourceId").asText());
+        assertEquals("tags", log.getDetails().path("field").asText());
+        assertFalse(log.getDetails().toString().contains("secret"));
+        assertFalse(log.getDetails().has("passwordHash"));
+        assertFalse(log.getDetails().has("token"));
+        assertFalse(log.getDetails().has("authorization"));
+        assertFalse(log.getDetails().has("body"));
+    }
 }
