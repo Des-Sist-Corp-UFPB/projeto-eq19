@@ -122,6 +122,8 @@ public class AuditLogService {
         copySafeString(sanitized, details, "resourceId", 120);
         copySafeString(sanitized, details, "parentId", 120);
         copySafeString(sanitized, details, "parentType", 80);
+        copySafeString(sanitized, details, "targetId", 120);
+        copySafeString(sanitized, details, "targetType", 80);
         copySafeString(sanitized, details, "field", 80);
         copySafeString(sanitized, details, "detail", 160);
         Object validationSource = details.get("validationSource");

@@ -3,6 +3,7 @@ import type { DatabaseState, BoardGame, Session, Event, User, UserRole } from '.
 import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
 import {
   completeEventRequest,
+  addFavoriteRequest,
   createComment,
   createSession,
   createEvent,
@@ -14,6 +15,7 @@ import {
   getServerState,
   joinEventRequest,
   leaveEventRequest,
+  removeFavoriteRequest,
   saveServerState,
 } from '../services/api';
 import { useToast } from './ToastContext';
@@ -26,7 +28,7 @@ const generateId = (prefix: string) => {
 };
 
 const serializeLegacyState = (state: DatabaseState) => JSON.stringify({
-  users: state.users,
+  users: state.users.map(({ favoriteGames: _favoriteGames, ...user }) => user),
   boardGames: state.boardGames,
 });
 
@@ -41,6 +43,8 @@ interface DatabaseContextType {
   getSessionById: (sessionId: string) => Promise<Session>;
   addComment: (sessionId: string, content: string) => Promise<void>;
   deleteComment: (sessionId: string, commentId: string) => Promise<void>;
+  addFavorite: (userId: string, gameId: string) => Promise<void>;
+  removeFavorite: (userId: string, gameId: string) => Promise<void>;
   addEvent: (event: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => Promise<Event>;
   joinEvent: (eventId: string, userId: string) => Promise<boolean>;
   leaveEvent: (eventId: string, userId: string) => Promise<void>;
@@ -243,6 +247,20 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   };
 
+  const addFavorite = async (userId: string, gameId: string) => {
+    const result = await addFavoriteRequest(gameId);
+    setState(prev => ({ ...prev, users: prev.users.map(user => user.id === userId
+      ? { ...user, favoriteGames: Array.from(new Set([...user.favoriteGames, result.gameId])) }
+      : user) }));
+  };
+
+  const removeFavorite = async (userId: string, gameId: string) => {
+    await removeFavoriteRequest(gameId);
+    setState(prev => ({ ...prev, users: prev.users.map(user => user.id === userId
+      ? { ...user, favoriteGames: user.favoriteGames.filter(id => id !== gameId) }
+      : user) }));
+  };
+
   // Event actions
   const addEvent = async (
     eventData: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>,
@@ -384,6 +402,8 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getSessionById,
         addComment,
         deleteComment,
+        addFavorite,
+        removeFavorite,
         addEvent,
         joinEvent,
         leaveEvent,

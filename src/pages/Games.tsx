@@ -7,8 +7,8 @@ import type { BoardGame } from '../types';
 import { PlusIcon, SearchIcon, EditIcon, TrashIcon, StarIcon, DiceIcon, UsersIcon, ClockIcon, PuzzleIcon, CrownIcon } from '../components/Icons';
 
 export const Games: React.FC = () => {
-  const { state, addGame, editGame, deleteGame } = useDatabase();
-  const { isAdmin } = useAuth();
+  const { state, addGame, editGame, deleteGame, addFavorite, removeFavorite } = useDatabase();
+  const { isAdmin, currentUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -133,6 +133,18 @@ export const Games: React.FC = () => {
     setEditingGame(null);
   };
 
+  const handleFavorite = async (gameId: string, favorite: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) { showToast('Entre para favoritar jogos.', 'warning'); return; }
+    try {
+      if (favorite) await removeFavorite(currentUser.id, gameId);
+      else await addFavorite(currentUser.id, gameId);
+      showToast(favorite ? 'Jogo removido dos favoritos.' : 'Jogo adicionado aos favoritos!', 'success');
+    } catch {
+      showToast('Não foi possível atualizar seus favoritos.', 'error');
+    }
+  };
+
   const getComplexityLabel = (val: number) => {
     if (val < 1.8) return 'Fácil';
     if (val < 2.8) return 'Médio';
@@ -213,6 +225,13 @@ export const Games: React.FC = () => {
                 <span className="badge badge-primary" style={categoryBadgeStyle}>
                   {game.category}
                 </span>
+                {currentUser && (
+                  <button type="button" className="btn btn-ghost" aria-label={`${currentUser.favoriteGames.includes(game.id) ? 'Desfavoritar' : 'Favoritar'} ${game.name}`}
+                    onClick={e => void handleFavorite(game.id, currentUser.favoriteGames.includes(game.id), e)}
+                    style={{ position: 'absolute', right: '8px', bottom: '8px', background: 'white' }}>
+                    <StarIcon size={18} fill={currentUser.favoriteGames.includes(game.id) ? 'var(--color-accent)' : 'none'} />
+                  </button>
+                )}
               </div>
               
               <div style={gameCardContentStyle}>

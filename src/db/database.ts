@@ -63,22 +63,8 @@ export const syncDatabaseCalculations = (state: DatabaseState): DatabaseState =>
   const updatedUsers = state.users.map(user => {
     const wins = state.sessions.filter(s => s.winnerId === user.id).length;
 
-    const gamesPlayedIds = state.sessions
-      .filter(s => s.participantIds.includes(user.id))
-      .map(s => s.gameId);
-
-    const gameCounts = gamesPlayedIds.reduce((acc, gid) => {
-      acc[gid] = (acc[gid] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    const sortedGamesByPlay = Object.entries(gameCounts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([gid]) => gid);
-
-    const uniqueFavorites = Array.from(
-      new Set([...(user.favoriteGames || []), ...sortedGamesByPlay.slice(0, 3)])
-    ).filter(gid => state.boardGames.some(g => g.id === gid));
+    const uniqueFavorites = Array.from(new Set(user.favoriteGames || []))
+      .filter(gid => state.boardGames.some(g => g.id === gid));
 
     return {
       ...user,

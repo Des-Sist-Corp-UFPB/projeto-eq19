@@ -47,9 +47,6 @@ public class RelationalStateSyncService {
             conn.setAutoCommit(false);
             try {
                 // 1) Delete dependent rows in safe dependency order
-                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM favoritos")) {
-                    stmt.executeUpdate();
-                }
                 if (bootstrapEvents) {
                     // Bootstrap is the only explicit legacy-import path. Normal
                     // shadow synchronization never mutates authoritative sessions.
@@ -496,32 +493,7 @@ public class RelationalStateSyncService {
                     }
                 }
 
-                // 6) Sync favoritos (User.favoriteGames -> favoritos)
-                if (usersNode.isArray()) {
-                    try (PreparedStatement favStmt = conn.prepareStatement(
-                            "INSERT INTO favoritos (usuario_id, jogo_id) VALUES (?, ?) ON CONFLICT DO NOTHING")) {
-                        for (JsonNode userNode : usersNode) {
-                            String userId = userNode.path("id").asText();
-                            Long dbUserId = userExternalToInternalId.get(userId);
-                            if (dbUserId == null) {
-                                continue;
-                            }
-
-                            JsonNode favsNode = userNode.path("favoriteGames");
-                            if (favsNode.isArray()) {
-                                for (JsonNode favNode : favsNode) {
-                                    String gameId = favNode.asText();
-                                    Long dbGameId = gameExternalToInternalId.get(gameId);
-                                    if (dbGameId != null) {
-                                        favStmt.setLong(1, dbUserId);
-                                        favStmt.setLong(2, dbGameId);
-                                        favStmt.executeUpdate();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // Favorites are authoritative in favoritos and are never shadow-written from app_state.
 
                 // 7) Sync logs
                 JsonNode logsNode = root.path("logs");

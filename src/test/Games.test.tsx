@@ -6,8 +6,14 @@ import { renderWithProviders } from './renderWithProviders';
 
 describe('Games page', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.setItem('tabula_auth_token', 'token');
     localStorage.setItem('tabula_auth_session', 'u1');
+  });
+
+  it('renders the favorite control for the authenticated user', async () => {
+    renderWithProviders(<Games />);
+    expect(await screen.findByRole('button', { name: /Favoritar Xadrez/i })).toBeInTheDocument();
   });
 
   it('filters the catalog by search text', async () => {

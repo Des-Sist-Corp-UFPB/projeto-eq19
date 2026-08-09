@@ -204,6 +204,18 @@ export async function deleteCommentRequest(sessionId: string, commentId: string)
   );
 }
 
+export async function getFavorites(): Promise<string[]> {
+  return requestJson<string[]>('/favorites', { method: 'GET' });
+}
+
+export async function addFavoriteRequest(gameId: string): Promise<{ gameId: string }> {
+  return requestJson(`/favorites/${encodeURIComponent(gameId)}`, { method: 'POST' });
+}
+
+export async function removeFavoriteRequest(gameId: string): Promise<void> {
+  await requestJson<void>(`/favorites/${encodeURIComponent(gameId)}`, { method: 'DELETE' });
+}
+
 export type EventWriteRequest = Pick<
   Event,
   'gameId' | 'date' | 'time' | 'location' | 'maxParticipants' | 'description'

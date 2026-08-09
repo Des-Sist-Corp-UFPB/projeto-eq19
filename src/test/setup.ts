@@ -36,6 +36,9 @@ vi.mock('../services/api', async () => {
     deleteSessionRequest: vi.fn().mockResolvedValue(undefined),
     createComment: vi.fn(),
     deleteCommentRequest: vi.fn().mockResolvedValue(undefined),
+    getFavorites: vi.fn().mockResolvedValue([]),
+    addFavoriteRequest: vi.fn(),
+    removeFavoriteRequest: vi.fn().mockResolvedValue(undefined),
   };
 });
 
