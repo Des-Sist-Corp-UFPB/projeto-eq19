@@ -18,6 +18,9 @@ import {
   removeFavoriteRequest,
   saveServerState,
   updateProfile,
+  createGame,
+  updateGame,
+  deleteGameRequest,
 } from '../services/api';
 import { useToast } from './ToastContext';
 
@@ -37,15 +40,14 @@ const serializeLegacyState = (state: DatabaseState) => JSON.stringify({
     winCount: user.winCount,
     joinedAt: user.joinedAt,
   })),
-  boardGames: state.boardGames,
 });
 
 interface DatabaseContextType {
   state: DatabaseState;
-  addGame: (game: Omit<BoardGame, 'id'>) => void;
+  addGame: (game: Omit<BoardGame, 'id'>) => Promise<BoardGame>;
   addUser: (user: Omit<User, 'id' | 'avatar' | 'winCount' | 'favoriteGames' | 'joinedAt' | 'bio'> & { id?: string; passwordHash?: string; avatar?: string; course?: string; bio?: string; role?: UserRole; }) => User | null;
-  editGame: (game: BoardGame) => void;
-  deleteGame: (gameId: string) => void;
+  editGame: (game: BoardGame) => Promise<BoardGame>;
+  deleteGame: (gameId: string) => Promise<boolean>;
   addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => Promise<Session>;
   deleteSession: (sessionId: string) => Promise<void>;
   getSessionById: (sessionId: string) => Promise<Session>;
@@ -155,49 +157,28 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [state, showToast]);
 
   // Game actions
-  const addGame = (game: Omit<BoardGame, 'id'>) => {
-    const id = generateId('g');
-    const newGame: BoardGame = { ...game, id, coverUrl: normalizeGameCoverUrl(game.name, game.coverUrl) };
-    
-    setState(prev => {
-      const updated = {
-        ...prev,
-        boardGames: [...prev.boardGames, newGame]
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const addGame = async (game: Omit<BoardGame, 'id'>) => {
+    const created = await createGame({ ...game, coverUrl: normalizeGameCoverUrl(game.name, game.coverUrl) });
+    setState(prev => syncDatabaseCalculations({ ...prev, boardGames: [...prev.boardGames, created] }));
+    return created;
   };
 
-  const editGame = (updatedGame: BoardGame) => {
-    setState(prev => {
-      const sanitizedGame = {
-        ...updatedGame,
-        coverUrl: normalizeGameCoverUrl(updatedGame.name, updatedGame.coverUrl)
-      };
-
-      const updated = {
-        ...prev,
-        boardGames: prev.boardGames.map(g => g.id === sanitizedGame.id ? sanitizedGame : g)
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const editGame = async (updatedGame: BoardGame) => {
+    const saved = await updateGame({ ...updatedGame, coverUrl: normalizeGameCoverUrl(updatedGame.name, updatedGame.coverUrl) });
+    setState(prev => syncDatabaseCalculations({ ...prev, boardGames: prev.boardGames.map(g => g.id === saved.id ? saved : g) }));
+    return saved;
   };
 
-  const deleteGame = (gameId: string) => {
+  const deleteGame = async (gameId: string) => {
     const hasLinkedRecords = state.sessions.some(s => s.gameId === gameId) || state.events.some(e => e.gameId === gameId);
 
     if (hasLinkedRecords) {
       showToast('Não é possível remover este jogo porque ele está vinculado a sessões ou eventos.', 'warning');
-      return;
+      return false;
     }
-
-    setState(prev => {
-      const updated = {
-        ...prev,
-        boardGames: prev.boardGames.filter(g => g.id !== gameId)
-      };
-      return syncDatabaseCalculations(updated);
-    });
+    await deleteGameRequest(gameId);
+    setState(prev => syncDatabaseCalculations({ ...prev, boardGames: prev.boardGames.filter(g => g.id !== gameId) }));
+    return true;
   };
 
   // Session actions

@@ -45,6 +45,10 @@ vi.mock('../services/api', async () => {
       ...profile,
       joinedAt: '2026-01-01T00:00:00',
     })),
+    getGames: vi.fn().mockResolvedValue([]),
+    createGame: vi.fn(async game => ({ id: 'g_created', ...game })),
+    updateGame: vi.fn(async game => game),
+    deleteGameRequest: vi.fn().mockResolvedValue(undefined),
   };
 });
 

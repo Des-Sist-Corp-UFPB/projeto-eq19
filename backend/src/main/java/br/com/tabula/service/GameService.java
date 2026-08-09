@@ -1,0 +1,28 @@
+package br.com.tabula.service;
+
+import br.com.tabula.model.*;
+import br.com.tabula.repository.GameRepository;
+import br.com.tabula.repository.GameRepository.GameData;
+import com.zaxxer.hikari.HikariDataSource;
+import java.net.URI;
+import java.sql.*;
+import java.util.*;
+
+public final class GameService {
+ private final HikariDataSource ds; private final GameRepository repo; private final AuditLogService audit;
+ public GameService(HikariDataSource d,GameRepository r,AuditLogService a){ds=d;repo=r;audit=a;}
+ public List<GameData> list()throws SQLException{try(Connection c=ds.getConnection()){return repo.findAll(c);}}
+ public GameData get(String id)throws SQLException,GameException{try(Connection c=ds.getConnection()){return repo.find(c,id(id),false).orElseThrow(()->GameException.notFound("game_not_found"));}}
+ public GameData create(AuthenticatedPrincipal actor,GameInput raw,RequestMetadata m)throws SQLException,GameException{admin(actor);GameInput i=valid(raw);String id="g_"+UUID.randomUUID();return tx(c->{GameData g=repo.insert(c,id,i.name(),i.description(),i.coverUrl(),i.category(),i.minPlayers(),i.maxPlayers(),i.avgPlayTime(),i.complexity());audit.record(c,actor,AuditAction.GAME_CREATED,"GAME",id,true,m.ipAddress(),m.userAgent(),Map.of("changedFields",fields()));return g;});}
+ public GameData update(AuthenticatedPrincipal actor,String rawId,GameInput raw,RequestMetadata m)throws SQLException,GameException{admin(actor);String id=id(rawId);GameInput i=valid(raw);return tx(c->{GameData b=repo.find(c,id,true).orElseThrow(()->GameException.notFound("game_not_found"));List<String>x=new ArrayList<>();if(!b.name().equals(i.name()))x.add("name");if(!Objects.equals(b.description(),i.description()))x.add("description");if(!Objects.equals(b.coverUrl(),i.coverUrl()))x.add("coverUrl");if(!Objects.equals(b.category(),i.category()))x.add("category");if(b.minPlayers()!=i.minPlayers())x.add("minPlayers");if(b.maxPlayers()!=i.maxPlayers())x.add("maxPlayers");if(b.avgPlayTime()!=i.avgPlayTime())x.add("avgPlayTime");if(Double.compare(b.complexity(),i.complexity())!=0)x.add("complexity");GameData g=repo.update(c,id,i.name(),i.description(),i.coverUrl(),i.category(),i.minPlayers(),i.maxPlayers(),i.avgPlayTime(),i.complexity());audit.record(c,actor,AuditAction.GAME_UPDATED,"GAME",id,true,m.ipAddress(),m.userAgent(),Map.of("changedFields",x));return g;});}
+ public void delete(AuthenticatedPrincipal actor,String rawId,RequestMetadata m)throws SQLException,GameException{admin(actor);String id=id(rawId);tx(c->{GameData game=repo.find(c,id,true).orElseThrow(()->GameException.notFound("game_not_found"));if(repo.isReferenced(c,game.databaseId()))throw GameException.conflict("game_in_use");repo.delete(c,id);audit.record(c,actor,AuditAction.GAME_DELETED,"GAME",id,true,m.ipAddress(),m.userAgent(),Map.of());return null;});}
+ public void auditRejected(AuthenticatedPrincipal a,String id,String reason,RequestMetadata m){audit.recordBestEffort(a,AuditAction.GAME_OPERATION_REJECTED,"GAME",id,false,m.ipAddress(),m.userAgent(),Map.of("reasonCode",reason));}
+ private static void admin(AuthenticatedPrincipal a)throws GameException{if(!a.isAdmin())throw GameException.forbidden("admin_required");}
+ private static String id(String v)throws GameException{if(v==null||v.isBlank()||v.trim().length()>80)throw GameException.invalid("invalid_game_id");return v.trim();}
+ private static GameInput valid(GameInput i)throws GameException{if(i==null)throw GameException.invalid("invalid_payload");String n=trim(i.name()),d=trim(i.description()),u=trim(i.coverUrl()),c=trim(i.category());if(n==null||n.length()>150||d==null||d.length()>5000||u==null||u.length()>2048||!cover(u)||c==null||c.length()>120||i.minPlayers()<1||i.maxPlayers()<i.minPlayers()||i.avgPlayTime()<1||i.complexity()<1||i.complexity()>5)throw GameException.invalid("invalid_game");return new GameInput(n,d,u,c,i.minPlayers(),i.maxPlayers(),i.avgPlayTime(),i.complexity());}
+ private static boolean cover(String v){if(v.startsWith("/"))return true;try{String s=URI.create(v).getScheme();return "http".equalsIgnoreCase(s)||"https".equalsIgnoreCase(s);}catch(Exception e){return false;}}
+ private static String trim(String v){return v==null||v.trim().isEmpty()?null:v.trim();} private static List<String> fields(){return List.of("name","description","coverUrl","category","minPlayers","maxPlayers","avgPlayTime","complexity");}
+ private <T>T tx(Work<T>w)throws SQLException,GameException{try(Connection c=ds.getConnection()){c.setAutoCommit(false);try{T r=w.run(c);c.commit();return r;}catch(Exception e){c.rollback();if(e instanceof GameException g)throw g;if(e instanceof SQLException s)throw s;throw new SQLException(e);}}}
+ public record GameInput(String name,String description,String coverUrl,String category,int minPlayers,int maxPlayers,int avgPlayTime,double complexity){} public record RequestMetadata(String ipAddress,String userAgent){} @FunctionalInterface private interface Work<T>{T run(Connection c)throws Exception;}
+ public static final class GameException extends Exception{public enum Kind{NOT_FOUND,INVALID,FORBIDDEN,CONFLICT}private final Kind kind;private final String reason;private GameException(Kind k,String r){kind=k;reason=r;}public Kind kind(){return kind;}public String reason(){return reason;}public static GameException notFound(String r){return new GameException(Kind.NOT_FOUND,r);}public static GameException invalid(String r){return new GameException(Kind.INVALID,r);}static GameException forbidden(String r){return new GameException(Kind.FORBIDDEN,r);}static GameException conflict(String r){return new GameException(Kind.CONFLICT,r);}}
+}

@@ -31,6 +31,8 @@ export interface ProfileUpdate {
   avatarUrl?: string;
 }
 
+export type GameInput = Omit<import('../types').BoardGame, 'id'>;
+
 export interface AuditLogEntry {
   id: number;
   userId: string | null;
@@ -357,6 +359,19 @@ export async function updateProfile(profile: ProfileUpdate): Promise<ProfileResp
     method: 'PUT',
     body: JSON.stringify(profile),
   });
+}
+
+export async function getGames(): Promise<import('../types').BoardGame[]> {
+  return requestJson('/games', { method: 'GET' });
+}
+export async function createGame(game: GameInput): Promise<import('../types').BoardGame> {
+  return requestJson('/games', { method: 'POST', body: JSON.stringify(game) });
+}
+export async function updateGame(game: import('../types').BoardGame): Promise<import('../types').BoardGame> {
+  return requestJson(`/games/${encodeURIComponent(game.id)}`, { method: 'PUT', body: JSON.stringify(game) });
+}
+export async function deleteGameRequest(id: string): Promise<void> {
+  return requestJson(`/games/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogPage> {

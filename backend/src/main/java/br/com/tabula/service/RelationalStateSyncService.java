@@ -211,6 +211,7 @@ public class RelationalStateSyncService {
                     }
                 }
 
+                /* Catalog migration boundary: jogos is authoritative; legacy game synchronization removed.
                 // 3) Sync boardGames
                 JsonNode gamesNode = root.path("boardGames");
                 if (gamesNode.isArray()) {
@@ -315,6 +316,7 @@ public class RelationalStateSyncService {
                     }
                 }
 
+                */
                 // Cache all games external_id to internal id
                 Map<String, Long> gameExternalToInternalId = new HashMap<>();
                 try (PreparedStatement stmt = conn.prepareStatement("SELECT id, external_id FROM jogos WHERE external_id IS NOT NULL")) {

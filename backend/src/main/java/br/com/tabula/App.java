@@ -11,6 +11,7 @@ import br.com.tabula.controller.SessionController;
 import br.com.tabula.controller.CommentController;
 import br.com.tabula.controller.FavoriteController;
 import br.com.tabula.controller.ProfileController;
+import br.com.tabula.controller.GameController;
 import br.com.tabula.observability.HttpObservability;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
@@ -72,6 +73,7 @@ public class App {
             CommentController.register(app, dataSource);
             FavoriteController.register(app, dataSource);
             ProfileController.register(app, dataSource);
+            GameController.register(app, dataSource);
 
             app.exception(Exception.class, (e, ctx) -> {
                 LOGGER.error("Unhandled backend error", e);

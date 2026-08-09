@@ -66,17 +66,18 @@ public class StateController {
     public static void register(Javalin app, HikariDataSource dataSource) {
         register(app, dataSource, source -> new RelationalSlices(
                 relationalEvents(source), relationalSessions(source)), StateController::relationalFavorites,
-                StateController::relationalProfiles);
+                StateController::relationalProfiles, StateController::relationalGames);
     }
 
     static void register(Javalin app, HikariDataSource dataSource, RelationalSliceReader relationalSliceReader) {
-        register(app, dataSource, relationalSliceReader, ignored -> Map.of(), ignored -> Map.of());
+        register(app, dataSource, relationalSliceReader, ignored -> Map.of(), ignored -> Map.of(), ignored -> null);
     }
 
     private static void register(Javalin app, HikariDataSource dataSource,
                                  RelationalSliceReader relationalSliceReader,
                                  RelationalFavoriteReader relationalFavoriteReader,
-                                 RelationalProfileReader relationalProfileReader) {
+                                 RelationalProfileReader relationalProfileReader,
+                                 RelationalGameReader relationalGameReader) {
         AuditLogService auditLogService = new AuditLogService(dataSource);
         AuthenticatedUserService authenticatedUserService = new AuthenticatedUserService(dataSource);
         StateAuthorizationService stateAuthorizationService = new StateAuthorizationService();
@@ -287,7 +288,7 @@ public class StateController {
                     return;
                 }
                 if (!relationalPayload) payload = overlayRelationalSlices(dataSource, payload, relationalFavoriteReader,
-                        relationalProfileReader);
+                        relationalProfileReader, relationalGameReader);
                 ctx.contentType("application/json").result(payload);
             } catch (SQLException ex) {
                 LOGGER.atError()
@@ -330,7 +331,7 @@ public class StateController {
                     try {
                         RelationallyProtectedState protectedState = protectRelationalSections(
                                 dataSource, snapshot.payload(), payload, relationalSliceReader, relationalFavoriteReader,
-                                relationalProfileReader);
+                                relationalProfileReader, relationalGameReader);
                         authorizationCurrent = protectedState.currentPayload();
                         payload = protectedState.candidatePayload();
                     } catch (EventSliceConflictException ex) {
@@ -484,7 +485,8 @@ public class StateController {
 
     private static String overlayRelationalSlices(HikariDataSource dataSource, String legacyPayload,
                                                   RelationalFavoriteReader relationalFavoriteReader,
-                                                  RelationalProfileReader relationalProfileReader)
+                                                  RelationalProfileReader relationalProfileReader,
+                                                  RelationalGameReader relationalGameReader)
             throws SQLException {
         try {
             com.fasterxml.jackson.databind.JsonNode legacy = MAPPER.readTree(legacyPayload);
@@ -495,6 +497,8 @@ public class StateController {
             }
             projectRelationalFavorites(legacy, relationalFavoriteReader.read(dataSource));
             projectRelationalProfiles(legacy, relationalProfileReader.read(dataSource));
+            com.fasterxml.jackson.databind.node.ArrayNode games = relationalGameReader.read(dataSource);
+            if (games != null) ((com.fasterxml.jackson.databind.node.ObjectNode) legacy).set("boardGames", games);
             try {
                 ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)
                         .set("sessions", relationalSessions(dataSource));
@@ -512,7 +516,7 @@ public class StateController {
     private static RelationallyProtectedState protectRelationalSections(
             HikariDataSource dataSource, String previousPayload, String candidatePayload,
             RelationalSliceReader relationalSliceReader, RelationalFavoriteReader relationalFavoriteReader,
-            RelationalProfileReader relationalProfileReader)
+            RelationalProfileReader relationalProfileReader, RelationalGameReader relationalGameReader)
             throws SQLException, EventSliceConflictException, SessionSliceConflictException {
         try {
             com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
@@ -539,6 +543,11 @@ public class StateController {
             Map<String, Map<String, Object>> authoritativeProfiles = relationalProfileReader.read(dataSource);
             projectRelationalProfiles(authorizationCurrent, authoritativeProfiles);
             projectRelationalProfiles(candidate, authoritativeProfiles);
+            com.fasterxml.jackson.databind.node.ArrayNode authoritativeGames = relationalGameReader.read(dataSource);
+            if (authoritativeGames != null) {
+                authorizationCurrent.set("boardGames", authoritativeGames.deepCopy());
+                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate).set("boardGames", authoritativeGames.deepCopy());
+            }
             authorizationCurrent.set("events", authoritativeEvents.deepCopy());
             authorizationCurrent.set("sessions", authoritativeSessions.deepCopy());
             if (!candidate.has("logs") && previous.has("logs")) {
@@ -649,6 +658,14 @@ public class StateController {
         return (com.fasterxml.jackson.databind.node.ArrayNode) state.path("sessions");
     }
 
+    private static com.fasterxml.jackson.databind.node.ArrayNode relationalGames(HikariDataSource dataSource)
+            throws Exception {
+        com.fasterxml.jackson.databind.JsonNode state = MAPPER.readTree(
+                br.com.tabula.service.RelationalStateReadService.readStateAsJson(dataSource));
+        if (!state.path("boardGames").isArray()) throw new SQLException("Relational game projection is not an array");
+        return (com.fasterxml.jackson.databind.node.ArrayNode) state.path("boardGames");
+    }
+
     @WithSpan("state.authenticate")
     private static Optional<AuthenticatedPrincipal> resolvePrincipal(
             AuthenticatedUserService service, String authorizationHeader) throws SQLException {
@@ -715,6 +732,10 @@ public class StateController {
     @FunctionalInterface
     private interface RelationalProfileReader {
         Map<String, Map<String, Object>> read(HikariDataSource dataSource) throws Exception;
+    }
+    @FunctionalInterface
+    private interface RelationalGameReader {
+        com.fasterxml.jackson.databind.node.ArrayNode read(HikariDataSource dataSource) throws Exception;
     }
 
     private static final class EventSliceConflictException extends RuntimeException {

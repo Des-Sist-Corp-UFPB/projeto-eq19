@@ -50,26 +50,17 @@ export const Games: React.FC = () => {
   });
 
   // Add game submit
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     const mockCover = coverUrl.trim() || '/images/tabletop-placeholder.svg';
 
-    addGame({
-      name,
-      description,
-      category,
-      minPlayers,
-      maxPlayers,
-      avgPlayTime,
-      complexity,
-      coverUrl: mockCover
-    });
-
-    showToast(`Jogo "${name}" adicionado com sucesso!`, 'success');
-    resetForm();
-    setIsAddModalOpen(false);
+    try {
+      await addGame({ name, description, category, minPlayers, maxPlayers, avgPlayTime, complexity, coverUrl: mockCover });
+      showToast(`Jogo "${name}" adicionado com sucesso!`, 'success');
+      resetForm(); setIsAddModalOpen(false);
+    } catch { showToast('Não foi possível adicionar o jogo.', 'error'); }
   };
 
   // Open edit modal
@@ -88,36 +79,26 @@ export const Games: React.FC = () => {
   };
 
   // Submit edit
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingGame || !name.trim()) return;
 
-    editGame({
-      ...editingGame,
-      name,
-      description,
-      category,
-      minPlayers,
-      maxPlayers,
-      avgPlayTime,
-      complexity,
-      coverUrl
-    });
-
-    showToast(`Jogo "${name}" atualizado!`, 'success');
-    resetForm();
-    setIsEditModalOpen(false);
+    try {
+      await editGame({ ...editingGame, name, description, category, minPlayers, maxPlayers, avgPlayTime, complexity, coverUrl });
+      showToast(`Jogo "${name}" atualizado!`, 'success');
+      resetForm(); setIsEditModalOpen(false);
+    } catch { showToast('Não foi possível atualizar o jogo.', 'error'); }
   };
 
   // Delete handler
-  const handleDelete = (gameId: string, name: string, e: React.MouseEvent) => {
+  const handleDelete = async (gameId: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (window.confirm(`Tem certeza que deseja remover "${name}" do acervo?`)) {
-      deleteGame(gameId);
-      showToast(`Jogo "${name}" removido.`, 'info');
-      if (selectedGame?.id === gameId) {
-        navigate('/games');
-      }
+      try {
+        if (!await deleteGame(gameId)) return;
+        showToast(`Jogo "${name}" removido.`, 'info');
+        if (selectedGame?.id === gameId) navigate('/games');
+      } catch { showToast('Não foi possível remover o jogo.', 'error'); }
     }
   };
 

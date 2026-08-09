@@ -165,7 +165,9 @@ public class AuditLogService {
         if (changedFields instanceof Collection<?> values) {
             ArrayNode array = sanitized.putArray("changedFields");
             for (Object value : values) {
-                if (value instanceof String field && Set.of("name", "course", "bio", "avatarUrl").contains(field)) {
+                if (value instanceof String field && Set.of("name", "course", "bio", "avatarUrl",
+                        "description", "coverUrl", "category", "minPlayers", "maxPlayers",
+                        "avgPlayTime", "complexity").contains(field)) {
                     array.add(field);
                 }
             }
