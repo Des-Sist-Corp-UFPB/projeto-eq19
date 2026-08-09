@@ -358,6 +358,9 @@ function formatDetails(details: Record<string, unknown>): React.ReactNode {
   }
   const reasonCode = typeof details.reasonCode === 'string' ? details.reasonCode : null;
   if (reasonCode) {
+    const reason = typeof details.reason === 'string' ? details.reason : null;
+    const validationStage = typeof details.validationStage === 'string' ? details.validationStage : null;
+    const model = typeof details.model === 'string' ? details.model : null;
     const section = typeof details.section === 'string' ? details.section : null;
     const resourceId = typeof details.resourceId === 'string' ? details.resourceId : null;
     const field = typeof details.field === 'string' ? details.field : null;
@@ -376,11 +379,15 @@ function formatDetails(details: Record<string, unknown>): React.ReactNode {
     };
     return (
       <span>
-        <strong>Payload inválido</strong>
+        <strong>{reason === 'invalid_ai_response' ? 'Resposta da IA rejeitada' : 'Payload inválido'}</strong>
         {section && <span className="audit-table__secondary">Seção: {SECTION_LABELS[section] ?? section}</span>}
         {resourceId && <span className="audit-table__secondary">Recurso: {resourceId}</span>}
         {field && <span className="audit-table__secondary">Campo: {field}</span>}
         <span className="audit-table__secondary">Motivo: {reasonLabels[reasonCode] ?? detail ?? reasonCode}</span>
+        {reason && <span className="audit-table__secondary">Razão: {reason}</span>}
+        <span className="audit-table__secondary">Código: {reasonCode}</span>
+        {validationStage && <span className="audit-table__secondary">Etapa: {validationStage}</span>}
+        {model && <span className="audit-table__secondary">Modelo: {model}</span>}
       </span>
     );
   }

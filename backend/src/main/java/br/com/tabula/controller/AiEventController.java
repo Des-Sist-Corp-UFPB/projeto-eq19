@@ -110,9 +110,9 @@ public final class AiEventController {
                         generated ? null : response.reasonCode(), generation.usage(), generation.providerCalls());
                 ctx.json(response);
             } catch (AiDraftValidationException ex) {
-                reject(audit, principal.get(), model, promptLength, "invalid_ai_response", "validation",
+                rejectValidation(audit, principal.get(), model, promptLength, ex,
                         durationMs(started), ctx.ip(), ctx.userAgent());
-                log(model, false, started, null, "invalid_ai_response");
+                logValidationFailure("ai_event_draft", model, started, ex);
                 ctx.status(422).json(error("INVALID_AI_RESPONSE", "A resposta da IA não pôde ser validada."));
             } catch (AiProviderException ex) {
                 int status = providerStatus(ex.category());
@@ -172,10 +172,9 @@ public final class AiEventController {
                         refinement.usage(), refinement.providerCalls());
                 ctx.json(response);
             } catch (AiDraftValidationException ex) {
-                rejectRefinement(audit, principal.get(), model, instructionLength, "invalid_ai_response",
-                        "validation", durationMs(started), ctx.ip(), ctx.userAgent());
-                logRefinement(model, false, started, null, "invalid_ai_response",
-                        br.com.tabula.ai.AiUsage.empty(), 1);
+                rejectRefinementValidation(audit, principal.get(), model, instructionLength, ex,
+                        durationMs(started), ctx.ip(), ctx.userAgent());
+                logValidationFailure("ai_event_refinement", model, started, ex);
                 ctx.status(422).json(error("INVALID_AI_RESPONSE", "A resposta da IA não pôde ser validada."));
             } catch (AiProviderException ex) {
                 int status = providerStatus(ex.category());
@@ -198,6 +197,15 @@ public final class AiEventController {
                         "warningCount", 0, "success", false, "failureReason", reason,
                         "failureCategory", category, "durationMs", duration));
     }
+    private static void rejectValidation(
+            AuditLogService audit, AuthenticatedPrincipal actor, String model, int promptLength,
+            AiDraftValidationException exception, long duration, String ip, String userAgent) {
+        audit.recordBestEffort(actor, AuditAction.AI_EVENT_DRAFT_REJECTED, "AI_EVENT_DRAFT", null,
+                false, ip, userAgent, Map.of("model", model, "promptLength", promptLength,
+                        "warningCount", 0, "success", false, "reason", "invalid_ai_response",
+                        "reasonCode", exception.reasonCode(), "validationStage", exception.validationStage(),
+                        "durationMs", duration));
+    }
     private static void log(String model, boolean success, long started, String gameId, String reason) {
         log(model, success, started, gameId, reason, br.com.tabula.ai.AiUsage.empty(), 0);
     }
@@ -215,6 +223,15 @@ public final class AiEventController {
         if (usage.completionTokens() != null) event.addKeyValue("completion_tokens", usage.completionTokens());
         if (usage.totalTokens() != null) event.addKeyValue("total_tokens", usage.totalTokens());
         event.log("AI event draft completed");
+    }
+    private static void logValidationFailure(
+            String operation, String model, long started, AiDraftValidationException exception) {
+        LOGGER.atInfo().addKeyValue("operation", operation).addKeyValue("model", model)
+                .addKeyValue("success", false).addKeyValue("duration_ms", durationMs(started))
+                .addKeyValue("failure_reason", "invalid_ai_response")
+                .addKeyValue("reason_code", exception.reasonCode())
+                .addKeyValue("validation_stage", exception.validationStage())
+                .log("AI event draft validation rejected");
     }
     private static Map<String, Object> usageDetails(String model, int promptLength,
                                                      AiEventAssistantResponse response, long duration,
@@ -248,6 +265,15 @@ public final class AiEventController {
                 false, ip, userAgent, Map.of("model", model, "instructionLength", instructionLength,
                         "warningCount", 0, "success", false, "failureReason", reason,
                         "failureCategory", category, "durationMs", duration));
+    }
+    private static void rejectRefinementValidation(
+            AuditLogService audit, AuthenticatedPrincipal actor, String model, int instructionLength,
+            AiDraftValidationException exception, long duration, String ip, String userAgent) {
+        audit.recordBestEffort(actor, AuditAction.AI_EVENT_REFINEMENT_REJECTED, "AI_EVENT_DRAFT", null,
+                false, ip, userAgent, Map.of("model", model, "instructionLength", instructionLength,
+                        "warningCount", 0, "success", false, "reason", "invalid_ai_response",
+                        "reasonCode", exception.reasonCode(), "validationStage", exception.validationStage(),
+                        "durationMs", duration));
     }
     private static void logRefinement(String model, boolean success, long started, String gameId, String reason,
                                       br.com.tabula.ai.AiUsage usage, int providerCalls) {

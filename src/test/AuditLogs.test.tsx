@@ -122,4 +122,32 @@ describe('AuditLogs page', () => {
     expect(screen.getByText('Motivo: esperado array de strings')).toBeInTheDocument();
     expect(screen.getByText('Motivo: invalid_payload')).toBeInTheDocument();
   });
+
+  it('renders safe AI validation classifiers from generic audit metadata', async () => {
+    mockedGetAuditLogs.mockResolvedValue({
+      ...firstPage,
+      total: 1,
+      items: [{
+        ...firstPage.items[0],
+        id: 30,
+        action: 'AI_EVENT_DRAFT_REJECTED',
+        resourceType: 'AI_EVENT_DRAFT',
+        success: false,
+        details: {
+          reason: 'invalid_ai_response',
+          reasonCode: 'game_not_in_catalog',
+          validationStage: 'draft_validation',
+          model: 'gpt-4o-mini',
+        },
+      }],
+    });
+
+    render(<AuditLogs />);
+
+    expect(await screen.findByText('Resposta da IA rejeitada')).toBeInTheDocument();
+    expect(screen.getByText('Razão: invalid_ai_response')).toBeInTheDocument();
+    expect(screen.getByText('Código: game_not_in_catalog')).toBeInTheDocument();
+    expect(screen.getByText('Etapa: draft_validation')).toBeInTheDocument();
+    expect(screen.getByText('Modelo: gpt-4o-mini')).toBeInTheDocument();
+  });
 });

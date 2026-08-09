@@ -228,116 +228,143 @@ public final class AiEventDraftService {
             throws AiDraftValidationException {
         try {
             JsonNode node = extractSingleJsonObject(raw);
-            if (node == null || !node.isObject()) throw invalid("JSON inválido.");
-            rejectUnknownFields(node, ASSISTANT_FIELDS);
-            String status = requiredText(node, "status", 40);
+            if (node == null || !node.isObject())
+                throw invalid("JSON inválido.", "invalid_response_schema", "response_contract");
+            rejectUnknownFields(node, ASSISTANT_FIELDS, "response_contract");
+            JsonNode statusNode = node.get("status");
+            if (statusNode == null) throw invalid("Status ausente.", "missing_response_type", "response_contract");
+            String status = requiredText(node, "status", 40, "unknown_response_type", "response_contract");
             return switch (status) {
                 case "draft" -> {
-                    requireExactEnvelope(node, Set.of("status", "draft"));
+                    if (!node.has("draft"))
+                        throw invalid("Draft ausente.", "missing_draft", "response_contract");
+                    requireExactEnvelope(node, Set.of("status", "draft"), "response_contract");
                     yield AiEventAssistantResponse.draft(validateDraftNode(node.get("draft"), games));
                 }
                 case "needs_clarification" -> {
                     requireExactEnvelope(node,
-                            Set.of("status", "reasonCode", "missingFields", "message"));
-                    String reasonCode = requiredText(node, "reasonCode", 80);
+                            Set.of("status", "reasonCode", "missingFields", "message"), "response_contract");
+                    String reasonCode = requiredText(node, "reasonCode", 80,
+                            "invalid_response_schema", "response_contract");
                     if (!"missing_required_information".equals(reasonCode)) {
-                        throw invalid("reasonCode inválido.");
+                        throw invalid("reasonCode inválido.", "invalid_response_schema", "response_contract");
                     }
                     JsonNode missingNode = node.get("missingFields");
                     if (missingNode == null || !missingNode.isArray() || missingNode.isEmpty()
                             || missingNode.size() > CLARIFICATION_FIELDS.size()) {
-                        throw invalid("missingFields inválido.");
+                        throw invalid("missingFields inválido.", "invalid_response_schema", "response_contract");
                     }
                     List<String> missing = new ArrayList<>();
                     for (JsonNode field : missingNode) {
                         if (!field.isTextual() || !CLARIFICATION_FIELDS.contains(field.asText())
                                 || missing.contains(field.asText())) {
-                            throw invalid("missingFields inválido.");
+                            throw invalid("missingFields inválido.", "invalid_response_schema", "response_contract");
                         }
                         missing.add(field.asText());
                     }
                     yield AiEventAssistantResponse.needsClarification(
-                            reasonCode, missing, requiredText(node, "message", 300));
+                            reasonCode, missing, requiredText(node, "message", 300,
+                                    "missing_required_field", "response_contract"));
                 }
                 case "unsupported" -> {
-                    requireExactEnvelope(node, Set.of("status", "reasonCode"));
-                    String reasonCode = requiredText(node, "reasonCode", 80);
+                    requireExactEnvelope(node, Set.of("status", "reasonCode"), "response_contract");
+                    String reasonCode = requiredText(node, "reasonCode", 80,
+                            "invalid_response_schema", "response_contract");
                     if (!"not_event_creation_request".equals(reasonCode)) {
-                        throw invalid("reasonCode inválido.");
+                        throw invalid("reasonCode inválido.", "invalid_response_schema", "response_contract");
                     }
                     yield AiEventAssistantResponse.unsupported(reasonCode);
                 }
-                default -> throw invalid("Status inválido.");
+                default -> throw invalid("Status inválido.", "unknown_response_type", "response_contract");
             };
         } catch (AiDraftValidationException ex) { throw ex; }
-        catch (Exception ex) { throw new AiDraftValidationException("Resposta da IA não pôde ser validada.", ex); }
+        catch (Exception ex) { throw new AiDraftValidationException("Resposta da IA não pôde ser validada.",
+                "validation_error", "response_contract", ex); }
     }
 
     private AiEventDraftResponse validateDraftNode(JsonNode node, List<Game> games)
             throws AiDraftValidationException {
         try {
-            if (node == null || !node.isObject()) throw invalid("Draft inválido.");
-            requireExactEnvelope(node, DRAFT_FIELDS);
-            String gameId = requiredText(node, "gameId", 80);
+            if (node == null) throw invalid("Draft ausente.", "missing_draft", "response_contract");
+            if (!node.isObject()) throw invalid("Draft inválido.", "invalid_response_schema", "draft_validation");
+            for (String field : DRAFT_FIELDS) {
+                if (!node.has(field))
+                    throw invalid("Campo obrigatório ausente.", "missing_required_field", "draft_validation");
+            }
+            requireExactEnvelope(node, DRAFT_FIELDS, "draft_validation");
+            String gameId = requiredText(node, "gameId", 80, "invalid_game_id", "draft_validation");
             Map<String, Game> byId = new LinkedHashMap<>();
             games.forEach(game -> byId.put(game.id(), game));
             Game game = byId.get(gameId);
-            if (game == null) throw invalid("Jogo fora do catálogo.");
-            String gameName = requiredText(node, "gameName", 200);
-            if (!game.name().equals(gameName)) throw invalid("Nome do jogo não corresponde ao catálogo.");
+            if (game == null) throw invalid("Jogo fora do catálogo.", "game_not_in_catalog", "draft_validation");
+            String gameName = requiredText(node, "gameName", 200, "missing_required_field", "draft_validation");
+            if (!game.name().equals(gameName))
+                throw invalid("Nome do jogo não corresponde ao catálogo.", "game_name_mismatch", "draft_validation");
             LocalDate date;
             try {
-                String dateText = requiredText(node, "date", 10);
-                if (!dateText.matches("\\d{4}-\\d{2}-\\d{2}")) throw invalid("Data inválida.");
+                String dateText = requiredText(node, "date", 10, "invalid_date", "draft_validation");
+                if (!dateText.matches("\\d{4}-\\d{2}-\\d{2}"))
+                    throw invalid("Data inválida.", "invalid_date", "draft_validation");
                 date = LocalDate.parse(dateText);
-            } catch (DateTimeParseException ex) { throw invalid("Data inválida."); }
-            if (date.isBefore(LocalDate.now(clock))) throw invalid("Data no passado.");
-            String time = requiredText(node, "time", 5);
-            if (!time.matches("(?:[01]\\d|2[0-3]):[0-5]\\d")) throw invalid("Horário inválido.");
-            String location = requiredText(node, "location", 200);
+            } catch (DateTimeParseException ex) { throw invalid("Data inválida.", "invalid_date", "draft_validation"); }
+            if (date.isBefore(LocalDate.now(clock)))
+                throw invalid("Data no passado.", "invalid_date", "draft_validation");
+            String time = requiredText(node, "time", 5, "invalid_time", "draft_validation");
+            if (!time.matches("(?:[01]\\d|2[0-3]):[0-5]\\d"))
+                throw invalid("Horário inválido.", "invalid_time", "draft_validation");
+            String location = requiredText(node, "location", 200, "invalid_location", "draft_validation");
             int max = node.path("maxParticipants").asInt(-1);
-            if (max < 2 || max > 100) throw invalid("Quantidade de participantes inválida.");
+            if (max < 2 || max > 100)
+                throw invalid("Quantidade de participantes inválida.", "invalid_max_participants", "draft_validation");
             if (max < game.minPlayers() || max > game.maxPlayers())
-                throw invalid("Quantidade de participantes incompatível com o jogo.");
-            String description = requiredText(node, "description", 500);
+                throw invalid("Quantidade de participantes incompatível com o jogo.",
+                        "invalid_max_participants", "draft_validation");
+            String description = requiredText(node, "description", 500, "invalid_description", "draft_validation");
             JsonNode warningsNode = node.get("warnings");
             if (warningsNode == null || !warningsNode.isArray() || warningsNode.size() > 10)
-                throw invalid("Warnings inválidos.");
+                throw invalid("Warnings inválidos.", "invalid_warnings", "draft_validation");
             List<String> warnings = new ArrayList<>();
             for (JsonNode warning : warningsNode) {
                 if (!warning.isTextual() || warning.asText().isBlank() || warning.asText().length() > 200)
-                    throw invalid("Warning inválido.");
+                    throw invalid("Warning inválido.", "invalid_warnings", "draft_validation");
                 warnings.add(warning.asText().trim());
             }
             return new AiEventDraftResponse(gameId, gameName, date.toString(), time, location, max, description, warnings);
         } catch (AiDraftValidationException ex) { throw ex; }
-        catch (Exception ex) { throw new AiDraftValidationException("Resposta da IA não pôde ser validada.", ex); }
+        catch (Exception ex) { throw new AiDraftValidationException("Resposta da IA não pôde ser validada.",
+                "validation_error", "draft_validation", ex); }
     }
 
-    private static void requireExactEnvelope(JsonNode node, Set<String> expected)
+    private static void requireExactEnvelope(JsonNode node, Set<String> expected, String stage)
             throws AiDraftValidationException {
         Set<String> actual = new java.util.HashSet<>();
         node.fieldNames().forEachRemaining(actual::add);
-        if (!actual.equals(expected)) throw invalid("Campos da resposta são inválidos.");
+        if (!actual.equals(expected))
+            throw invalid("Campos da resposta são inválidos.", "invalid_response_schema", stage);
     }
 
-    private static void rejectUnknownFields(JsonNode node, Set<String> allowed)
+    private static void rejectUnknownFields(JsonNode node, Set<String> allowed, String stage)
             throws AiDraftValidationException {
         var fields = node.fieldNames();
         while (fields.hasNext()) {
-            if (!allowed.contains(fields.next())) throw invalid("Campo desconhecido na resposta.");
+            if (!allowed.contains(fields.next()))
+                throw invalid("Campo desconhecido na resposta.", "invalid_response_schema", stage);
         }
     }
 
-    private static String requiredText(JsonNode node, String field, int max) throws AiDraftValidationException {
+    private static String requiredText(JsonNode node, String field, int max, String reasonCode, String stage)
+            throws AiDraftValidationException {
         JsonNode value = node.get(field);
-        if (value == null || !value.isTextual() || value.asText().trim().isEmpty() || value.asText().trim().length() > max)
-            throw invalid("Campo " + field + " inválido.");
+        if (value == null || !value.isTextual() || value.asText().trim().isEmpty()
+                || value.asText().trim().length() > max) {
+            throw invalid("Campo " + field + " inválido.", reasonCode, stage);
+        }
         return value.asText().trim();
     }
 
     static JsonNode extractSingleJsonObject(String raw) throws AiDraftValidationException {
-        if (raw == null || raw.isBlank()) throw invalid("JSON inválido.");
+        if (raw == null || raw.isBlank())
+            throw invalid("JSON inválido.", "empty_model_response", "response_parse");
         List<String> objects = new ArrayList<>();
         int depth = 0;
         int start = -1;
@@ -356,18 +383,22 @@ public final class AiEventDraftService {
                 if (depth == 0) start = i;
                 depth++;
             } else if (character == '}') {
-                if (depth == 0) throw invalid("JSON ambíguo.");
+                if (depth == 0) throw invalid("JSON ambíguo.", "malformed_json", "response_parse");
                 depth--;
                 if (depth == 0) objects.add(raw.substring(start, i + 1));
             }
         }
-        if (quoted || depth != 0 || objects.size() != 1) throw invalid("JSON ambíguo.");
+        if (quoted || depth != 0 || objects.size() != 1)
+            throw invalid("JSON ambíguo.", "malformed_json", "response_parse");
         try {
             JsonNode node = MAPPER.readTree(objects.get(0));
-            if (!node.isObject()) throw invalid("JSON inválido.");
+            if (!node.isObject()) throw invalid("JSON inválido.", "invalid_response_schema", "response_contract");
             return node;
         } catch (AiDraftValidationException ex) { throw ex; }
-        catch (Exception ex) { throw new AiDraftValidationException("JSON inválido.", ex); }
+        catch (Exception ex) { throw new AiDraftValidationException("JSON inválido.",
+                "malformed_json", "response_parse", ex); }
     }
-    private static AiDraftValidationException invalid(String message) { return new AiDraftValidationException(message); }
+    private static AiDraftValidationException invalid(String message, String reasonCode, String validationStage) {
+        return new AiDraftValidationException(message, reasonCode, validationStage);
+    }
 }

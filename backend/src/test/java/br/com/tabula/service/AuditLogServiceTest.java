@@ -154,17 +154,25 @@ class AuditLogServiceTest {
                         Map.entry("model", "gpt-4o-mini"), Map.entry("promptLength", 42),
                         Map.entry("warningCount", 1), Map.entry("durationMs", 123),
                         Map.entry("failureReason", "provider_failure"), Map.entry("failureCategory", "timeout"),
+                        Map.entry("reason", "invalid_ai_response"),
+                        Map.entry("reasonCode", "malformed_json"),
+                        Map.entry("validationStage", "response_parse"),
                         Map.entry("promptTokens", 75), Map.entry("completionTokens", 120),
                         Map.entry("totalTokens", 195), Map.entry("prompt", "segredo"),
-                        Map.entry("authorization", "Bearer token")
+                        Map.entry("authorization", "Bearer token"), Map.entry("rawResponse", "secret response"),
+                        Map.entry("apiKey", "secret key"), Map.entry("password", "secret password")
                 ));
         assertEquals(123, log.getDetails().get("durationMs").asInt());
         assertEquals("timeout", log.getDetails().get("failureCategory").asText());
         assertEquals(75, log.getDetails().get("promptTokens").asInt());
         assertEquals(120, log.getDetails().get("completionTokens").asInt());
         assertEquals(195, log.getDetails().get("totalTokens").asInt());
+        assertEquals("invalid_ai_response", log.getDetails().get("reason").asText());
+        assertEquals("malformed_json", log.getDetails().get("reasonCode").asText());
+        assertEquals("response_parse", log.getDetails().get("validationStage").asText());
         assertFalse(log.getDetails().has("prompt"));
         assertFalse(log.getDetails().has("authorization"));
+        assertFalse(log.getDetails().toString().contains("secret"));
     }
 
     @Test

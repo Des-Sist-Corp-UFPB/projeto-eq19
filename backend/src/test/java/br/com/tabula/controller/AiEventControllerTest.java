@@ -5,6 +5,7 @@ import br.com.tabula.ai.AiUsage;
 import br.com.tabula.dto.AiEventDraftResponse;
 import br.com.tabula.dto.AiEventAssistantResponse;
 import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.model.AuditAction;
 import br.com.tabula.service.AiDraftValidationException;
 import br.com.tabula.service.AiEventDraftService;
 import br.com.tabula.service.AuditLogService;
@@ -100,6 +101,32 @@ class AiEventControllerTest {
         assertEquals(503, post("Bearer valid", "{\"prompt\":\"Mesa válida\"}").statusCode());
     }
 
+    @Test void auditsOneSafeSpecificReasonAndKeepsTheExisting422Contract() throws Exception {
+        AiEventDraftService service = mock(AiEventDraftService.class);
+        AuditLogService audit = mock(AuditLogService.class);
+        when(service.generateWithUsage(any())).thenThrow(new AiDraftValidationException(
+                "raw model detail must not escape", "game_not_in_catalog", "draft_validation"));
+        start(authenticated(), service, audit, true,
+                new AiUsageLimiter(Integer.MAX_VALUE, Integer.MAX_VALUE, java.time.ZoneId.of("UTC")));
+
+        HttpResponse<String> response = post("Bearer secret-token", "{\"prompt\":\"private prompt text\"}");
+
+        assertEquals(422, response.statusCode());
+        assertTrue(response.body().contains("INVALID_AI_RESPONSE"));
+        assertFalse(response.body().contains("raw model detail"));
+        verify(audit, times(1)).recordBestEffort(any(), eq(AuditAction.AI_EVENT_DRAFT_REJECTED),
+                eq("AI_EVENT_DRAFT"), isNull(), eq(false), any(), any(), argThat(details ->
+                        "invalid_ai_response".equals(details.get("reason"))
+                                && "game_not_in_catalog".equals(details.get("reasonCode"))
+                                && "draft_validation".equals(details.get("validationStage"))
+                                && "gpt-4o-mini".equals(details.get("model"))
+                                && !details.containsKey("prompt")
+                                && !details.containsKey("authorization")
+                                && !details.toString().contains("private prompt text")
+                                && !details.toString().contains("secret-token")
+                                && !details.toString().contains("raw model detail")));
+    }
+
     @Test void rejectsUsageLimitBeforeExternalCall() throws Exception {
         AiEventDraftService service = mock(AiEventDraftService.class);
         start(authenticated(), service, true,
@@ -138,8 +165,13 @@ class AiEventControllerTest {
 
     private void start(AuthenticatedUserService auth, AiEventDraftService service, boolean configured,
                        AiUsageLimiter limiter) {
+        start(auth, service, mock(AuditLogService.class), configured, limiter);
+    }
+
+    private void start(AuthenticatedUserService auth, AiEventDraftService service, AuditLogService audit,
+                       boolean configured, AiUsageLimiter limiter) {
         app = Javalin.create(config -> config.showJavalinBanner = false);
-        AiEventController.register(app, auth, service, mock(AuditLogService.class), limiter,
+        AiEventController.register(app, auth, service, audit, limiter,
                 configured, "gpt-4o-mini");
         app.start(0);
     }

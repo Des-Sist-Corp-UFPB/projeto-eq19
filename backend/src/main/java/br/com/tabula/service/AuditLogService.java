@@ -117,6 +117,7 @@ public class AuditLogService {
             sanitized.put("reason", safeText(text, 80));
         }
         copySafeString(sanitized, details, "reasonCode", 80);
+        copySafeString(sanitized, details, "validationStage", 80);
         copySafeString(sanitized, details, "section", 80);
         copySafeString(sanitized, details, "resourceId", 120);
         copySafeString(sanitized, details, "field", 80);

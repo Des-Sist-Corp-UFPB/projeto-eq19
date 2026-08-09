@@ -54,6 +54,19 @@ class AiEventDraftServiceTest {
         }
     }
 
+    @Test void exposesSafeSpecificReasonsForInvalidModelResponses() throws Exception {
+        assertReason("", "empty_model_response", "response_parse");
+        assertReason("not json", "malformed_json", "response_parse");
+        assertReason("{\"status\":\"other\"}", "unknown_response_type", "response_contract");
+        assertReason("{\"status\":\"draft\"}", "missing_draft", "response_contract");
+        assertReason(validJson().replace("\"description\":\"Mesa de Magic.\",", ""),
+                "missing_required_field", "draft_validation");
+        assertReason(validJson().replace("\"g2\"", "\"inventado\""),
+                "game_not_in_catalog", "draft_validation");
+        assertReason(validJson().replace("\"18:00\"", "\"25:99\""),
+                "invalid_time", "draft_validation");
+    }
+
     @Test void rejectsUnknownGameAndMismatchedName() throws Exception {
         assertInvalid(validJson().replace("\"g2\"", "\"inventado\""));
         assertInvalid(validJson().replace("Magic: The Gathering", "Xadrez"));
@@ -170,6 +183,15 @@ class AiEventDraftServiceTest {
         AiChatClient client = mock(AiChatClient.class);
         when(client.chat(anyString(), anyString())).thenReturn(response);
         assertThrows(AiDraftValidationException.class, () -> service(client, response).generate("Mesa sábado"));
+    }
+
+    private static void assertReason(String response, String reasonCode, String validationStage) throws Exception {
+        AiChatClient client = mock(AiChatClient.class);
+        when(client.chat(anyString(), anyString())).thenReturn(response);
+        AiDraftValidationException exception = assertThrows(AiDraftValidationException.class,
+                () -> service(client, response).generate("Mesa sábado"));
+        assertEquals(reasonCode, exception.reasonCode());
+        assertEquals(validationStage, exception.validationStage());
     }
 
     private static void assertStatus(String prompt, String modelResponse, String expectedStatus) throws Exception {
