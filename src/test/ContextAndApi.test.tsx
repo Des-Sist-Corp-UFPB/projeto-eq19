@@ -28,7 +28,7 @@ function AuthHarness() {
 }
 
 function DatabaseHarness() {
-  const { state, addGame, editGame, deleteGame, addSession, addComment, addEvent, joinEvent, leaveEvent, completeEvent, addUser, deleteUser, promoteUser, editUser } = useDatabase();
+  const { state, addGame, editGame, deleteGame, addSession, addComment, deleteComment, addEvent, joinEvent, leaveEvent, completeEvent, addUser, deleteUser, promoteUser, editUser } = useDatabase();
 
   return (
     <div>
@@ -36,11 +36,13 @@ function DatabaseHarness() {
       <div data-testid="users-count">{state.users.length}</div>
       <div data-testid="sessions-count">{state.sessions.length}</div>
       <div data-testid="events-count">{state.events.length}</div>
+      <div data-testid="comments-count">{state.sessions[0]?.comments.length ?? 0}</div>
       <button onClick={() => addGame({ name: 'Catan', description: 'Strategy', category: 'Estratégia', minPlayers: 2, maxPlayers: 4, avgPlayTime: 60, complexity: 2.5 })}>addGame</button>
       <button onClick={() => editGame({ ...state.boardGames[0], name: 'Catan editado', description: 'Updated' } as BoardGame)}>editGame</button>
       <button onClick={() => deleteGame(state.boardGames[0].id)}>deleteGame</button>
       <button onClick={() => addSession({ gameId: state.boardGames[0].id, date: '2026-07-02T18:00:00Z', location: 'Bloco A', organizerId: state.users[0].id, participantIds: [state.users[0].id], winnerId: state.users[0].id, duration: 45, notes: 'Test session' }, 'Primeiro comentário')}>addSession</button>
-      <button onClick={() => addComment(state.sessions[0]?.id ?? '', state.users[0].id, 'Comentario')}>addComment</button>
+      <button onClick={() => addComment(state.sessions[0]?.id ?? '', 'Comentario')}>addComment</button>
+      <button onClick={() => void deleteComment(state.sessions[0]?.id ?? '', state.sessions[0]?.comments[0]?.id ?? '').catch(() => undefined)}>deleteComment</button>
       <button onClick={() => addEvent({ gameId: state.boardGames[0].id, date: '2026-08-01', time: '20:00', location: 'Sala 1', maxParticipants: 2, description: 'Evento de teste' }, state.users[0].id)}>addEvent</button>
       <button onClick={() => joinEvent(state.events[0]?.id ?? '', state.users[1].id)}>joinEvent</button>
       <button onClick={() => leaveEvent(state.events[0]?.id ?? '', state.users[1].id)}>leaveEvent</button>
@@ -111,6 +113,11 @@ describe('Auth and database contexts', () => {
     vi.mocked(api.deleteSessionRequest).mockImplementation(async id => {
       serverState.sessions = serverState.sessions.filter(session => session.id !== id);
     });
+    vi.mocked(api.createComment).mockImplementation(async (sessionId, content) => ({
+      id: 'c_backend', userId: 'u1', userName: 'Cauã Botelho', userAvatar: 'CB',
+      content, createdAt: '2026-08-09T12:00:00',
+    }));
+    vi.mocked(api.deleteCommentRequest).mockResolvedValue();
     vi.mocked(api.createEvent).mockImplementation(async input => {
       const event = {
         ...input, id: `e_test_${serverState.events.length}`, organizerId: 'u1',
@@ -222,6 +229,13 @@ describe('Auth and database contexts', () => {
     await waitFor(() => expect(screen.getByTestId('sessions-count').textContent).toBe('4'));
 
     await user.click(screen.getByRole('button', { name: /addComment/i }));
+    await waitFor(() => expect(api.createComment).toHaveBeenCalledWith('s_local', 'Comentario'));
+    await waitFor(() => expect(screen.getByTestId('comments-count').textContent).toBe('1'));
+    vi.mocked(api.deleteCommentRequest).mockRejectedValueOnce(new Error('network'));
+    await user.click(screen.getByRole('button', { name: /deleteComment/i }));
+    expect(screen.getByTestId('comments-count').textContent).toBe('1');
+    await user.click(screen.getByRole('button', { name: /deleteComment/i }));
+    await waitFor(() => expect(screen.getByTestId('comments-count').textContent).toBe('0'));
 
     await user.click(screen.getByRole('button', { name: /addEvent/i }));
     await waitFor(() => expect(screen.getByTestId('events-count').textContent).toBe('4'));

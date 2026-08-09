@@ -1,4 +1,4 @@
-import type { DatabaseState, Event, Session, User } from '../types';
+import type { Comment, DatabaseState, Event, Session, User } from '../types';
 
 export const AUTH_TOKEN_KEY = 'tabula_auth_token';
 
@@ -189,6 +189,19 @@ export async function createSession(session: SessionWriteRequest): Promise<Sessi
 
 export async function deleteSessionRequest(id: string): Promise<void> {
   await requestJson<void>(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function createComment(sessionId: string, content: string): Promise<Comment> {
+  return requestJson<Comment>(`/sessions/${encodeURIComponent(sessionId)}/comments`, {
+    method: 'POST', body: JSON.stringify({ content }),
+  });
+}
+
+export async function deleteCommentRequest(sessionId: string, commentId: string): Promise<void> {
+  await requestJson<void>(
+    `/sessions/${encodeURIComponent(sessionId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE' },
+  );
 }
 
 export type EventWriteRequest = Pick<

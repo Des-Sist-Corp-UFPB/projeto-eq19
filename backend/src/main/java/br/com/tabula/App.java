@@ -8,6 +8,7 @@ import br.com.tabula.controller.PingController;
 import br.com.tabula.controller.StateController;
 import br.com.tabula.controller.EventController;
 import br.com.tabula.controller.SessionController;
+import br.com.tabula.controller.CommentController;
 import br.com.tabula.observability.HttpObservability;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
@@ -66,6 +67,7 @@ public class App {
             AiEventController.register(app, dataSource);
             EventController.register(app, dataSource);
             SessionController.register(app, dataSource);
+            CommentController.register(app, dataSource);
 
             app.exception(Exception.class, (e, ctx) -> {
                 LOGGER.error("Unhandled backend error", e);

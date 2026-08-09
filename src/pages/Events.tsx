@@ -615,9 +615,6 @@ export const Events: React.FC = () => {
                     >
                       {aiLoading ? 'Aplicando alteração...' : 'Aplicar alteração'}
                     </button>
-                    <small style={{ color: 'var(--color-text-muted)' }}>
-                      Cada refinamento usa uma nova chamada e participa da mesma cota da geração inicial.
-                    </small>
                   </div>
                 )}
               </section>

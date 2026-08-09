@@ -1,11 +1,13 @@
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
-import type { DatabaseState, BoardGame, Session, Event, Comment, User, UserRole } from '../types';
+import type { DatabaseState, BoardGame, Session, Event, User, UserRole } from '../types';
 import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
 import {
   completeEventRequest,
+  createComment,
   createSession,
   createEvent,
   deleteSessionRequest,
+  deleteCommentRequest,
   getEvents,
   getSession,
   getSessions,
@@ -37,7 +39,8 @@ interface DatabaseContextType {
   addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => Promise<Session>;
   deleteSession: (sessionId: string) => Promise<void>;
   getSessionById: (sessionId: string) => Promise<Session>;
-  addComment: (sessionId: string, userId: string, content: string) => void;
+  addComment: (sessionId: string, content: string) => Promise<void>;
+  deleteComment: (sessionId: string, commentId: string) => Promise<void>;
   addEvent: (event: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => Promise<Event>;
   joinEvent: (eventId: string, userId: string) => Promise<boolean>;
   leaveEvent: (eventId: string, userId: string) => Promise<void>;
@@ -214,19 +217,8 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return fetched;
   }, []);
 
-  const addComment = (sessionId: string, userId: string, content: string) => {
-    const user = state.users.find(u => u.id === userId);
-    if (!user) return;
-
-    const newComment: Comment = {
-      id: generateId('c'),
-      userId,
-      userName: user.name,
-      userAvatar: user.avatar,
-      content,
-      createdAt: new Date().toISOString()
-    };
-
+  const addComment = async (sessionId: string, content: string) => {
+    const newComment = await createComment(sessionId, content);
     setState(prev => {
       return {
         ...prev,
@@ -239,6 +231,16 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         })
       };
     });
+  };
+
+  const deleteComment = async (sessionId: string, commentId: string) => {
+    await deleteCommentRequest(sessionId, commentId);
+    setState(prev => ({
+      ...prev,
+      sessions: prev.sessions.map(session => session.id === sessionId
+        ? { ...session, comments: session.comments.filter(comment => comment.id !== commentId) }
+        : session),
+    }));
   };
 
   // Event actions
@@ -381,6 +383,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteSession,
         getSessionById,
         addComment,
+        deleteComment,
         addEvent,
         joinEvent,
         leaveEvent,

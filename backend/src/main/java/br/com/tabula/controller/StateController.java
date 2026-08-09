@@ -105,7 +105,7 @@ public class StateController {
             }
 
             try {
-                br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson, true);
+                br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(dataSource, legacyJson, false);
             } catch (Exception ex) {
                 LOGGER.atError()
                       .addKeyValue("state_id", 1)
@@ -394,7 +394,7 @@ public class StateController {
                 }
                 try {
                     br.com.tabula.service.RelationalStateSyncService.syncFromStateJson(
-                            dataSource, payload, !snapshot.exists());
+                            dataSource, payload, false);
                 } catch (Exception ex) {
                     LOGGER.atError()
                           .addKeyValue("state_id", 1)

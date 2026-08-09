@@ -16,7 +16,7 @@ type LoadState =
 
 export const SessionDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { state, getSessionById, addComment } = useDatabase();
+  const { state, getSessionById, addComment, deleteComment } = useDatabase();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -93,7 +93,7 @@ export const SessionDetails: React.FC = () => {
   const organizer = state.users.find(u => u.id === session.organizerId);
   const winner = state.users.find(u => u.id === session.winnerId);
 
-  const handleCommentSubmit = (e: React.FormEvent) => {
+  const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) {
       showToast('Faça login simulado para comentar.', 'error');
@@ -101,9 +101,24 @@ export const SessionDetails: React.FC = () => {
     }
     if (!commentText.trim()) return;
 
-    addComment(session.id, currentUser.id, commentText.trim());
-    showToast('Comentário publicado!', 'success');
-    setCommentText('');
+    try {
+      await addComment(session.id, commentText.trim());
+      showToast('Comentário publicado!', 'success');
+      setCommentText('');
+    } catch {
+      showToast('Não foi possível publicar o comentário.', 'error');
+    }
+  };
+
+  const handleCommentDelete = async (commentId: string) => {
+    try {
+      await deleteComment(session.id, commentId);
+      showToast('Comentário excluído.', 'success');
+    } catch (error) {
+      showToast(error instanceof ApiError && error.status === 403
+        ? 'Você não pode excluir este comentário.'
+        : 'Não foi possível excluir o comentário.', 'error');
+    }
   };
 
   return (
@@ -282,6 +297,13 @@ export const SessionDetails: React.FC = () => {
                         </span>
                       </div>
                       <p style={commentContentStyle}>{c.content}</p>
+                      {(currentUser?.id === c.userId || currentUser?.role === 'admin') && (
+                        <button type="button" className="btn btn-ghost no-print"
+                          aria-label={`Excluir comentário de ${c.userName}`}
+                          onClick={() => void handleCommentDelete(c.id)}>
+                          Excluir
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))

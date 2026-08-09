@@ -490,28 +490,7 @@ public class RelationalStateSyncService {
                                 }
                             }
 
-                            // comments -> comentarios
-                            JsonNode commentsNode = sessionNode.path("comments");
-                            if (commentsNode.isArray()) {
-                                try (PreparedStatement commentStmt = conn.prepareStatement(
-                                        "INSERT INTO comentarios (external_id, partida_id, usuario_id, conteudo, criado_em) VALUES (?, ?, ?, ?, ?)")) {
-                                    for (JsonNode commentNode : commentsNode) {
-                                        commentStmt.setString(1, commentNode.path("id").asText());
-                                        commentStmt.setLong(2, dbSessionId);
-
-                                        String commentUserId = commentNode.path("userId").asText();
-                                        Long dbCommentUserId = userExternalToInternalId.get(commentUserId);
-                                        setNullableLong(commentStmt, 3, dbCommentUserId);
-
-                                        commentStmt.setString(4, commentNode.path("content").asText());
-
-                                        String createdAtStr = commentNode.path("createdAt").asText();
-                                        commentStmt.setTimestamp(5, parseTimestamp(createdAtStr));
-
-                                        commentStmt.executeUpdate();
-                                    }
-                                }
-                            }
+                            // Comments are authoritative in comentarios and are never shadow-written from app_state.
                             sessionsSynced++;
                         }
                     }

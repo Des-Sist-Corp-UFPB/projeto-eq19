@@ -34,6 +34,8 @@ vi.mock('../services/api', async () => {
     getSession: vi.fn(),
     createSession: vi.fn(),
     deleteSessionRequest: vi.fn().mockResolvedValue(undefined),
+    createComment: vi.fn(),
+    deleteCommentRequest: vi.fn().mockResolvedValue(undefined),
   };
 });
 
