@@ -62,6 +62,11 @@ public class StateController {
     }
 
     public static void register(Javalin app, HikariDataSource dataSource) {
+        register(app, dataSource, source -> new RelationalSlices(
+                relationalEvents(source), relationalSessions(source)));
+    }
+
+    static void register(Javalin app, HikariDataSource dataSource, RelationalSliceReader relationalSliceReader) {
         AuditLogService auditLogService = new AuditLogService(dataSource);
         AuthenticatedUserService authenticatedUserService = new AuthenticatedUserService(dataSource);
         StateAuthorizationService stateAuthorizationService = new StateAuthorizationService();
@@ -310,11 +315,36 @@ public class StateController {
                 }
 
                 if (snapshot.exists()) {
-                    payload = ensureEventsSection(snapshot.payload(), payload);
-                    payload = ensureSessionsSection(snapshot.payload(), payload);
+                    String authorizationCurrent;
+                    try {
+                        RelationallyProtectedState protectedState = protectRelationalSections(
+                                dataSource, snapshot.payload(), payload, relationalSliceReader);
+                        authorizationCurrent = protectedState.currentPayload();
+                        payload = protectedState.candidatePayload();
+                    } catch (EventSliceConflictException ex) {
+                        auditLogService.recordBestEffort(
+                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,
+                                "EVENT", null, false, ctx.ip(), ctx.header("User-Agent"),
+                                Map.of("reason", "relational_events_are_authoritative")
+                        );
+                        ctx.status(409).json(Map.of(
+                                "error", "Eventos devem ser alterados pelos endpoints específicos."
+                        ));
+                        return;
+                    } catch (SessionSliceConflictException ex) {
+                        auditLogService.recordBestEffort(
+                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,
+                                "SESSION", null, false, ctx.ip(), ctx.header("User-Agent"),
+                                Map.of("reason", "relational_sessions_are_authoritative")
+                        );
+                        ctx.status(409).json(Map.of(
+                                "error", "Partidas devem ser alteradas pelos endpoints específicos."
+                        ));
+                        return;
+                    }
                     StateAuthorizationService.AuthorizationDecision authorization =
                             stateAuthorizationService.authorize(
-                                    snapshot.payload(), payload, principal.orElseThrow());
+                                    authorizationCurrent, payload, principal.orElseThrow());
                     if (!authorization.allowed()) {
                         auditLogService.recordBestEffort(
                                 principal.orElseThrow(), authorization.auditAction(),
@@ -327,32 +357,6 @@ public class StateController {
                         } else {
                             ctx.status(403).json(Map.of("error", "Operação não permitida."));
                         }
-                        return;
-                    }
-                    try {
-                        payload = protectRelationalEvents(dataSource, snapshot.payload(), payload);
-                    } catch (EventSliceConflictException ex) {
-                        auditLogService.recordBestEffort(
-                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,
-                                "EVENT", null, false, ctx.ip(), ctx.header("User-Agent"),
-                                Map.of("reason", "relational_events_are_authoritative")
-                        );
-                        ctx.status(409).json(Map.of(
-                                "error", "Eventos devem ser alterados pelos endpoints específicos."
-                        ));
-                        return;
-                    }
-                    try {
-                        payload = protectRelationalSessions(dataSource, snapshot.payload(), payload);
-                    } catch (SessionSliceConflictException ex) {
-                        auditLogService.recordBestEffort(
-                                principal.orElseThrow(), AuditAction.STATE_UPDATE_REJECTED,
-                                "SESSION", null, false, ctx.ip(), ctx.header("User-Agent"),
-                                Map.of("reason", "relational_sessions_are_authoritative")
-                        );
-                        ctx.status(409).json(Map.of(
-                                "error", "Partidas devem ser alteradas pelos endpoints específicos."
-                        ));
                         return;
                     }
                 }
@@ -485,93 +489,48 @@ public class StateController {
         }
     }
 
-    private static String protectRelationalSessions(HikariDataSource dataSource, String previousPayload,
-                                                    String candidatePayload)
-            throws SQLException, SessionSliceConflictException {
-        try {
-            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
-            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
-            if (!previous.isObject() || !candidate.isObject()) throw new SessionSliceConflictException();
-            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get("sessions");
-            if (java.util.Objects.equals(previous.get("sessions"), supplied)) {
-                return MAPPER.writeValueAsString(candidate);
-            }
-            com.fasterxml.jackson.databind.JsonNode authoritative = relationalSessions(dataSource);
-            if (supplied != null && !supplied.equals(authoritative)) throw new SessionSliceConflictException();
-            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
-                    .set("sessions", authoritative.deepCopy());
-            return MAPPER.writeValueAsString(candidate);
-        } catch (SessionSliceConflictException ex) {
-            throw ex;
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
-            throw new SessionSliceConflictException();
-        } catch (Exception ex) {
-            throw new SQLException("Failed to protect relational sessions", ex);
-        }
-    }
-
-    private static String protectRelationalEvents(HikariDataSource dataSource, String previousPayload,
-                                                    String candidatePayload)
-            throws SQLException, EventSliceConflictException {
+    private static RelationallyProtectedState protectRelationalSections(
+            HikariDataSource dataSource, String previousPayload, String candidatePayload,
+            RelationalSliceReader relationalSliceReader)
+            throws SQLException, EventSliceConflictException, SessionSliceConflictException {
         try {
             com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
             com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
             if (!previous.isObject() || !candidate.isObject()) {
                 throw new EventSliceConflictException();
             }
-            com.fasterxml.jackson.databind.JsonNode supplied = candidate.get("events");
-            if (java.util.Objects.equals(previous.get("events"), supplied)) {
-                return MAPPER.writeValueAsString(candidate);
-            }
-            com.fasterxml.jackson.databind.JsonNode authoritative = relationalEvents(dataSource);
-            if (supplied != null && !supplied.equals(authoritative)) {
+            RelationalSlices relationalSlices = relationalSliceReader.read(dataSource);
+            com.fasterxml.jackson.databind.JsonNode authoritativeEvents = relationalSlices.events();
+            com.fasterxml.jackson.databind.JsonNode suppliedEvents = candidate.get("events");
+            if (suppliedEvents != null && !suppliedEvents.equals(authoritativeEvents)) {
                 throw new EventSliceConflictException();
             }
+            com.fasterxml.jackson.databind.JsonNode authoritativeSessions = relationalSlices.sessions();
+            com.fasterxml.jackson.databind.JsonNode suppliedSessions = candidate.get("sessions");
+            if (suppliedSessions != null && !suppliedSessions.equals(authoritativeSessions)) {
+                throw new SessionSliceConflictException();
+            }
+            com.fasterxml.jackson.databind.node.ObjectNode authorizationCurrent =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) previous;
+            authorizationCurrent.set("events", authoritativeEvents.deepCopy());
+            authorizationCurrent.set("sessions", authoritativeSessions.deepCopy());
+            if (!candidate.has("logs") && previous.has("logs")) {
+                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
+                        .set("logs", previous.get("logs").deepCopy());
+            }
             ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
-                    .set("events", authoritative.deepCopy());
-            return MAPPER.writeValueAsString(candidate);
-        } catch (EventSliceConflictException ex) {
+                    .set("events", authoritativeEvents.deepCopy());
+            ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
+                    .set("sessions", authoritativeSessions.deepCopy());
+            return new RelationallyProtectedState(
+                    MAPPER.writeValueAsString(authorizationCurrent),
+                    MAPPER.writeValueAsString(candidate));
+        } catch (EventSliceConflictException | SessionSliceConflictException ex) {
             throw ex;
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
             throw new EventSliceConflictException();
         } catch (Exception ex) {
-            throw new SQLException("Failed to protect relational events", ex);
-        }
-    }
-
-    private static String ensureEventsSection(String previousPayload, String candidatePayload)
-            throws EventSliceConflictException {
-        try {
-            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
-            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
-            if (!previous.isObject() || !candidate.isObject()) throw new EventSliceConflictException();
-            if (!candidate.has("events")) {
-                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
-                        .set("events", previous.path("events").deepCopy());
-            }
-            return MAPPER.writeValueAsString(candidate);
-        } catch (EventSliceConflictException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new EventSliceConflictException();
-        }
-    }
-
-    private static String ensureSessionsSection(String previousPayload, String candidatePayload)
-            throws SessionSliceConflictException {
-        try {
-            com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
-            com.fasterxml.jackson.databind.JsonNode candidate = MAPPER.readTree(candidatePayload);
-            if (!previous.isObject() || !candidate.isObject()) throw new SessionSliceConflictException();
-            if (!candidate.has("sessions")) {
-                ((com.fasterxml.jackson.databind.node.ObjectNode) candidate)
-                        .set("sessions", previous.path("sessions").deepCopy());
-            }
-            return MAPPER.writeValueAsString(candidate);
-        } catch (SessionSliceConflictException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new SessionSliceConflictException();
+            throw new SQLException("Failed to protect relational state sections", ex);
         }
     }
 
@@ -598,6 +557,19 @@ public class StateController {
     }
 
     private record StateSnapshot(boolean exists, String payload) {
+    }
+
+    private record RelationallyProtectedState(String currentPayload, String candidatePayload) {
+    }
+
+    record RelationalSlices(
+            com.fasterxml.jackson.databind.node.ArrayNode events,
+            com.fasterxml.jackson.databind.node.ArrayNode sessions) {
+    }
+
+    @FunctionalInterface
+    interface RelationalSliceReader {
+        RelationalSlices read(HikariDataSource dataSource) throws Exception;
     }
 
     private static final class EventSliceConflictException extends RuntimeException {

@@ -981,9 +981,206 @@ class StateControllerTest {
         }
     }
 
+    @Test
+    void shouldIgnoreInvalidLegacySessionWhenRelationalSectionsAreOmitted() throws Exception {
+        String invalidSession = "{\"id\":\"s_5082d1a2-9178-4d9c-929d-e0664b1327db\","
+                + "\"gameId\":\"g1\",\"organizerId\":\"u1\","
+                + "\"participantIds\":[\"u1\",\"u1\"],\"photos\":[],\"comments\":[]}";
+        assertOmittedRelationalSectionsSucceed("[" + invalidSession + "]", "[]");
+    }
+
+    @Test
+    void shouldIgnoreInvalidLegacyEventWhenRelationalSectionsAreOmitted() throws Exception {
+        String invalidEvent = "{\"id\":\"e_legacy_invalid\",\"gameId\":\"g1\","
+                + "\"organizerId\":\"u1\",\"participantIds\":[\"u1\"],\"status\":\"active\"}";
+        assertOmittedRelationalSectionsSucceed("[]", "[" + invalidEvent + "]");
+    }
+
+    @Test
+    void shouldRejectExplicitDivergentRelationalSectionsWithConflict() throws Exception {
+        assertExplicitRelationalConflict("events", "[{\"id\":\"e_forged\"}]");
+        assertExplicitRelationalConflict("sessions", "[{\"id\":\"s_forged\"}]");
+    }
+
+    @Test
+    void shouldReplaceInvalidLegacySlicesWithCompleteNonEmptyRelationalProjections() throws Exception {
+        String relationalEvents = relationalEventsJson();
+        String relationalSessions = relationalSessionsJson();
+        String invalidLegacyEvent = "[{\"id\":\"e_legacy\",\"participantIds\":[\"u1\"]}]";
+        String invalidLegacySession = "[{\"id\":\"s_legacy\",\"participantIds\":[\"u1\",\"u1\"]}]";
+        PutFixture fixture = authenticatedPutFixture(
+                stateWithRelationalSections(invalidLegacySession, invalidLegacyEvent, "Bio antigo"));
+        Javalin app = startStateApp(fixture.dataSource(), relationalEvents, relationalSessions);
+        try {
+            HttpResponse<String> response = sendPut(
+                    app, "/state", legacyCandidate("Bio atualizado"), "Bearer token");
+            assertEquals(200, response.statusCode(), response.body());
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode saved = capturedSavedPayload(fixture);
+            assertEquals(mapper.readTree(relationalEvents), saved.get("events"));
+            assertEquals(mapper.readTree(relationalSessions), saved.get("sessions"));
+            assertEquals(2, saved.path("events").size());
+            assertEquals(2, saved.path("sessions").size());
+            assertFalse(saved.toString().contains("e_legacy"));
+            assertFalse(saved.toString().contains("s_legacy"));
+            verify(fixture.dataSource(), org.mockito.Mockito.times(4)).getConnection();
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldAcceptExplicitRelationalSectionsWhenTheyExactlyMatchOfficialProjections() throws Exception {
+        String relationalEvents = relationalEventsJson();
+        String relationalSessions = relationalSessionsJson();
+        PutFixture fixture = authenticatedPutFixture(
+                stateWithRelationalSections("[]", "[]", "Bio antigo"));
+        String candidate = addTopLevelFields(legacyCandidate("Bio atualizado"),
+                "\"events\":" + relationalEvents + ",\"sessions\":" + relationalSessions);
+        Javalin app = startStateApp(fixture.dataSource(), relationalEvents, relationalSessions);
+        try {
+            HttpResponse<String> response = sendPut(app, "/state", candidate, "Bearer token");
+            assertEquals(200, response.statusCode(), response.body());
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode saved = capturedSavedPayload(fixture);
+            assertEquals(mapper.readTree(relationalEvents), saved.get("events"));
+            assertEquals(mapper.readTree(relationalSessions), saved.get("sessions"));
+            verify(fixture.dataSource(), org.mockito.Mockito.times(4)).getConnection();
+        } finally {
+            app.stop();
+        }
+    }
+
+    private static void assertOmittedRelationalSectionsSucceed(String legacySessions, String legacyEvents)
+            throws Exception {
+        PutFixture fixture = authenticatedPutFixture(
+                stateWithRelationalSections(legacySessions, legacyEvents, "Bio antigo"));
+        Javalin app = startStateApp(fixture.dataSource());
+        try {
+            HttpResponse<String> response = sendPut(
+                    app, "/state", legacyCandidate("Bio atualizado"), "Bearer token");
+            assertEquals(200, response.statusCode(), response.body());
+            ArgumentCaptor<String> savedPayload = ArgumentCaptor.forClass(String.class);
+            verify(fixture.finalStatement()).setString(org.mockito.ArgumentMatchers.eq(1), savedPayload.capture());
+            com.fasterxml.jackson.databind.JsonNode saved =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(savedPayload.getValue());
+            assertEquals("Bio atualizado", saved.path("users").get(0).path("bio").asText());
+            assertEquals(0, saved.path("sessions").size());
+            assertEquals(0, saved.path("events").size());
+        } finally {
+            app.stop();
+        }
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode capturedSavedPayload(PutFixture fixture)
+            throws Exception {
+        ArgumentCaptor<String> savedPayload = ArgumentCaptor.forClass(String.class);
+        verify(fixture.finalStatement()).setString(org.mockito.ArgumentMatchers.eq(1), savedPayload.capture());
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(savedPayload.getValue());
+    }
+
+    private static void assertExplicitRelationalConflict(String section, String divergentValue)
+            throws Exception {
+        PutFixture fixture = authenticatedPutFixture(
+                stateWithRelationalSections("[]", "[]", "Bio antigo"));
+        String candidate = addTopLevelFields(
+                legacyCandidate("Bio atualizado"), "\"" + section + "\":" + divergentValue);
+        Javalin app = startStateApp(fixture.dataSource());
+        try {
+            HttpResponse<String> response = sendPut(app, "/state", candidate, "Bearer token");
+            assertEquals(409, response.statusCode(), response.body());
+            verify(fixture.finalStatement(), never()).setString(
+                    org.mockito.ArgumentMatchers.eq(1), org.mockito.ArgumentMatchers.contains("\"users\""));
+        } finally {
+            app.stop();
+        }
+    }
+
+    private static PutFixture authenticatedPutFixture(String previous) throws Exception {
+        HikariDataSource dataSource = mock(HikariDataSource.class);
+        Connection snapshotConnection = mock(Connection.class);
+        Connection authConnection = mock(Connection.class);
+        Connection finalConnection = mock(Connection.class);
+        PreparedStatement snapshotStatement = mock(PreparedStatement.class);
+        PreparedStatement authStatement = mock(PreparedStatement.class);
+        PreparedStatement finalStatement = mock(PreparedStatement.class);
+        ResultSet snapshotResult = mock(ResultSet.class);
+        ResultSet authResult = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(snapshotConnection, authConnection, finalConnection)
+                .thenThrow(new SQLException("shadow sync unavailable"));
+        when(snapshotConnection.prepareStatement(anyString())).thenReturn(snapshotStatement);
+        when(snapshotStatement.executeQuery()).thenReturn(snapshotResult);
+        when(snapshotResult.next()).thenReturn(true);
+        when(snapshotResult.getString(1)).thenReturn(previous);
+        when(authConnection.prepareStatement(anyString())).thenReturn(authStatement);
+        when(authStatement.executeQuery()).thenReturn(authResult);
+        when(authResult.next()).thenReturn(true);
+        when(authResult.getLong("id")).thenReturn(1L);
+        when(authResult.getString("external_id")).thenReturn("u1");
+        when(authResult.getString("role")).thenReturn("USER");
+        when(finalConnection.prepareStatement(anyString())).thenReturn(finalStatement);
+        when(finalStatement.executeUpdate()).thenReturn(1);
+        return new PutFixture(dataSource, finalStatement);
+    }
+
+    private static String stateWithRelationalSections(String sessions, String events, String bio) {
+        return addTopLevelFields(legacyCandidate(bio), "\"sessions\":" + sessions
+                + ",\"events\":" + events + ",\"logs\":[]");
+    }
+
+    private static String addTopLevelFields(String json, String fields) {
+        return json.substring(0, json.length() - 1) + "," + fields + "}";
+    }
+
+    private static String legacyCandidate(String bio) {
+        return "{\"users\":[{\"id\":\"u1\",\"name\":\"Ana\",\"email\":\"ana@example.com\","
+                + "\"role\":\"student\",\"course\":\"SI\",\"avatar\":\"A\",\"winCount\":0,"
+                + "\"favoriteGames\":[],\"joinedAt\":\"2026-01-01\",\"bio\":\"" + bio
+                + "\"}],\"boardGames\":[{\"id\":\"g1\",\"name\":\"Jogo 1\"},"
+                + "{\"id\":\"g2\",\"name\":\"Jogo 2\"}]}";
+    }
+
+    private static String relationalEventsJson() {
+        return "[{\"id\":\"e_rel_1\",\"gameId\":\"g1\",\"date\":\"2026-08-10\","
+                + "\"time\":\"18:00\",\"location\":\"Sala A\",\"maxParticipants\":4,"
+                + "\"participantIds\":[\"u1\"],\"waitingListIds\":[],\"description\":\"Evento 1\","
+                + "\"organizerId\":\"u1\",\"status\":\"active\"},"
+                + "{\"id\":\"e_rel_2\",\"gameId\":\"g2\",\"date\":\"2026-08-11\","
+                + "\"time\":\"19:00\",\"location\":\"Sala B\",\"maxParticipants\":6,"
+                + "\"participantIds\":[\"u1\"],\"waitingListIds\":[],\"description\":\"Evento 2\","
+                + "\"organizerId\":\"u1\",\"status\":\"active\"}]";
+    }
+
+    private static String relationalSessionsJson() {
+        return "[{\"id\":\"s_rel_1\",\"gameId\":\"g1\",\"date\":\"2026-08-10T18:00:00Z\","
+                + "\"location\":\"Sala A\",\"organizerId\":\"u1\",\"participantIds\":[\"u1\"],"
+                + "\"winnerId\":null,\"duration\":60,\"notes\":\"Partida 1\",\"photos\":[],\"comments\":[]},"
+                + "{\"id\":\"s_rel_2\",\"gameId\":\"g2\",\"date\":\"2026-08-11T19:00:00Z\","
+                + "\"location\":\"Sala B\",\"organizerId\":\"u1\",\"participantIds\":[\"u1\"],"
+                + "\"winnerId\":null,\"duration\":90,\"notes\":\"Partida 2\",\"photos\":[],\"comments\":[]}]";
+    }
+
+    private record PutFixture(HikariDataSource dataSource, PreparedStatement finalStatement) {
+    }
+
     private static Javalin startStateApp(HikariDataSource dataSource) {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         Javalin app = Javalin.create(config -> config.showJavalinBanner = false);
-        StateController.register(app, dataSource);
+        StateController.register(app, dataSource, ignored -> new StateController.RelationalSlices(
+                mapper.createArrayNode(), mapper.createArrayNode()));
+        app.start(0);
+        return app;
+    }
+
+    private static Javalin startStateApp(
+            HikariDataSource dataSource, String eventsJson, String sessionsJson) throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        Javalin app = Javalin.create(config -> config.showJavalinBanner = false);
+        StateController.register(app, dataSource, ignored -> new StateController.RelationalSlices(
+                (com.fasterxml.jackson.databind.node.ArrayNode) mapper.readTree(eventsJson),
+                (com.fasterxml.jackson.databind.node.ArrayNode) mapper.readTree(sessionsJson)));
         app.start(0);
         return app;
     }
