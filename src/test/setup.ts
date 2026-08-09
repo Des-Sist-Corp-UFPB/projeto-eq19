@@ -39,6 +39,12 @@ vi.mock('../services/api', async () => {
     getFavorites: vi.fn().mockResolvedValue([]),
     addFavoriteRequest: vi.fn(),
     removeFavoriteRequest: vi.fn().mockResolvedValue(undefined),
+    getProfile: vi.fn(),
+    updateProfile: vi.fn(async profile => ({
+      id: 'u2',
+      ...profile,
+      joinedAt: '2026-01-01T00:00:00',
+    })),
   };
 });
 

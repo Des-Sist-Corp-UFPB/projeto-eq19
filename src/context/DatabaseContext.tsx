@@ -17,6 +17,7 @@ import {
   leaveEventRequest,
   removeFavoriteRequest,
   saveServerState,
+  updateProfile,
 } from '../services/api';
 import { useToast } from './ToastContext';
 
@@ -28,7 +29,14 @@ const generateId = (prefix: string) => {
 };
 
 const serializeLegacyState = (state: DatabaseState) => JSON.stringify({
-  users: state.users.map(({ favoriteGames: _favoriteGames, ...user }) => user),
+  users: state.users.map(user => ({
+    id: user.id,
+    email: user.email,
+    passwordHash: user.passwordHash,
+    role: user.role,
+    winCount: user.winCount,
+    joinedAt: user.joinedAt,
+  })),
   boardGames: state.boardGames,
 });
 
@@ -58,7 +66,7 @@ interface DatabaseContextType {
   ) => Promise<void>;
   deleteUser: (userId: string) => void;
   promoteUser: (userId: string) => void;
-  editUser: (userId: string, updates: Partial<User>) => void;
+  editUser: (userId: string, updates: Pick<Partial<User>, 'name' | 'course' | 'bio' | 'avatarUrl'>) => Promise<void>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
@@ -364,14 +372,18 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   };
 
-  const editUser = (userId: string, updates: Partial<User>) => {
-    setState(prev => {
-      const updated = {
-        ...prev,
-        users: prev.users.map(u => u.id === userId ? { ...u, ...updates } : u)
-      };
-      return syncDatabaseCalculations(updated);
+  const editUser = async (userId: string, updates: Pick<Partial<User>, 'name' | 'course' | 'bio' | 'avatarUrl'>) => {
+    const user = state.users.find(candidate => candidate.id === userId);
+    if (!user) throw new Error('Profile not found');
+    const saved = await updateProfile({
+      name: updates.name ?? user.name,
+      course: updates.course ?? user.course,
+      bio: updates.bio ?? user.bio,
+      avatarUrl: 'avatarUrl' in updates ? updates.avatarUrl : user.avatarUrl,
     });
+    setState(prev => ({ ...prev, users: prev.users.map(candidate => candidate.id === saved.id
+      ? { ...candidate, ...saved }
+      : candidate) }));
   };
 
   const promoteUser = (userId: string) => {

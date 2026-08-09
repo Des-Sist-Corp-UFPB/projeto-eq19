@@ -73,7 +73,10 @@ public class RelationalStateSyncService {
                     stmt.executeUpdate();
                 }
 
-                // 2) Sync users (do not delete usuarios)
+                // User identity, authentication, authorization and profile data are
+                // authoritative in usuarios. Legacy state synchronization must never
+                // create users or mutate those columns.
+                /* profile migration boundary: legacy user synchronization removed
                 JsonNode usersNode = root.path("users");
                 if (usersNode.isArray()) {
                     for (JsonNode userNode : usersNode) {
@@ -196,6 +199,7 @@ public class RelationalStateSyncService {
                         usersSynced++;
                     }
                 }
+                */
 
                 // Cache all users external_id to internal id
                 Map<String, Long> userExternalToInternalId = new HashMap<>();

@@ -215,7 +215,7 @@ class SessionServicePostgreSqlTest {
             try (ResultSet row = statement.executeQuery(
                     "SELECT data->'users'->0->>'course' FROM app_state WHERE id = 1")) {
                 assertTrue(row.next());
-                assertEquals("Curso atualizado", row.getString(1));
+                assertEquals("", row.getString(1));
             }
         }
     }

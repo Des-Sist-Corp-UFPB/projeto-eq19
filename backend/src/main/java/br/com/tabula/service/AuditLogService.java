@@ -161,6 +161,15 @@ public class AuditLogService {
                     .distinct()
                     .forEach(array::add);
         }
+        Object changedFields = details.get("changedFields");
+        if (changedFields instanceof Collection<?> values) {
+            ArrayNode array = sanitized.putArray("changedFields");
+            for (Object value : values) {
+                if (value instanceof String field && Set.of("name", "course", "bio", "avatarUrl").contains(field)) {
+                    array.add(field);
+                }
+            }
+        }
         return sanitized;
     }
 

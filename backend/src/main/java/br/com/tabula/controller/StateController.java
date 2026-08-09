@@ -65,16 +65,18 @@ public class StateController {
 
     public static void register(Javalin app, HikariDataSource dataSource) {
         register(app, dataSource, source -> new RelationalSlices(
-                relationalEvents(source), relationalSessions(source)), StateController::relationalFavorites);
+                relationalEvents(source), relationalSessions(source)), StateController::relationalFavorites,
+                StateController::relationalProfiles);
     }
 
     static void register(Javalin app, HikariDataSource dataSource, RelationalSliceReader relationalSliceReader) {
-        register(app, dataSource, relationalSliceReader, ignored -> Map.of());
+        register(app, dataSource, relationalSliceReader, ignored -> Map.of(), ignored -> Map.of());
     }
 
     private static void register(Javalin app, HikariDataSource dataSource,
                                  RelationalSliceReader relationalSliceReader,
-                                 RelationalFavoriteReader relationalFavoriteReader) {
+                                 RelationalFavoriteReader relationalFavoriteReader,
+                                 RelationalProfileReader relationalProfileReader) {
         AuditLogService auditLogService = new AuditLogService(dataSource);
         AuthenticatedUserService authenticatedUserService = new AuthenticatedUserService(dataSource);
         StateAuthorizationService stateAuthorizationService = new StateAuthorizationService();
@@ -284,7 +286,8 @@ public class StateController {
                     ctx.status(404).json(Map.of("error", "Estado ainda não inicializado."));
                     return;
                 }
-                if (!relationalPayload) payload = overlayRelationalSlices(dataSource, payload, relationalFavoriteReader);
+                if (!relationalPayload) payload = overlayRelationalSlices(dataSource, payload, relationalFavoriteReader,
+                        relationalProfileReader);
                 ctx.contentType("application/json").result(payload);
             } catch (SQLException ex) {
                 LOGGER.atError()
@@ -326,7 +329,8 @@ public class StateController {
                     String authorizationCurrent;
                     try {
                         RelationallyProtectedState protectedState = protectRelationalSections(
-                                dataSource, snapshot.payload(), payload, relationalSliceReader, relationalFavoriteReader);
+                                dataSource, snapshot.payload(), payload, relationalSliceReader, relationalFavoriteReader,
+                                relationalProfileReader);
                         authorizationCurrent = protectedState.currentPayload();
                         payload = protectedState.candidatePayload();
                     } catch (EventSliceConflictException ex) {
@@ -479,7 +483,8 @@ public class StateController {
     }
 
     private static String overlayRelationalSlices(HikariDataSource dataSource, String legacyPayload,
-                                                  RelationalFavoriteReader relationalFavoriteReader)
+                                                  RelationalFavoriteReader relationalFavoriteReader,
+                                                  RelationalProfileReader relationalProfileReader)
             throws SQLException {
         try {
             com.fasterxml.jackson.databind.JsonNode legacy = MAPPER.readTree(legacyPayload);
@@ -489,6 +494,7 @@ public class StateController {
                         .set("events", relationalEvents(dataSource));
             }
             projectRelationalFavorites(legacy, relationalFavoriteReader.read(dataSource));
+            projectRelationalProfiles(legacy, relationalProfileReader.read(dataSource));
             try {
                 ((com.fasterxml.jackson.databind.node.ObjectNode) legacy)
                         .set("sessions", relationalSessions(dataSource));
@@ -505,7 +511,8 @@ public class StateController {
     @WithSpan("state.relational.protect")
     private static RelationallyProtectedState protectRelationalSections(
             HikariDataSource dataSource, String previousPayload, String candidatePayload,
-            RelationalSliceReader relationalSliceReader, RelationalFavoriteReader relationalFavoriteReader)
+            RelationalSliceReader relationalSliceReader, RelationalFavoriteReader relationalFavoriteReader,
+            RelationalProfileReader relationalProfileReader)
             throws SQLException, EventSliceConflictException, SessionSliceConflictException {
         try {
             com.fasterxml.jackson.databind.JsonNode previous = MAPPER.readTree(previousPayload);
@@ -529,6 +536,9 @@ public class StateController {
                     (com.fasterxml.jackson.databind.node.ObjectNode) previous;
             projectRelationalFavorites(authorizationCurrent, authoritativeFavorites);
             projectRelationalFavorites(candidate, authoritativeFavorites);
+            Map<String, Map<String, Object>> authoritativeProfiles = relationalProfileReader.read(dataSource);
+            projectRelationalProfiles(authorizationCurrent, authoritativeProfiles);
+            projectRelationalProfiles(candidate, authoritativeProfiles);
             authorizationCurrent.set("events", authoritativeEvents.deepCopy());
             authorizationCurrent.set("sessions", authoritativeSessions.deepCopy());
             if (!candidate.has("logs") && previous.has("logs")) {
@@ -575,6 +585,43 @@ public class StateController {
             com.fasterxml.jackson.databind.node.ArrayNode projected = MAPPER.createArrayNode();
             for (String gameId : favorites.getOrDefault(user.path("id").asText(), List.of())) projected.add(gameId);
             ((com.fasterxml.jackson.databind.node.ObjectNode) user).set("favoriteGames", projected);
+        }
+    }
+
+    private static Map<String, Map<String, Object>> relationalProfiles(HikariDataSource dataSource) throws SQLException {
+        Map<String, Map<String, Object>> profiles = new java.util.LinkedHashMap<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT external_id, nome, email, role, curso, bio, avatar_url, criado_em
+                     FROM usuarios WHERE external_id IS NOT NULL
+                     """); ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                Map<String, Object> profile = new java.util.LinkedHashMap<>();
+                profile.put("name", rows.getString("nome"));
+                profile.put("email", rows.getString("email"));
+                profile.put("role", "ADMIN".equalsIgnoreCase(rows.getString("role")) ? "admin" : "student");
+                profile.put("course", java.util.Objects.toString(rows.getString("curso"), ""));
+                profile.put("bio", java.util.Objects.toString(rows.getString("bio"), ""));
+                profile.put("avatarUrl", rows.getString("avatar_url"));
+                profile.put("joinedAt", rows.getTimestamp("criado_em").toLocalDateTime().toString());
+                profiles.put(rows.getString("external_id"), profile);
+            }
+        }
+        return profiles;
+    }
+
+    private static void projectRelationalProfiles(com.fasterxml.jackson.databind.JsonNode state,
+                                                   Map<String, Map<String, Object>> profiles) {
+        if (!state.path("users").isArray()) return;
+        for (com.fasterxml.jackson.databind.JsonNode user : state.path("users")) {
+            if (!user.isObject()) continue;
+            Map<String, Object> profile = profiles.get(user.path("id").asText());
+            if (profile == null) continue;
+            com.fasterxml.jackson.databind.node.ObjectNode target = (com.fasterxml.jackson.databind.node.ObjectNode) user;
+            profile.forEach((field, value) -> {
+                if (value == null) target.putNull(field); else target.putPOJO(field, value);
+            });
+            target.put("avatar", "🎲");
         }
     }
 
@@ -663,6 +710,11 @@ public class StateController {
     @FunctionalInterface
     private interface RelationalFavoriteReader {
         Map<String, List<String>> read(HikariDataSource dataSource) throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface RelationalProfileReader {
+        Map<String, Map<String, Object>> read(HikariDataSource dataSource) throws Exception;
     }
 
     private static final class EventSliceConflictException extends RuntimeException {

@@ -16,7 +16,7 @@ const CameraIcon: React.FC<{ size?: number; style?: React.CSSProperties }> = ({ 
 export const PlayerProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { state, editUser } = useDatabase();
-  const { currentUser, isAdmin, changePassword } = useAuth();
+  const { currentUser, changePassword } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -54,7 +54,7 @@ export const PlayerProfile: React.FC = () => {
 
   // Calculate stats for this player
   const playerSessions = state.sessions.filter(s => s.participantIds.includes(user.id));
-  const canEditAvatar = currentUser?.id === user.id || isAdmin;
+  const canEditAvatar = currentUser?.id === user.id;
   const isSelf = currentUser?.id === user.id;
   const playerWins = state.sessions.filter(s => s.winnerId === user.id).length;
   const winRate = playerSessions.length > 0 ? Math.round((playerWins / playerSessions.length) * 100) : 0;
@@ -74,18 +74,26 @@ export const PlayerProfile: React.FC = () => {
     fileInputRef.current?.click();
   };
 
-  const handleRemoverFotoClick = () => {
-    editUser(user.id, { avatarUrl: "" });
-    setAvatarUrl("");
-    showToast('Foto de perfil removida com sucesso.', 'success');
-    setIsAvatarModalOpen(false);
+  const handleRemoverFotoClick = async () => {
+    try {
+      await editUser(user.id, { avatarUrl: "" });
+      setAvatarUrl("");
+      showToast('Foto de perfil removida com sucesso.', 'success');
+      setIsAvatarModalOpen(false);
+    } catch {
+      showToast('Não foi possível atualizar a foto de perfil.', 'error');
+    }
   };
 
-  const handleUrlSave = (e: React.FormEvent) => {
+  const handleUrlSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    editUser(user.id, { avatarUrl: avatarUrl.trim() });
-    showToast('Foto de perfil atualizada com sucesso.', 'success');
-    setIsAvatarModalOpen(false);
+    try {
+      await editUser(user.id, { avatarUrl: avatarUrl.trim() });
+      showToast('Foto de perfil atualizada com sucesso.', 'success');
+      setIsAvatarModalOpen(false);
+    } catch {
+      showToast('Não foi possível atualizar a foto de perfil.', 'error');
+    }
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,13 +102,18 @@ export const PlayerProfile: React.FC = () => {
 
     setUploading(true);
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
-      setAvatarUrl(result);
-      editUser(user.id, { avatarUrl: result });
-      showToast('Foto de perfil atualizada com sucesso.', 'success');
-      setUploading(false);
-      setIsAvatarModalOpen(false); // Close modal on success
+      try {
+        await editUser(user.id, { avatarUrl: result });
+        setAvatarUrl(result);
+        showToast('Foto de perfil atualizada com sucesso.', 'success');
+        setIsAvatarModalOpen(false);
+      } catch {
+        showToast('Não foi possível atualizar a foto de perfil.', 'error');
+      } finally {
+        setUploading(false);
+      }
 
       // Reset file input value so selection of same file works next time
       if (fileInputRef.current) {

@@ -15,6 +15,22 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface ProfileResponse {
+  id: string;
+  name: string;
+  course: string;
+  bio: string;
+  avatarUrl?: string;
+  joinedAt: string;
+}
+
+export interface ProfileUpdate {
+  name: string;
+  course: string;
+  bio: string;
+  avatarUrl?: string;
+}
+
 export interface AuditLogEntry {
   id: number;
   userId: string | null;
@@ -329,6 +345,17 @@ export async function verifyEmailCode(email: string, code: string): Promise<{ ok
   return requestJson<{ ok: boolean; message: string }>('/auth/verify-email', {
     method: 'POST',
     body: JSON.stringify({ email, code }),
+  });
+}
+
+export async function getProfile(): Promise<ProfileResponse> {
+  return requestJson<ProfileResponse>('/profile', { method: 'GET' });
+}
+
+export async function updateProfile(profile: ProfileUpdate): Promise<ProfileResponse> {
+  return requestJson<ProfileResponse>('/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profile),
   });
 }
 
