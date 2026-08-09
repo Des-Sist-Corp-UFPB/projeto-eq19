@@ -23,7 +23,6 @@ import { AuditLogs } from './pages/AuditLogs';
 
 // Components
 import { Navbar } from './components/Navbar';
-import { Footer } from './components/Footer';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 function App() {
@@ -56,9 +55,6 @@ function App() {
                   <Route path="/audit-logs" element={<ProtectedRoute adminOnly><AuditLogs /></ProtectedRoute>} />
                 </Routes>
               </main>
-
-              {/* Community Footer */}
-              <Footer />
             </div>
           </Router>
         </AuthProvider>
