@@ -58,7 +58,6 @@ class SessionServicePostgreSqlTest {
             statement.executeUpdate("DELETE FROM partida_participantes");
             statement.executeUpdate("DELETE FROM partidas");
             statement.executeUpdate("DELETE FROM auth_tokens");
-            statement.executeUpdate("DELETE FROM app_state");
             statement.executeUpdate("DELETE FROM jogos");
             statement.executeUpdate("DELETE FROM usuarios");
             statement.executeUpdate("""
@@ -148,75 +147,6 @@ class SessionServicePostgreSqlTest {
             assertEquals(404, request(app, "GET", "/sessions/" + id, null, "session-token").statusCode());
         } finally {
             app.stop();
-        }
-    }
-
-    @Test
-    void normalShadowSyncCannotRestoreOrOverwriteSessions() throws Exception {
-        var created = service.create(owner, input(List.of("u2"), "u2"), metadata);
-        String oldState = """
-                {"users":[],"boardGames":[],"sessions":[
-                  {"id":"legacy","gameId":"g1","date":"2020-01-01T00:00:00","location":"old",
-                   "organizerId":"u2","participantIds":["u2"],"winnerId":"u2","duration":1,
-                   "notes":"old","photos":[],"comments":[]}
-                ],"events":[]}
-                """;
-        RelationalStateSyncService.syncFromStateJson(dataSource, oldState);
-        assertEquals(1, service.list().size());
-        assertEquals(created.externalId(), service.list().get(0).externalId());
-    }
-
-    @Test
-    void deletedSessionNeverReappearsFromLegacyStateOrLaterValidPut() throws Exception {
-        var created = service.create(owner, input(List.of("u2"), "u2"), metadata);
-        String legacyState = stateJson(created.externalId(), "Curso original", "Boa partida");
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO app_state (id, data) VALUES (1, ?::jsonb)")) {
-            statement.setString(1, legacyState);
-            statement.executeUpdate();
-        }
-        service.delete(owner, created.externalId(), metadata);
-
-        io.javalin.Javalin app = io.javalin.Javalin.create();
-        SessionController.register(app, dataSource);
-        StateController.register(app, dataSource);
-        app.start(0);
-        try {
-            HttpResponse<String> sessions = request(app, "GET", "/sessions", null, "session-token");
-            assertEquals(200, sessions.statusCode());
-            assertFalse(sessions.body().contains(created.externalId()));
-
-            HttpResponse<String> projectedBeforePut = request(app, "GET", "/state", null, null);
-            assertEquals(200, projectedBeforePut.statusCode());
-            assertFalse(projectedBeforePut.body().contains(created.externalId()));
-
-            String legitimateLegacyUpdate = stateWithoutSessions("Curso atualizado");
-            HttpResponse<String> accepted = request(
-                    app, "PUT", "/state", legitimateLegacyUpdate, "session-token");
-            assertEquals(200, accepted.statusCode(), accepted.body());
-            assertTrue(service.list().isEmpty());
-
-            HttpResponse<String> projectedAfterPut = request(app, "GET", "/state", null, null);
-            assertEquals(200, projectedAfterPut.statusCode());
-            assertFalse(projectedAfterPut.body().contains(created.externalId()));
-
-            String divergentSnapshot = stateJson(created.externalId(), "Curso rejeitado", "Adulterada");
-            HttpResponse<String> rejected = request(
-                    app, "PUT", "/state", divergentSnapshot, "session-token");
-            assertEquals(409, rejected.statusCode(), rejected.body());
-            assertTrue(service.list().isEmpty());
-        } finally {
-            app.stop();
-        }
-
-        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            assertEquals(0, count(statement, "partidas"));
-            try (ResultSet row = statement.executeQuery(
-                    "SELECT data->'users'->0->>'course' FROM app_state WHERE id = 1")) {
-                assertTrue(row.next());
-                assertEquals("", row.getString(1));
-            }
         }
     }
 

@@ -15,23 +15,27 @@ export const Players: React.FC = () => {
   // Sort players by win count to create a friendly ranking/leaderboard
   const rankedPlayers = [...state.users].sort((a, b) => b.winCount - a.winCount);
 
-  const handlePromote = (userId: string, name: string, e: React.MouseEvent) => {
+  const handlePromote = async (userId: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    promoteUser(userId);
     const targetUser = state.users.find(u => u.id === userId);
-    const becameAdmin = targetUser?.role === 'student'; // Opposite because state isn't updated in this tick yet
-    showToast(`Cargo de "${name}" alterado para ${becameAdmin ? 'Administrador' : 'Estudante'}.`, 'success');
+    try {
+      await promoteUser(userId);
+      const becameAdmin = targetUser?.role === 'student';
+      showToast(`Cargo de "${name}" alterado para ${becameAdmin ? 'Administrador' : 'Estudante'}.`, 'success');
+    } catch { showToast('Não foi possível alterar o cargo.', 'error'); }
   };
 
-  const handleDelete = (userId: string, name: string, e: React.MouseEvent) => {
+  const handleDelete = async (userId: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (currentUser && currentUser.id === userId) {
       showToast('Você não pode apagar seu próprio perfil ativo!', 'error');
       return;
     }
     if (window.confirm(`Tem certeza que deseja apagar permanentemente o perfil de "${name}"? Isso removerá suas participações.`)) {
-      deleteUser(userId);
-      showToast(`Perfil de "${name}" removido com sucesso.`, 'info');
+      try {
+        await deleteUser(userId);
+        showToast(`Perfil de "${name}" removido com sucesso.`, 'info');
+      } catch { showToast('Não foi possível remover o perfil.', 'error'); }
     }
   };
 

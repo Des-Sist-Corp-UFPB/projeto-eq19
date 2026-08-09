@@ -173,7 +173,7 @@ export const AuditLogs: React.FC = () => {
             className="form-input"
             value={draftFilters.resourceType}
             onChange={event => updateFilter('resourceType', event.target.value)}
-            placeholder="Ex.: APP_STATE"
+            placeholder="Ex.: USER"
           />
         </label>
         <label>

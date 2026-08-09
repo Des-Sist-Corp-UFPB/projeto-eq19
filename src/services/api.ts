@@ -165,27 +165,12 @@ export async function getServerState(): Promise<DatabaseState | null> {
   return (await response.json()) as DatabaseState;
 }
 
-export async function saveServerState(state: DatabaseState, includeEvents = false): Promise<void> {
-  const payload: Omit<DatabaseState, 'events' | 'sessions'> & { events?: Event[] } = {
-    users: state.users,
-    boardGames: state.boardGames.map(game => ({
-      id: game.id,
-      name: game.name,
-      description: game.description,
-      coverUrl: game.coverUrl,
-      category: game.category,
-      minPlayers: game.minPlayers,
-      maxPlayers: game.maxPlayers,
-      avgPlayTime: game.avgPlayTime,
-      complexity: game.complexity,
-    })),
-  };
-  if (includeEvents) payload.events = state.events;
+export async function updateUserRole(id: string, role: User['role']): Promise<{ id: string; role: User['role'] }> {
+  return requestJson(`/users/${encodeURIComponent(id)}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+}
 
-  await requestJson<{ ok: boolean }>('/state', {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
+export async function deleteUserRequest(id: string): Promise<void> {
+  return requestJson(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export type SessionWriteRequest = Pick<

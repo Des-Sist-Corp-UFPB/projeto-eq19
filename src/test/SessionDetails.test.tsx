@@ -56,7 +56,6 @@ describe('SessionDetails relational loading', () => {
     vi.mocked(api.getEvents).mockResolvedValue([]);
     vi.mocked(api.getSessions).mockResolvedValue([]);
     vi.mocked(api.getSession).mockReset();
-    vi.mocked(api.saveServerState).mockClear();
   });
 
   it('loads a direct route with an initially empty session state and upserts without duplication', async () => {
@@ -69,7 +68,6 @@ describe('SessionDetails relational loading', () => {
     expect(api.getSession).toHaveBeenCalledWith(SESSION_ID);
     await waitFor(() => expect(screen.getByTestId('session-count')).toHaveTextContent('1'));
     expect(api.getServerState).toHaveBeenCalledTimes(1);
-    expect(api.saveServerState).not.toHaveBeenCalled();
   });
 
   it('loads the same relational detail after a route reload', async () => {
@@ -109,6 +107,5 @@ describe('SessionDetails relational loading', () => {
     expect(await screen.findByText('Não foi possível carregar a partida. Tente novamente.')).toBeInTheDocument();
     expect(screen.queryByText('Partida não encontrada')).not.toBeInTheDocument();
     expect(api.getServerState).toHaveBeenCalledTimes(1);
-    expect(api.saveServerState).not.toHaveBeenCalled();
   });
 });

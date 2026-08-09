@@ -167,7 +167,7 @@ public class AuditLogService {
             for (Object value : values) {
                 if (value instanceof String field && Set.of("name", "course", "bio", "avatarUrl",
                         "description", "coverUrl", "category", "minPlayers", "maxPlayers",
-                        "avgPlayTime", "complexity").contains(field)) {
+                        "avgPlayTime", "complexity", "role").contains(field)) {
                     array.add(field);
                 }
             }

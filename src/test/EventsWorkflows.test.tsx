@@ -11,7 +11,6 @@ vi.mock('../services/api', async importOriginal => {
   return {
     ...original,
     getServerState: vi.fn(),
-    saveServerState: vi.fn(),
     generateEventDraft: vi.fn(),
     refineEventDraft: vi.fn(),
     createEvent: vi.fn(),
@@ -30,7 +29,6 @@ describe('Events workflows', () => {
     sessionStorage.setItem('tabula_auth_token', 'session-token');
     sessionStorage.setItem('tabula_auth_session', 'u1');
     vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
-    vi.mocked(api.saveServerState).mockResolvedValue();
     let events = structuredClone(getDefaultDatabaseState().events);
     let sessions = structuredClone(getDefaultDatabaseState().sessions);
     vi.mocked(api.getEvents).mockImplementation(async () => structuredClone(events));
@@ -112,7 +110,6 @@ describe('Events workflows', () => {
   it('creates an event only after manual submission and resets the form', async () => {
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    const stateWritesBefore = vi.mocked(api.saveServerState).mock.calls.length;
     await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
 
     const form = screen.getByRole('heading', { name: /Agendar Encontro de Jogo/i }).closest('.modal-content')!
@@ -130,7 +127,6 @@ describe('Events workflows', () => {
     await user.click(within(form).getByRole('button', { name: /^Agendar Encontro$/i }));
     expect(await screen.findByText(/agendado com sucesso/i)).toBeInTheDocument();
     expect(api.createEvent).toHaveBeenCalled();
-    expect(api.saveServerState).toHaveBeenCalledTimes(stateWritesBefore);
     expect(screen.queryByRole('heading', { name: /Agendar Encontro de Jogo/i })).not.toBeInTheDocument();
   });
 

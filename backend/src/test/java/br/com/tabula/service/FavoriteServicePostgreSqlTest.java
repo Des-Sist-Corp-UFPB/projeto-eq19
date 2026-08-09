@@ -67,7 +67,7 @@ class FavoriteServicePostgreSqlTest {
     @BeforeEach void seed() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.executeUpdate("DELETE FROM favoritos"); statement.executeUpdate("DELETE FROM auth_tokens");
-            statement.executeUpdate("DELETE FROM app_state"); statement.executeUpdate("DELETE FROM jogos");
+            statement.executeUpdate("DELETE FROM jogos");
             statement.executeUpdate("DELETE FROM usuarios");
             statement.executeUpdate("""
                     INSERT INTO usuarios(external_id,nome,email,senha_hash,role,email_verificado)
@@ -126,7 +126,7 @@ class FavoriteServicePostgreSqlTest {
         }
     }
 
-    @Test void stateProjectsFavoritesAndPutCannotOverwriteThem() throws Exception {
+    @Test void relationalStateProjectsFavorites() throws Exception {
         service.add(userA, "g1", metadata);
         String state = """
                 {"users":[
@@ -137,13 +137,10 @@ class FavoriteServicePostgreSqlTest {
                   {"id":"g2","name":"Go","description":"","coverUrl":"","category":"","minPlayers":2,"maxPlayers":2,"avgPlayTime":30,"complexity":3}
                 ]}
                 """;
-        try (Connection connection = dataSource.getConnection(); var statement = connection.prepareStatement(
-                "INSERT INTO app_state(id,data) VALUES (1,?::jsonb)")) { statement.setString(1, state); statement.executeUpdate(); }
         Javalin app = Javalin.create(); StateController.register(app, dataSource); app.start(0);
         try {
             HttpResponse<String> get = request(app, "GET", "/state", null, null);
             assertEquals(200, get.statusCode()); assertTrue(get.body().contains("\"favoriteGames\":[\"g1\"]"));
-            assertEquals(200, request(app, "PUT", "/state", state, "u1-token").statusCode());
             assertEquals(java.util.List.of("g1"), service.list(userA)); assertTrue(service.list(userB).isEmpty());
         } finally { app.stop(); }
     }

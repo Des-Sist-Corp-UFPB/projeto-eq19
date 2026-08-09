@@ -29,7 +29,6 @@ describe('API helpers and database utilities', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, message: 'login', token: 'token', user: sampleUser }) })
       .mockResolvedValueOnce({ ok: false, status: 404, text: async () => '' })
-      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '' })
       .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ status: 'ok', service: 'backend', timestamp: '2026-01-01' }) })
       .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, message: 'registered', token: 'token', user: sampleUser }) })
       .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, message: 'reset' }) })
@@ -42,7 +41,6 @@ describe('API helpers and database utilities', () => {
 
     const login = await actualApi.loginBackend('caua@tabula.com', 'StrongP@ss1');
     await expect(actualApi.getServerState()).resolves.toBeNull();
-    await expect(actualApi.saveServerState(getDefaultDatabaseState())).resolves.toBeUndefined();
     await expect(actualApi.pingBackend()).resolves.toMatchObject({ service: 'backend' });
 
     await expect(actualApi.registerUserBackend('Nova Pessoa', 'nova@tabula.com', 'StrongP@ss1')).resolves.toMatchObject({ ok: true });
@@ -115,37 +113,9 @@ describe('API helpers and database utilities', () => {
     }));
   });
 
-  it('never includes legacy logs in the complete PUT /state payload', async () => {
+  it('does not expose whole-state persistence', async () => {
     const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => '',
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const stateWithLegacyLogs = {
-      ...getDefaultDatabaseState(),
-      users: getDefaultDatabaseState().users.map((user, index) => index === 0 ? { ...user, bio: 'Perfil atualizado' } : user),
-      boardGames: getDefaultDatabaseState().boardGames.map(game => ({ ...game, tags: ['legacy'] })),
-      logs: [{ id: 'legacy-log' }],
-    } as DatabaseState & { logs: unknown[] };
-
-    await actualApi.saveServerState(stateWithLegacyLogs);
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, options] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(String(options.body));
-    expect(url).toContain('/state');
-    expect(options.method).toBe('PUT');
-    expect(payload).toEqual({
-      users: stateWithLegacyLogs.users,
-      boardGames: getDefaultDatabaseState().boardGames,
-    });
-    expect(payload).not.toHaveProperty('logs');
-    expect(payload).not.toHaveProperty('events');
-    expect(payload).not.toHaveProperty('sessions');
-    expect(payload.boardGames.every((game: Record<string, unknown>) => !('tags' in game))).toBe(true);
+    expect(actualApi).not.toHaveProperty('saveServerState');
   });
 
   it('normalizes cover URLs and sanitizes legacy database state', () => {

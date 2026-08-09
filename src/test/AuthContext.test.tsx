@@ -141,7 +141,6 @@ describe('AuthContext', () => {
     renderAuth();
     await waitFor(() => expect(api.getServerState).toHaveBeenCalledTimes(1));
     await new Promise(resolve => window.setTimeout(resolve, 0));
-    vi.mocked(api.saveServerState).mockClear();
 
     await user.click(screen.getByRole('button', { name: /login/i }));
 
@@ -149,7 +148,6 @@ describe('AuthContext', () => {
     expect(sessionStorage.getItem('tabula_auth_session')).toBe(existingUser.id);
     expect(screen.getByTestId('user')).toHaveTextContent(existingUser.name);
     await new Promise(resolve => window.setTimeout(resolve, 400));
-    expect(api.saveServerState).not.toHaveBeenCalled();
   });
 
   it('handles login failures from the API and keeps the user signed out', async () => {

@@ -7,7 +7,6 @@ vi.mock('../services/api', async () => {
   return {
     ...actual,
     getServerState: vi.fn().mockResolvedValue(null),
-    saveServerState: vi.fn().mockResolvedValue(undefined),
     loginBackend: vi.fn(),
     registerUserBackend: vi.fn(),
     resetPasswordBackend: vi.fn(),
@@ -49,6 +48,8 @@ vi.mock('../services/api', async () => {
     createGame: vi.fn(async game => ({ id: 'g_created', ...game })),
     updateGame: vi.fn(async game => game),
     deleteGameRequest: vi.fn().mockResolvedValue(undefined),
+    updateUserRole: vi.fn(async (id, role) => ({ id, role })),
+    deleteUserRequest: vi.fn().mockResolvedValue(undefined),
   };
 });
 

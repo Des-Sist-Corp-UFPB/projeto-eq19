@@ -16,11 +16,12 @@ import {
   joinEventRequest,
   leaveEventRequest,
   removeFavoriteRequest,
-  saveServerState,
   updateProfile,
   createGame,
   updateGame,
   deleteGameRequest,
+  updateUserRole,
+  deleteUserRequest,
 } from '../services/api';
 import { useToast } from './ToastContext';
 
@@ -30,17 +31,6 @@ const generateId = (prefix: string) => {
     : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   return `${prefix}_${randomId}`;
 };
-
-const serializeLegacyState = (state: DatabaseState) => JSON.stringify({
-  users: state.users.map(user => ({
-    id: user.id,
-    email: user.email,
-    passwordHash: user.passwordHash,
-    role: user.role,
-    winCount: user.winCount,
-    joinedAt: user.joinedAt,
-  })),
-});
 
 interface DatabaseContextType {
   state: DatabaseState;
@@ -66,8 +56,8 @@ interface DatabaseContextType {
     initialComment?: string,
     photoUrl?: string
   ) => Promise<void>;
-  deleteUser: (userId: string) => void;
-  promoteUser: (userId: string) => void;
+  deleteUser: (userId: string) => Promise<void>;
+  promoteUser: (userId: string) => Promise<void>;
   editUser: (userId: string, updates: Pick<Partial<User>, 'name' | 'course' | 'bio' | 'avatarUrl'>) => Promise<void>;
 }
 
@@ -76,9 +66,6 @@ const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<DatabaseState>(getDefaultDatabaseState);
   const { showToast } = useToast();
-  const serverLoadedRef = useRef(false);
-  const saveTimerRef = useRef<number | null>(null);
-  const lastSavedJsonRef = useRef<string | null>(null);
   const fetchedSessionsRef = useRef(new Map<string, Session>());
 
   useEffect(() => {
@@ -112,14 +99,8 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ],
           });
         });
-        if (!serverState) {
-          await saveServerState(nextState, true);
-        }
-        lastSavedJsonRef.current = serializeLegacyState(nextState);
-        serverLoadedRef.current = true;
       } catch (error) {
         if (!cancelled) {
-          serverLoadedRef.current = true;
           showToast('Não foi possível carregar os dados do servidor. Verifique a API e o banco de dados.', 'error');
           console.error('Failed to load server state', error);
         }
@@ -132,29 +113,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       cancelled = true;
     };
   }, [showToast]);
-
-  useEffect(() => {
-    if (!serverLoadedRef.current) return;
-
-    const serializedState = serializeLegacyState(state);
-    if (serializedState === lastSavedJsonRef.current) return;
-
-    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => {
-      void saveServerState(state)
-        .then(() => {
-          lastSavedJsonRef.current = serializedState;
-        })
-        .catch(error => {
-          showToast('Não foi possível salvar no servidor agora.', 'error');
-          console.error('Failed to save server state', error);
-        });
-    }, 350);
-
-    return () => {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    };
-  }, [state, showToast]);
 
   // Game actions
   const addGame = async (game: Omit<BoardGame, 'id'>) => {
@@ -343,14 +301,9 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // User Administration
-  const deleteUser = (userId: string) => {
-    setState(prev => {
-      const updated = {
-        ...prev,
-        users: prev.users.filter(u => u.id !== userId)
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const deleteUser = async (userId: string) => {
+    await deleteUserRequest(userId);
+    setState(prev => syncDatabaseCalculations({ ...prev, users: prev.users.filter(u => u.id !== userId) }));
   };
 
   const editUser = async (userId: string, updates: Pick<Partial<User>, 'name' | 'course' | 'bio' | 'avatarUrl'>) => {
@@ -367,20 +320,13 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       : candidate) }));
   };
 
-  const promoteUser = (userId: string) => {
-    setState(prev => {
-      const user = prev.users.find(u => u.id === userId);
-      const newRole: UserRole = user?.role === 'admin' ? 'student' : 'admin';
-      
-      const updated = {
-        ...prev,
-        users: prev.users.map(u => {
-          if (u.id !== userId) return u;
-          return { ...u, role: newRole };
-        })
-      };
-      return syncDatabaseCalculations(updated);
-    });
+  const promoteUser = async (userId: string) => {
+    const user = state.users.find(candidate => candidate.id === userId);
+    if (!user) throw new Error('User not found');
+    const saved = await updateUserRole(userId, user.role === 'admin' ? 'student' : 'admin');
+    setState(prev => syncDatabaseCalculations({ ...prev, users: prev.users.map(candidate => candidate.id === userId
+      ? { ...candidate, role: saved.role }
+      : candidate) }));
   };
 
   return (

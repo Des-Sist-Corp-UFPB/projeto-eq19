@@ -95,11 +95,8 @@ describe('Auth and database contexts', () => {
     localStorage.clear();
     sessionStorage.clear();
     vi.clearAllMocks();
-    let serverState = structuredClone(getDefaultDatabaseState());
+    const serverState = structuredClone(getDefaultDatabaseState());
     vi.mocked(api.getServerState).mockImplementation(async () => structuredClone(serverState));
-    vi.mocked(api.saveServerState).mockImplementation(async state => {
-      serverState = { ...structuredClone(state), events: serverState.events };
-    });
     vi.mocked(api.getEvents).mockImplementation(async () => structuredClone(serverState.events));
     vi.mocked(api.getSessions).mockImplementation(async () => structuredClone(serverState.sessions));
     vi.mocked(api.createSession).mockImplementation(async input => {
@@ -242,7 +239,6 @@ describe('Auth and database contexts', () => {
     await user.click(screen.getByRole('button', { name: /deleteComment/i }));
     await waitFor(() => expect(screen.getByTestId('comments-count').textContent).toBe('0'));
 
-    const savesBeforeFavorite = vi.mocked(api.saveServerState).mock.calls.length;
     await user.click(screen.getByRole('button', { name: /addFavorite/i }));
     await waitFor(() => expect(api.addFavoriteRequest).toHaveBeenCalledWith('g1'));
     expect(screen.getByTestId('favorites-count').textContent).toBe('1');
@@ -251,7 +247,6 @@ describe('Auth and database contexts', () => {
     expect(screen.getByTestId('favorites-count').textContent).toBe('1');
     await user.click(screen.getByRole('button', { name: /removeFavorite/i }));
     await waitFor(() => expect(screen.getByTestId('favorites-count').textContent).toBe('0'));
-    expect(vi.mocked(api.saveServerState).mock.calls.length).toBe(savesBeforeFavorite);
 
     await user.click(screen.getByRole('button', { name: /addEvent/i }));
     await waitFor(() => expect(screen.getByTestId('events-count').textContent).toBe('4'));
@@ -309,7 +304,6 @@ describe('API helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.mocked(api.getServerState).mockResolvedValue(null);
-    vi.mocked(api.saveServerState).mockResolvedValue();
   });
 
   it('covers the API helpers for health checks and state persistence', async () => {
@@ -322,7 +316,6 @@ describe('API helpers', () => {
 
     const ping = await api.pingBackend();
     const serverState = await api.getServerState();
-    await api.saveServerState(getDefaultDatabaseState());
 
     expect(ping.status).toBe('ok');
     expect(serverState).toBeNull();

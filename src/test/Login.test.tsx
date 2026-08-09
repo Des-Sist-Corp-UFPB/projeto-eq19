@@ -10,20 +10,17 @@ vi.mock('../services/api', async () => {
   return {
     ...actual,
     getServerState: vi.fn(),
-    saveServerState: vi.fn(),
     loginBackend: vi.fn(),
   };
 });
 
 const mockedLoginBackend = vi.mocked(api.loginBackend);
 const mockedGetServerState = vi.mocked(api.getServerState);
-const mockedSaveServerState = vi.mocked(api.saveServerState);
 
 describe('Login page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedGetServerState.mockResolvedValue(null);
-    mockedSaveServerState.mockResolvedValue();
     mockedLoginBackend.mockResolvedValue({
       ok: true,
       message: 'Login realizado com sucesso.',

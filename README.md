@@ -93,11 +93,17 @@ Gerações e refinamentos são auditados, mas nunca salvam o evento automaticame
 
 ## Persistência dos dados
 
+> Estado atual (V14): a migração incremental foi concluída. Todos os domínios são
+> relacionais, `app_state` foi removida e não existem mais autosave, shadow sync
+> ou `PUT /api/state`. `GET /api/state` permanece somente como agregador relacional
+> compatível com o cache `DatabaseState`. Consulte
+> [docs/persistence-migration.md](docs/persistence-migration.md). A descrição
+> incremental abaixo é mantida apenas como histórico do projeto.
+
 O Tabula persiste os dados no PostgreSQL por meio do backend.
 
-Eventos, participantes e fila de espera usam as tabelas relacionais como fonte
-canônica. Os demais domínios ainda mantidos no fluxo agregado usam
-`app_state.data`; a auditoria oficial usa exclusivamente `audit_logs`.
+Todos os domínios usam tabelas relacionais como fonte canônica. A auditoria
+oficial usa exclusivamente `audit_logs`.
 
 Tabela principal usada pelo estado da aplicação:
 
@@ -126,11 +132,14 @@ enquanto as fatias restantes preservam compatibilidade via `/api/state`. Veja
 | Fila de espera | Relacional | Sim | Migrado |
 | Demais domínios | `app_state`/legado | Não ou parcial | Pendente |
 
-## Migração Relacional
+## Histórico da migração relacional (desativado)
+
+> O conteúdo desta seção documenta etapas anteriores à V14. Não use os endpoints,
+> flags ou procedimentos abaixo na aplicação atual; eles foram removidos.
 
 Este projeto utiliza uma estratégia de migração segura, incremental e tolerante a falhas para mover os dados da aplicação para um modelo relacional no PostgreSQL.
 
-### 1. Arquitetura da Migração Atual
+### 1. Arquitetura usada durante a migração
 
 Para os domínios ainda não migrados, a aplicação utiliza `app_state` (coluna
 `data` do tipo JSONB) como fonte de dados e fallback. Eventos, participantes e
@@ -264,8 +273,8 @@ Para rodar a aplicação local com coleta de traces via OpenTelemetry, Grafana e
 A autenticação é realizada no backend por meio de tokens Bearer persistidos no
 PostgreSQL. Tokens ausentes, inválidos ou expirados retornam HTTP 401.
 
-O backend também aplica autorização granular antes de persistir alterações no
-`app_state`. A identidade do usuário é obtida exclusivamente pelo token validado,
+O backend também aplica autorização granular antes de persistir alterações nas
+tabelas relacionais. A identidade do usuário é obtida exclusivamente pelo token validado,
 sem confiar em `userId`, `organizerId` ou `authorId` enviados pelo frontend.
 
 Entre as regras aplicadas:
@@ -275,23 +284,16 @@ Entre as regras aplicadas:
 - participantes entram ou saem de eventos somente em nome próprio;
 - comentários são alterados apenas pelo respectivo autor;
 - usuários comuns não podem alterar papéis;
-- logs oficiais não podem ser modificados pelo `PUT /api/state`;
+- logs oficiais só podem ser criados pelo backend;
 - operações sem permissão retornam HTTP 403 e são auditadas.
 
-A autorização é executada antes de qualquer gravação no `app_state`.
+A autorização é executada antes de qualquer gravação de domínio.
 
 ## Log de Auditoria
 
 O Tabula mantém a trilha oficial na tabela relacional append-only `audit_logs`.
-Somente o backend cria esses eventos. Enquanto as alterações de domínio ainda
-chegam agregadas pelo `PUT /api/state`, elas são registradas como `STATE_UPDATED`
-com `changedSections`.
-
-A tabela `logs` e um eventual array `app_state.data.logs` são preservados apenas
-para compatibilidade temporária com clientes antigos. O frontend atual descarta
-esse campo ao carregar o estado, nunca o inclui no `PUT /api/state` e não cria
-novos registros legados. A página administrativa consulta exclusivamente
-`GET /api/audit-logs`.
+Somente o backend cria esses eventos e a página administrativa consulta
+exclusivamente `GET /api/audit-logs`.
 
 Arquivos relacionados:
 
@@ -408,7 +410,7 @@ Detalhes, limitações e links para os relatórios estão em [docs/testing-and-c
 
 * O frontend não salva mais os dados principais da aplicação no `localStorage`.
 * Os dados de jogos, eventos, partidas, participantes, ranking, comentários, logs e usuários do painel são persistidos no PostgreSQL via backend.
-* Atualmente, esses dados são armazenados principalmente dentro de `app_state.data`.
+* Esses dados são armazenados nas tabelas relacionais do PostgreSQL.
 * O navegador guarda apenas o identificador/token de sessão para manter o usuário logado.
 * Credenciais reais, como `.env`, senhas de banco e senhas de SMTP, não devem ser versionadas no Git.
 * Pastas geradas automaticamente, como `node_modules/`, `coverage/`, `backend/target/` e `dist/`, também não devem ser versionadas.
@@ -418,5 +420,5 @@ Detalhes, limitações e links para os relatórios estão em [docs/testing-and-c
 Partidas e seus participantes usam PostgreSQL relacional como fonte
 autoritativa, com endpoints `/api/sessions`. A conclusão de um evento cria a
 partida na mesma transação e a unicidade do vínculo com o evento é protegida
-no banco. O `GET /api/state` mantém uma projeção temporária para telas legadas;
-`app_state` ainda não foi removido.
+no banco. O `GET /api/state` mantém uma projeção relacional de compatibilidade
+para o cache do frontend.

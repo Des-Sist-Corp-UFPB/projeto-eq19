@@ -285,13 +285,7 @@ class EventServicePostgreSqlTest {
     @Test
     void exposesAuthenticatedEndpointsAndRejectsLegacyEventOverwrite() throws Exception {
         var event = service.create(users.get(0), input(2), metadata);
-        String state = stateJson(event.externalId(), "Sala A");
         try (Connection connection = dataSource.getConnection()) {
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO app_state (id, data) VALUES (1, ?::jsonb)")) {
-                statement.setString(1, state);
-                statement.executeUpdate();
-            }
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO auth_tokens (token, usuario_id, expires_at)
                     VALUES ('event-token', ?, CURRENT_TIMESTAMP + INTERVAL '1 hour')
@@ -329,20 +323,10 @@ class EventServicePostgreSqlTest {
             assertEquals(201, create.statusCode());
             assertTrue(create.body().contains("\"organizerId\":\"u1\""));
 
-            String overwritten = stateJson(event.externalId(), "Local adulterado");
-            HttpResponse<String> put = request(app, "PUT", "/state", overwritten, "event-token");
-            assertEquals(409, put.statusCode(), put.body());
             assertEquals("Sala A", service.get(event.externalId()).location());
         } finally {
             app.stop();
         }
-    }
-
-    @Test
-    void shadowSyncDoesNotOverwriteRelationalEvents() throws Exception {
-        var event = service.create(users.get(0), input(2), metadata);
-        RelationalStateSyncService.syncFromStateJson(dataSource, stateJson(event.externalId(), "Legado antigo"));
-        assertEquals("Sala A", service.get(event.externalId()).location());
     }
 
     private static EventInput input(int capacity) {

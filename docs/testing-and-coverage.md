@@ -81,5 +81,5 @@ Os relatórios gerados fora de `cobertura/`, como `backend/target/` e `coverage/
 Os testes PostgreSQL usam Testcontainers sem `disabledWithoutDocker` e cobrem
 criação, consulta, listagem, autenticação, identidade do organizador,
 participantes, vencedor, autorização de exclusão, auditoria e proteção contra
-restauração pelo shadow sync legado. Os testes frontend verificam o cliente de
-sessões e que operações do domínio não dependem de `PUT /state`.
+preservação dos dados relacionais durante upgrades. Os testes frontend verificam
+o cliente de sessões e as operações específicas do domínio.

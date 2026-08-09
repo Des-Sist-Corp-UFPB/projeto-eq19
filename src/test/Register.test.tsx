@@ -10,20 +10,17 @@ vi.mock('../services/api', async () => {
   return {
     ...actual,
     getServerState: vi.fn(),
-    saveServerState: vi.fn(),
     registerUserBackend: vi.fn(),
   };
 });
 
 const mockedRegisterUserBackend = vi.mocked(api.registerUserBackend);
 const mockedGetServerState = vi.mocked(api.getServerState);
-const mockedSaveServerState = vi.mocked(api.saveServerState);
 
 describe('Register page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedGetServerState.mockResolvedValue(null);
-    mockedSaveServerState.mockResolvedValue();
     mockedRegisterUserBackend.mockResolvedValue({
       ok: true,
       message: 'Conta criada com sucesso.',

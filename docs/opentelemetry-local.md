@@ -86,7 +86,9 @@ service.name = dsc-eq19
 deployment.environment.name = local
 ```
 
-Inspecione o resource do trace para confirmar também `service.version`. O `traceId`, os spans HTTP e os spans internos de `PUT /state` continuam correlacionados porque os novos valores são atributos do resource, não novos identificadores.
+Inspecione o resource do trace para confirmar também `service.version`. O `traceId`
+e os spans HTTP continuam correlacionados porque os novos valores são atributos
+do resource, não novos identificadores.
 
 ## 5. Execução sem observabilidade
 
