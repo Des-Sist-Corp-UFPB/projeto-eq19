@@ -68,6 +68,8 @@ class AuditLogRepositoryTest {
         when(resultSet.getString("detalhes")).thenReturn("{\"changedSections\":[\"users\"]}");
         when(resultSet.getString("endereco_ip")).thenReturn("127.0.0.1");
         when(resultSet.getString("user_agent")).thenReturn("agent");
+        when(resultSet.getString("actor_name")).thenReturn("Ana Admin");
+        when(resultSet.getString("actor_email")).thenReturn("ana@example.com");
         when(resultSet.getBoolean("sucesso")).thenReturn(true);
         when(resultSet.getString("trace_id")).thenReturn(null);
         when(resultSet.getTimestamp("criado_em")).thenReturn(Timestamp.from(Instant.parse("2026-01-02T03:04:05Z")));
@@ -81,6 +83,8 @@ class AuditLogRepositoryTest {
 
         assertEquals(1, page.size());
         assertEquals(42L, page.get(0).getId());
+        assertEquals("Ana Admin", page.get(0).getActorName());
+        assertEquals("ana@example.com", page.get(0).getActorEmail());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(connection).prepareStatement(sql.capture());
         assertTrue(sql.getValue().contains("acao = ?"));

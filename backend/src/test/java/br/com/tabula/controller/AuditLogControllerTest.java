@@ -74,6 +74,8 @@ class AuditLogControllerTest {
             assertEquals(1, body.get("total").asLong());
             assertEquals("PROFILE_UPDATED", body.get("items").get(0).get("action").asText());
             assertEquals("u_7", body.get("items").get(0).get("userId").asText());
+            assertEquals("Ana Admin", body.get("items").get(0).get("actorName").asText());
+            assertEquals("ana@example.com", body.get("items").get(0).get("actorEmail").asText());
             assertTrue(preparedSql.stream().anyMatch(sql ->
                     sql.contains("ORDER BY criado_em DESC, id DESC LIMIT ? OFFSET ?")));
             assertTrue(preparedSql.stream().allMatch(sql ->
@@ -126,6 +128,8 @@ class AuditLogControllerTest {
         when(pageResult.getString("detalhes")).thenReturn("{\"changedSections\":[\"users\"]}");
         when(pageResult.getString("endereco_ip")).thenReturn("127.0.0.1");
         when(pageResult.getString("user_agent")).thenReturn("agent");
+        when(pageResult.getString("actor_name")).thenReturn("Ana Admin");
+        when(pageResult.getString("actor_email")).thenReturn("ana@example.com");
         when(pageResult.getBoolean("sucesso")).thenReturn(true);
         when(pageResult.getString("trace_id")).thenReturn("0123456789abcdef0123456789abcdef");
         when(pageResult.getTimestamp("criado_em"))

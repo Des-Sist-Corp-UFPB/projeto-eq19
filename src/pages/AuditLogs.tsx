@@ -304,7 +304,10 @@ const AuditLogRow: React.FC<{ item: AuditLogEntry }> = ({ item }) => (
       <code>{item.action}</code>
     </td>
     <td>
-      <span>{item.userId ?? 'Sistema / anônimo'}</span>
+      <div>
+        <strong>{resolveActorLabel(item)}</strong>
+        {renderActorMetadata(item)}
+      </div>
       {item.ipAddress && <span className="audit-table__secondary">IP {item.ipAddress}</span>}
     </td>
     <td>
@@ -338,6 +341,30 @@ function toIsoDate(value: string): string | undefined {
   if (!value) return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function resolveActorLabel(item: AuditLogEntry): string {
+  if (item.actorName && item.actorName.trim()) return item.actorName;
+  if (item.actorEmail && item.actorEmail.trim()) return item.actorEmail;
+  if (item.userId) return 'Usuário removido';
+  return 'Sistema';
+}
+
+function renderActorMetadata(item: AuditLogEntry): React.ReactNode {
+  const actorEmail = item.actorEmail?.trim();
+  const actorName = item.actorName?.trim();
+  const userId = item.userId?.trim();
+
+  if (!actorName && !actorEmail && !userId) {
+    return null;
+  }
+
+  return (
+    <>
+      {actorName && actorEmail && <span className="audit-table__secondary">{actorEmail}</span>}
+      {userId && <span className="audit-table__secondary">ID {userId}</span>}
+    </>
+  );
 }
 
 function formatDate(value: string): string {

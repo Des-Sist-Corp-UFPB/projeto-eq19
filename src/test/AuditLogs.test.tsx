@@ -13,6 +13,8 @@ const firstPage: AuditLogPage = {
     {
       id: 10,
       userId: 'u_admin',
+      actorName: 'Ana Admin',
+      actorEmail: 'ana@example.com',
       action: 'STATE_UPDATED',
       resourceType: 'APP_STATE',
       resourceId: '1',
@@ -29,21 +31,24 @@ const firstPage: AuditLogPage = {
 describe('AuditLogs page', () => {
   beforeEach(() => {
     mockedGetAuditLogs.mockReset();
+    mockedGetAuditLogs.mockImplementation(async () => ({ items: [], page: 1, pageSize: 25, total: 0 }));
   });
 
   it('loads official events, applies filters, and paginates', async () => {
     mockedGetAuditLogs
-      .mockResolvedValueOnce(firstPage)
-      .mockResolvedValueOnce({ ...firstPage, page: 1 })
-      .mockResolvedValueOnce({
+      .mockImplementationOnce(async () => firstPage)
+      .mockImplementationOnce(async () => ({ ...firstPage, page: 1 }))
+      .mockImplementationOnce(async () => ({
         ...firstPage,
         page: 2,
         items: [{ ...firstPage.items[0], id: 11, action: 'LOGIN_REJECTED', success: false }],
-      });
+      }));
 
     render(<AuditLogs />);
 
     expect(await screen.findByText('Estado atualizado')).toBeInTheDocument();
+    expect(screen.getByText('Ana Admin')).toBeInTheDocument();
+    expect(screen.getByText('ana@example.com')).toBeInTheDocument();
     expect(screen.getByText('Seções: usuários, jogos')).toBeInTheDocument();
     expect(screen.getByText('Fonte oficial')).toBeInTheDocument();
     expect(mockedGetAuditLogs).toHaveBeenNthCalledWith(1, expect.objectContaining({
@@ -69,6 +74,82 @@ describe('AuditLogs page', () => {
     })));
     expect(await screen.findByRole('cell', { name: /Login rejeitado/ })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'Falha' })).toBeInTheDocument();
+  });
+
+  it('renders actor name plus email without duplication', async () => {
+    mockedGetAuditLogs.mockResolvedValue({
+      ...firstPage,
+      total: 1,
+      items: [{
+        ...firstPage.items[0],
+        id: 12,
+        userId: 'u_admin',
+        actorName: 'Ana Admin',
+        actorEmail: 'ana@example.com',
+      }],
+    });
+
+    render(<AuditLogs />);
+
+    expect(await screen.findByText('Ana Admin')).toBeInTheDocument();
+    expect(screen.getByText('ana@example.com')).toBeInTheDocument();
+    expect(screen.getByText('ID u_admin')).toBeInTheDocument();
+  });
+
+  it('renders only email when no name is available', async () => {
+    mockedGetAuditLogs.mockResolvedValue({
+      ...firstPage,
+      total: 1,
+      items: [{
+        ...firstPage.items[0],
+        id: 13,
+        userId: 'u_only_email',
+        actorName: '',
+        actorEmail: 'only@example.com',
+      }],
+    });
+
+    render(<AuditLogs />);
+
+    expect(await screen.findByText('only@example.com')).toBeInTheDocument();
+    expect(screen.getByText('ID u_only_email')).toBeInTheDocument();
+  });
+
+  it('renders removed users as removed user fallback', async () => {
+    mockedGetAuditLogs.mockResolvedValue({
+      ...firstPage,
+      total: 1,
+      items: [{
+        ...firstPage.items[0],
+        id: 14,
+        userId: 'u_removed',
+        actorName: '',
+        actorEmail: '',
+      }],
+    });
+
+    render(<AuditLogs />);
+
+    expect(await screen.findByText('Usuário removido')).toBeInTheDocument();
+    expect(screen.getByText('ID u_removed')).toBeInTheDocument();
+  });
+
+  it('renders system fallback when no actor exists', async () => {
+    mockedGetAuditLogs.mockResolvedValue({
+      ...firstPage,
+      total: 1,
+      items: [{
+        ...firstPage.items[0],
+        id: 15,
+        userId: null,
+        actorName: '',
+        actorEmail: '',
+      }],
+    });
+
+    render(<AuditLogs />);
+
+    expect(await screen.findByText('Sistema')).toBeInTheDocument();
   });
 
   it('shows retryable error and empty states', async () => {

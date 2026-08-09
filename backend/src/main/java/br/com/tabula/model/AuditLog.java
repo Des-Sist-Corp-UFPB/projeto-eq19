@@ -17,6 +17,8 @@ public final class AuditLog {
     private final boolean success;
     private final String traceId;
     private final Instant createdAt;
+    private final String actorName;
+    private final String actorEmail;
 
     public AuditLog(
             Long id,
@@ -31,6 +33,24 @@ public final class AuditLog {
             boolean success,
             String traceId,
             Instant createdAt) {
+        this(id, userDatabaseId, actorExternalId, action, resourceType, resourceId, details, ipAddress, userAgent, success, traceId, createdAt, null, null);
+    }
+
+    public AuditLog(
+            Long id,
+            Long userDatabaseId,
+            String actorExternalId,
+            String action,
+            String resourceType,
+            String resourceId,
+            JsonNode details,
+            String ipAddress,
+            String userAgent,
+            boolean success,
+            String traceId,
+            Instant createdAt,
+            String actorName,
+            String actorEmail) {
         this.id = id;
         this.userDatabaseId = userDatabaseId;
         this.actorExternalId = actorExternalId;
@@ -43,6 +63,8 @@ public final class AuditLog {
         this.success = success;
         this.traceId = traceId;
         this.createdAt = createdAt;
+        this.actorName = actorName;
+        this.actorEmail = actorEmail;
     }
 
     public Long getId() { return id; }
@@ -57,4 +79,6 @@ public final class AuditLog {
     public boolean isSuccess() { return success; }
     public String getTraceId() { return traceId; }
     public Instant getCreatedAt() { return createdAt; }
+    public String getActorName() { return actorName; }
+    public String getActorEmail() { return actorEmail; }
 }

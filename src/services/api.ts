@@ -36,6 +36,8 @@ export type GameInput = Omit<import('../types').BoardGame, 'id'>;
 export interface AuditLogEntry {
   id: number;
   userId: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
   action: string;
   resourceType: string | null;
   resourceId: string | null;

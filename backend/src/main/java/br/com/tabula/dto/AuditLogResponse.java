@@ -15,6 +15,8 @@ public final class AuditLogResponse {
     private final boolean success;
     private final String traceId;
     private final String createdAt;
+    private final String actorName;
+    private final String actorEmail;
 
     public AuditLogResponse(AuditLog log) {
         this.id = log.getId();
@@ -28,6 +30,8 @@ public final class AuditLogResponse {
         this.success = log.isSuccess();
         this.traceId = log.getTraceId();
         this.createdAt = log.getCreatedAt().toString();
+        this.actorName = log.getActorName();
+        this.actorEmail = log.getActorEmail();
     }
 
     public long getId() { return id; }
@@ -41,4 +45,6 @@ public final class AuditLogResponse {
     public boolean isSuccess() { return success; }
     public String getTraceId() { return traceId; }
     public String getCreatedAt() { return createdAt; }
+    public String getActorName() { return actorName; }
+    public String getActorEmail() { return actorEmail; }
 }

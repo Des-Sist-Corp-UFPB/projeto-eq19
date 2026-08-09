@@ -50,10 +50,12 @@ public class AuditLogRepository {
     public List<AuditLog> findPage(AuditLogFilter filter) throws SQLException {
         FilterSql filterSql = buildFilter(filter);
         String sql = """
-                SELECT id, usuario_id, ator_id_externo, acao, tipo_recurso, recurso_id,
-                       detalhes::text AS detalhes, host(endereco_ip) AS endereco_ip,
-                       user_agent, sucesso, trace_id, criado_em
-                FROM audit_logs
+                SELECT al.id, al.usuario_id, al.ator_id_externo, al.acao, al.tipo_recurso, al.recurso_id,
+                       al.detalhes::text AS detalhes, host(al.endereco_ip) AS endereco_ip,
+                       al.user_agent, al.sucesso, al.trace_id, al.criado_em,
+                       u.nome AS actor_name, u.email AS actor_email
+                FROM audit_logs al
+                LEFT JOIN usuarios u ON u.id = al.usuario_id
                 """ + filterSql.whereClause()
                 + " ORDER BY criado_em DESC, id DESC LIMIT ? OFFSET ?";
 
@@ -75,7 +77,7 @@ public class AuditLogRepository {
 
     public long count(AuditLogFilter filter) throws SQLException {
         FilterSql filterSql = buildFilter(filter);
-        String sql = "SELECT COUNT(*) FROM audit_logs" + filterSql.whereClause();
+        String sql = "SELECT COUNT(*) FROM audit_logs al" + filterSql.whereClause();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             bind(statement, filterSql.parameters(), 1);
@@ -126,6 +128,8 @@ public class AuditLogRepository {
         long databaseUserId = resultSet.getLong("usuario_id");
         Long nullableDatabaseUserId = resultSet.wasNull() ? null : databaseUserId;
         Timestamp createdAt = resultSet.getTimestamp("criado_em");
+        String actorName = resultSet.getString("actor_name");
+        String actorEmail = resultSet.getString("actor_email");
         try {
             JsonNode details = MAPPER.readTree(resultSet.getString("detalhes"));
             return new AuditLog(
@@ -140,7 +144,9 @@ public class AuditLogRepository {
                     resultSet.getString("user_agent"),
                     resultSet.getBoolean("sucesso"),
                     resultSet.getString("trace_id"),
-                    createdAt.toInstant()
+                    createdAt.toInstant(),
+                    actorName,
+                    actorEmail
             );
         } catch (Exception ex) {
             throw new SQLException("Invalid audit log data returned by database", ex);
