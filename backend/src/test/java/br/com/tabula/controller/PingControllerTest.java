@@ -1,5 +1,7 @@
 package br.com.tabula.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +23,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class PingControllerTest {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private HttpResponse<String> sendGetRequest(Javalin app, String endpoint) throws Exception {
         HttpClient client = HttpClient.newHttpClient();
@@ -49,16 +53,26 @@ class PingControllerTest {
         try {
             HttpResponse<String> responsePing = sendGetRequest(app, "/ping");
             assertEquals(200, responsePing.statusCode());
-            assertTrue(responsePing.body().contains("\"status\":\"ok\""));
-            assertTrue(responsePing.body().contains("\"database\":\"up\""));
+            assertOfficialHealthPayload(responsePing.body());
 
             HttpResponse<String> responseApiPing = sendGetRequest(app, "/api/ping");
             assertEquals(200, responseApiPing.statusCode());
-            assertTrue(responseApiPing.body().contains("\"status\":\"ok\""));
-            assertTrue(responseApiPing.body().contains("\"database\":\"up\""));
+            assertOfficialHealthPayload(responseApiPing.body());
         } finally {
             app.stop();
         }
+    }
+
+    private static void assertOfficialHealthPayload(String body) throws Exception {
+        JsonNode payload = MAPPER.readTree(body);
+        assertEquals(3, payload.size());
+        assertEquals("ok", payload.path("status").asText());
+        assertEquals("eq19", payload.path("service").asText());
+        String timestamp = payload.path("timestamp").asText();
+        assertTrue(timestamp.endsWith("Z"));
+        Instant.parse(timestamp);
+        assertTrue(body.indexOf("\"status\"") < body.indexOf("\"service\""));
+        assertTrue(body.indexOf("\"service\"") < body.indexOf("\"timestamp\""));
     }
 
     @Test

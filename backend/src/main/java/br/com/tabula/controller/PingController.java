@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class PingController {
@@ -48,10 +50,11 @@ public class PingController {
              PreparedStatement stmt = conn.prepareStatement("SELECT 1");
              ResultSet rs = stmt.executeQuery()) {
             
-            ctx.status(200).json(Map.of(
-                    "status", "ok",
-                    "database", "up"
-            ));
+            Map<String, String> response = new LinkedHashMap<>();
+            response.put("status", "ok");
+            response.put("service", "eq19");
+            response.put("timestamp", Instant.now().toString());
+            ctx.status(200).json(response);
         } catch (Exception e) {
             LOGGER.error("Database healthcheck failed", e);
             ctx.status(503).json(Map.of(
