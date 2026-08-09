@@ -28,7 +28,7 @@ public final class EventRepository {
     }
 
     public String findAllAsStateJson() throws SQLException {
-<span class="fc" id="L31">        String sql = &quot;&quot;&quot;</span>
+<span class="nc" id="L31">        String sql = &quot;&quot;&quot;</span>
                 SELECT COALESCE(jsonb_agg(event_json ORDER BY event_time, event_id), '[]'::jsonb)::text
                 FROM (
                     SELECT e.id AS event_id, e.data_hora AS event_time,
@@ -60,10 +60,10 @@ public final class EventRepository {
                     JOIN usuarios organizer ON organizer.id = e.organizador_id
                 ) projected
                 &quot;&quot;&quot;;
-<span class="fc" id="L63">        try (Connection connection = dataSource.getConnection();</span>
-<span class="fc" id="L64">             PreparedStatement statement = connection.prepareStatement(sql);</span>
-<span class="fc" id="L65">             ResultSet resultSet = statement.executeQuery()) {</span>
-<span class="fc bfc" id="L66" title="All 2 branches covered.">            return resultSet.next() ? resultSet.getString(1) : &quot;[]&quot;;</span>
+<span class="nc" id="L63">        try (Connection connection = dataSource.getConnection();</span>
+<span class="nc" id="L64">             PreparedStatement statement = connection.prepareStatement(sql);</span>
+<span class="nc" id="L65">             ResultSet resultSet = statement.executeQuery()) {</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            return resultSet.next() ? resultSet.getString(1) : &quot;[]&quot;;</span>
         }
     }
 

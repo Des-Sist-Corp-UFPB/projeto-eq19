@@ -53,7 +53,7 @@ public class AuthController {
 
 <span class="fc bfc" id="L54" title="All 4 branches covered.">                if (email.isEmpty() || password.isEmpty()) {</span>
 <span class="fc" id="L55">                    auditLogService.recordBestEffort(</span>
-                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, null, false,
+<span class="fc" id="L56">                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, null, false,</span>
 <span class="fc" id="L57">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;invalid_request&quot;)</span>
                     );
 <span class="fc" id="L59">                    ctx.status(400).json(Map.of(&quot;error&quot;, &quot;E-mail e senha são obrigatórios.&quot;));</span>
@@ -66,7 +66,7 @@ public class AuthController {
 <span class="fc" id="L66">                          .addKeyValue(&quot;auth_result&quot;, &quot;invalid_credentials&quot;)</span>
 <span class="fc" id="L67">                          .log(&quot;Login rejected&quot;);</span>
 <span class="fc" id="L68">                    auditLogService.recordBestEffort(</span>
-                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, null, false,
+<span class="fc" id="L69">                            null, AuditAction.LOGIN_REJECTED, &quot;USER&quot;, null, false,</span>
 <span class="fc" id="L70">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of(&quot;reason&quot;, &quot;invalid_credentials&quot;)</span>
                     );
 <span class="fc" id="L72">                    ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Credenciais inválidas.&quot;));</span>
@@ -90,7 +90,7 @@ public class AuthController {
 <span class="fc" id="L90">                String token = inTransaction(dataSource, connection -&gt; {</span>
 <span class="fc" id="L91">                    String createdToken = userRepository.createAuthToken(connection, account.get().getId());</span>
 <span class="fc" id="L92">                    auditLogService.record(</span>
-                            connection, principal, AuditAction.LOGIN_SUCCEEDED,
+<span class="fc" id="L93">                            connection, principal, AuditAction.LOGIN_SUCCEEDED,</span>
 <span class="fc" id="L94">                            &quot;USER&quot;, account.get().getExternalId(), true,</span>
 <span class="fc" id="L95">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                     );
@@ -103,8 +103,8 @@ public class AuthController {
 
 <span class="fc" id="L104">                ctx.json(Map.of(</span>
 <span class="fc" id="L105">                        &quot;ok&quot;, true,</span>
-                        &quot;message&quot;, &quot;Login realizado com sucesso.&quot;,
-                        &quot;token&quot;, token,
+<span class="fc" id="L106">                        &quot;message&quot;, &quot;Login realizado com sucesso.&quot;,</span>
+<span class="fc" id="L107">                        &quot;token&quot;, token,</span>
 <span class="fc" id="L108">                        &quot;user&quot;, toFrontendUser(account.get())</span>
                 ));
 <span class="fc" id="L110">            } catch (SQLException ex) {</span>
@@ -117,7 +117,7 @@ public class AuthController {
 <span class="fc" id="L117">                      .setCause(ex)</span>
 <span class="fc" id="L118">                      .log(&quot;Invalid login payload&quot;);</span>
 <span class="fc" id="L119">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para login.&quot;));</span>
-<span class="fc" id="L120">            }</span>
+            }
 <span class="fc" id="L121">        });</span>
 
 <span class="fc" id="L123">        app.post(&quot;/auth/register&quot;, ctx -&gt; {</span>
@@ -143,25 +143,25 @@ public class AuthController {
 <span class="fc" id="L143">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
 <span class="fc" id="L144">                UserAccount account = inTransaction(dataSource, connection -&gt; {</span>
 <span class="fc" id="L145">                    UserAccount created = userRepository.createUser(</span>
-                            connection,
-                            externalId,
-                            name,
-                            email,
-                            passwordHash,
-                            &quot;USER&quot;,
-                            false
+<span class="fc" id="L146">                            connection,</span>
+<span class="fc" id="L147">                            externalId,</span>
+<span class="fc" id="L148">                            name,</span>
+<span class="fc" id="L149">                            email,</span>
+<span class="fc" id="L150">                            passwordHash,</span>
+<span class="fc" id="L151">                            &quot;USER&quot;,</span>
+<span class="fc" id="L152">                            false</span>
                     );
 <span class="fc" id="L154">                    tokenRepository.deleteTokensByUser(connection, created.getId());</span>
 <span class="fc" id="L155">                    tokenRepository.createToken(</span>
 <span class="fc" id="L156">                            connection, created.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES)</span>
                     );
 <span class="fc" id="L158">                    auditLogService.record(</span>
-                            connection, null, AuditAction.USER_REGISTERED,
+<span class="fc" id="L159">                            connection, null, AuditAction.USER_REGISTERED,</span>
 <span class="fc" id="L160">                            &quot;USER&quot;, created.getExternalId(), true,</span>
 <span class="fc" id="L161">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                     );
 <span class="fc" id="L163">                    auditLogService.record(</span>
-                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,
+<span class="fc" id="L164">                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,</span>
 <span class="fc" id="L165">                            &quot;USER&quot;, created.getExternalId(), true,</span>
 <span class="fc" id="L166">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                     );
@@ -179,7 +179,7 @@ public class AuthController {
 <span class="fc" id="L179">                    emailService.sendVerificationCode(email, name, code, account.getExternalId());</span>
 <span class="fc" id="L180">                    ctx.status(201).json(Map.of(</span>
 <span class="fc" id="L181">                            &quot;ok&quot;, true,</span>
-                            &quot;message&quot;, &quot;Conta criada com sucesso. Código de verificação enviado para seu e-mail.&quot;
+<span class="fc" id="L182">                            &quot;message&quot;, &quot;Conta criada com sucesso. Código de verificação enviado para seu e-mail.&quot;</span>
                     ));
 <span class="fc" id="L184">                } catch (Exception ex) {</span>
 <span class="fc" id="L185">                    LOGGER.atError()</span>
@@ -187,12 +187,12 @@ public class AuthController {
 <span class="fc" id="L187">                          .addKeyValue(&quot;operation&quot;, &quot;email_verification_delivery&quot;)</span>
 <span class="fc" id="L188">                          .setCause(ex)</span>
 <span class="fc" id="L189">                          .log(&quot;Verification email delivery failed&quot;);</span>
-                    // As requested: Do NOT delete the user. Keep unverified and return clear error
+                    // Conforme solicitado: NÃO excluir o usuário. Manter não verificado e retornar erro claro
 <span class="fc" id="L191">                    ctx.status(201).json(Map.of(</span>
 <span class="fc" id="L192">                            &quot;ok&quot;, true,</span>
-                            &quot;message&quot;, &quot;Conta criada com sucesso, mas não foi possível enviar o e-mail de verificação. Por favor, utilize a opção de reenviar verificação para ativar sua conta.&quot;
+<span class="fc" id="L193">                            &quot;message&quot;, &quot;Conta criada com sucesso, mas não foi possível enviar o e-mail de verificação. Por favor, utilize a opção de reenviar verificação para ativar sua conta.&quot;</span>
                     ));
-<span class="fc" id="L195">                }</span>
+                }
 <span class="fc" id="L196">            } catch (SQLException ex) {</span>
 <span class="fc" id="L197">                LOGGER.atError()</span>
 <span class="fc" id="L198">                      .addKeyValue(&quot;operation&quot;, &quot;user_registration&quot;)</span>
@@ -205,7 +205,7 @@ public class AuthController {
 <span class="fc" id="L205">                      .setCause(ex)</span>
 <span class="fc" id="L206">                      .log(&quot;Invalid registration payload&quot;);</span>
 <span class="fc" id="L207">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para cadastro.&quot;));</span>
-<span class="fc" id="L208">            }</span>
+            }
 <span class="fc" id="L209">        });</span>
 
 <span class="fc" id="L211">        io.javalin.http.Handler legacyVerifyEmailHandler = ctx -&gt; {</span>
@@ -249,11 +249,11 @@ public class AuthController {
                 try {
 <span class="fc" id="L250">                    inTransaction(dataSource, connection -&gt; {</span>
 <span class="fc" id="L251">                        verifyUserEmail(</span>
-                                connection, userRepository, tokenRepository,
+<span class="fc" id="L252">                                connection, userRepository, tokenRepository,</span>
 <span class="fc" id="L253">                                account, code, account.getExternalId()</span>
                         );
 <span class="fc" id="L255">                        auditLogService.record(</span>
-                                connection, null, AuditAction.EMAIL_VERIFIED,
+<span class="fc" id="L256">                                connection, null, AuditAction.EMAIL_VERIFIED,</span>
 <span class="fc" id="L257">                                &quot;USER&quot;, account.getExternalId(), true,</span>
 <span class="fc" id="L258">                                ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                         );
@@ -267,7 +267,7 @@ public class AuthController {
 
 <span class="fc" id="L268">                    ctx.json(Map.of(</span>
 <span class="fc" id="L269">                            &quot;ok&quot;, true,</span>
-                            &quot;message&quot;, &quot;E-mail verificado com sucesso.&quot;
+<span class="fc" id="L270">                            &quot;message&quot;, &quot;E-mail verificado com sucesso.&quot;</span>
                     ));
 <span class="fc" id="L272">                } catch (VerificationException vex) {</span>
 <span class="fc" id="L273">                    String resultType = &quot;invalid_code&quot;;</span>
@@ -284,7 +284,7 @@ public class AuthController {
                     );
 
 <span class="fc" id="L286">                    ctx.status(vex.getStatusCode()).json(Map.of(&quot;error&quot;, vex.getMessage()));</span>
-<span class="fc" id="L287">                }</span>
+                }
 <span class="fc" id="L288">            } catch (SQLException ex) {</span>
 <span class="fc" id="L289">                LOGGER.atError()</span>
 <span class="fc" id="L290">                      .setCause(ex)</span>
@@ -295,7 +295,7 @@ public class AuthController {
 <span class="nc" id="L295">                      .setCause(ex)</span>
 <span class="nc" id="L296">                      .log(&quot;Invalid verify-email payload&quot;);</span>
 <span class="nc" id="L297">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para verificação.&quot;));</span>
-<span class="fc" id="L298">            }</span>
+            }
 <span class="fc" id="L299">        });</span>
 
 <span class="fc" id="L301">        app.post(&quot;/auth/resend-verification&quot;, ctx -&gt; {</span>
@@ -320,7 +320,7 @@ public class AuthController {
 <span class="fc" id="L320">                    return;</span>
                 }
 
-                // Generate a new 6-digit code
+                // Gerar um novo código de 6 dígitos
 <span class="fc" id="L324">                String code = generateVerificationCode();</span>
 <span class="fc" id="L325">                VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);</span>
 
@@ -330,14 +330,14 @@ public class AuthController {
 <span class="fc" id="L330">                            connection, account.getId(), code, Instant.now().plus(15, ChronoUnit.MINUTES)</span>
                     );
 <span class="fc" id="L332">                    auditLogService.record(</span>
-                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,
+<span class="fc" id="L333">                            connection, null, AuditAction.EMAIL_VERIFICATION_REQUESTED,</span>
 <span class="fc" id="L334">                            &quot;USER&quot;, account.getExternalId(), true,</span>
 <span class="fc" id="L335">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                     );
 <span class="fc" id="L337">                    return null;</span>
                 });
 
-                // External delivery intentionally happens only after the database transaction commits.
+                // O envio externo ocorre intencionalmente apenas após o commit da transação do banco de dados.
 <span class="fc" id="L341">                EmailService emailService = new EmailService();</span>
 
                 try {
@@ -350,7 +350,7 @@ public class AuthController {
 <span class="fc" id="L350">                          .setCause(ex)</span>
 <span class="fc" id="L351">                          .log(&quot;Verification email delivery failed&quot;);</span>
 <span class="fc" id="L352">                    ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Falha ao enviar o código de verificação. Por favor, tente novamente.&quot;));</span>
-<span class="fc" id="L353">                }</span>
+                }
 <span class="fc" id="L354">            } catch (SQLException ex) {</span>
 <span class="fc" id="L355">                LOGGER.atError()</span>
 <span class="fc" id="L356">                      .setCause(ex)</span>
@@ -361,7 +361,7 @@ public class AuthController {
 <span class="nc" id="L361">                      .setCause(ex)</span>
 <span class="nc" id="L362">                      .log(&quot;Invalid resend verification payload&quot;);</span>
 <span class="nc" id="L363">                ctx.status(400).json(Map.of(&quot;error&quot;, &quot;Dados inválidos para reenvio de verificação.&quot;));</span>
-<span class="fc" id="L364">            }</span>
+            }
 <span class="fc" id="L365">        });</span>
 
 <span class="fc" id="L367">        app.post(&quot;/auth/reset-password&quot;, ctx -&gt; {</span>
@@ -388,7 +388,7 @@ public class AuthController {
 <span class="fc" id="L388">                            .resolve(connection, ctx.header(&quot;Authorization&quot;))</span>
 <span class="fc" id="L389">                            .orElse(null);</span>
 <span class="fc" id="L390">                    auditLogService.record(</span>
-                            connection, actor, AuditAction.PASSWORD_RESET_COMPLETED,
+<span class="fc" id="L391">                            connection, actor, AuditAction.PASSWORD_RESET_COMPLETED,</span>
 <span class="fc" id="L392">                            &quot;USER&quot;, account.get().getExternalId(), true,</span>
 <span class="fc" id="L393">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                     );
@@ -400,7 +400,7 @@ public class AuthController {
 <span class="fc" id="L400">                      .setCause(ex)</span>
 <span class="fc" id="L401">                      .log(&quot;Failed to reset password&quot;);</span>
 <span class="fc" id="L402">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível redefinir a senha.&quot;));</span>
-<span class="fc" id="L403">            }</span>
+            }
 <span class="fc" id="L404">        });</span>
 
 <span class="fc" id="L406">        app.post(&quot;/auth/change-password&quot;, ctx -&gt; {</span>
@@ -428,7 +428,7 @@ public class AuthController {
 <span class="fc" id="L428">                            .resolve(connection, ctx.header(&quot;Authorization&quot;))</span>
 <span class="fc" id="L429">                            .orElse(null);</span>
 <span class="fc" id="L430">                    auditLogService.record(</span>
-                            connection, actor, AuditAction.PASSWORD_CHANGED,
+<span class="fc" id="L431">                            connection, actor, AuditAction.PASSWORD_CHANGED,</span>
 <span class="fc" id="L432">                            &quot;USER&quot;, account.get().getExternalId(), true,</span>
 <span class="fc" id="L433">                            ctx.ip(), ctx.header(&quot;User-Agent&quot;), Map.of()</span>
                     );
@@ -440,7 +440,7 @@ public class AuthController {
 <span class="fc" id="L440">                      .setCause(ex)</span>
 <span class="fc" id="L441">                      .log(&quot;Failed to change password&quot;);</span>
 <span class="fc" id="L442">                ctx.status(500).json(Map.of(&quot;error&quot;, &quot;Não foi possível alterar a senha.&quot;));</span>
-<span class="fc" id="L443">            }</span>
+            }
 <span class="fc" id="L444">        });</span>
 <span class="fc" id="L445">    }</span>
 
@@ -460,9 +460,9 @@ public class AuthController {
 <span class="fc" id="L460">            } catch (Exception ex) {</span>
                 try {
 <span class="fc" id="L462">                    connection.rollback();</span>
-<span class="nc" id="L463">                } catch (SQLException rollbackError) {</span>
+<span class="pc" id="L463">                } catch (SQLException rollbackError) {</span>
 <span class="nc" id="L464">                    ex.addSuppressed(rollbackError);</span>
-<span class="fc" id="L465">                }</span>
+                }
 <span class="fc" id="L466">                throw ex;</span>
             }
         }
@@ -498,7 +498,7 @@ public class AuthController {
 <span class="fc" id="L498">                &quot;email&quot;, account.getEmail(),</span>
 <span class="fc bfc" id="L499" title="All 2 branches covered.">                &quot;role&quot;, admin ? &quot;admin&quot; : &quot;student&quot;,</span>
 <span class="fc bfc" id="L500" title="All 2 branches covered.">                &quot;course&quot;, admin ? &quot;Administração do clube&quot; : &quot;Sem curso informado&quot;,</span>
-                &quot;avatar&quot;, initials,
+<span class="fc" id="L501">                &quot;avatar&quot;, initials,</span>
 <span class="fc" id="L502">                &quot;winCount&quot;, 0,</span>
 <span class="fc" id="L503">                &quot;favoriteGames&quot;, java.util.List.of(),</span>
 <span class="fc" id="L504">                &quot;joinedAt&quot;, java.time.Instant.now().toString(),</span>
@@ -547,7 +547,7 @@ public class AuthController {
                 + &quot;&lt;/div&gt;&quot;
                 + &quot;&lt;h1&gt;E-mail Verificado!&lt;/h1&gt;&quot;
                 + &quot;&lt;p&gt;Sua conta foi ativada com sucesso. Agora você pode entrar na plataforma e aproveitar tudo o que o Tabula oferece.&lt;/p&gt;&quot;
-                + &quot;&lt;a href=\&quot;&quot; + frontendUrl + &quot;/#/login\&quot; class=\&quot;btn\&quot;&gt;Ir para o Login&lt;/a&gt;&quot;
+<span class="fc" id="L550">                + &quot;&lt;a href=\&quot;&quot; + frontendUrl + &quot;/#/login\&quot; class=\&quot;btn\&quot;&gt;Ir para o Login&lt;/a&gt;&quot;</span>
                 + &quot;&lt;/div&gt;&quot;
                 + &quot;&lt;/div&gt;&quot;
                 + &quot;&lt;/body&gt;&quot;
@@ -586,8 +586,8 @@ public class AuthController {
                 + &quot;&lt;span class=\&quot;icon\&quot;&gt;✗&lt;/span&gt;&quot;
                 + &quot;&lt;/div&gt;&quot;
                 + &quot;&lt;h1&gt;Link Inválido ou Expirado&lt;/h1&gt;&quot;
-                + &quot;&lt;p&gt;&quot; + message + &quot;&lt;/p&gt;&quot;
-                + &quot;&lt;a href=\&quot;&quot; + frontendUrl + &quot;/#/login\&quot; class=\&quot;btn\&quot;&gt;Voltar para o Tabula&lt;/a&gt;&quot;
+<span class="fc" id="L589">                + &quot;&lt;p&gt;&quot; + message + &quot;&lt;/p&gt;&quot;</span>
+<span class="fc" id="L590">                + &quot;&lt;a href=\&quot;&quot; + frontendUrl + &quot;/#/login\&quot; class=\&quot;btn\&quot;&gt;Voltar para o Tabula&lt;/a&gt;&quot;</span>
                 + &quot;&lt;/div&gt;&quot;
                 + &quot;&lt;/div&gt;&quot;
                 + &quot;&lt;/body&gt;&quot;
@@ -641,7 +641,7 @@ public class AuthController {
 <span class="fc" id="L641">        VerificationTokenRepository.TokenInfo tokenInfo = tokenInfoOpt.get();</span>
 <span class="fc bfc" id="L642" title="All 2 branches covered.">        if (tokenInfo.getExpiresAt().isBefore(Instant.now())) {</span>
 <span class="fc" id="L643">            throw new VerificationException(</span>
-                    &quot;Este código de verificação expirou. Por favor, solicite um novo.&quot;, 400
+<span class="fc" id="L644">                    &quot;Este código de verificação expirou. Por favor, solicite um novo.&quot;, 400</span>
             );
         }
 

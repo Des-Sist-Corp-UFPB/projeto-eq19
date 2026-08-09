@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProfileService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">ProfileService.java</span></div><h1>ProfileService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.ProfileRepository;
+import br.com.tabula.repository.ProfileRepository.ProfileData;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.net.URI;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public final class ProfileService {
+    private final HikariDataSource dataSource; private final ProfileRepository repository; private final AuditLogService audit;
+<span class="fc" id="L18">    public ProfileService(HikariDataSource dataSource, ProfileRepository repository, AuditLogService audit) {</span>
+<span class="fc" id="L19">        this.dataSource=dataSource; this.repository=repository; this.audit=audit;</span>
+<span class="fc" id="L20">    }</span>
+
+    public ProfileData get(AuthenticatedPrincipal actor) throws SQLException, ProfileException {
+<span class="fc" id="L23">        try (Connection connection=dataSource.getConnection()) {</span>
+<span class="fc" id="L24">            return repository.findByUserId(connection, actor.getDatabaseId(), false)</span>
+<span class="pc" id="L25">                    .orElseThrow(() -&gt; ProfileException.notFound(&quot;profile_not_found&quot;));</span>
+        }
+    }
+
+    public ProfileData update(AuthenticatedPrincipal actor, ProfileInput input, RequestMetadata metadata)
+            throws SQLException, ProfileException {
+<span class="fc" id="L31">        ProfileInput clean=validate(input);</span>
+<span class="fc" id="L32">        try (Connection connection=dataSource.getConnection()) {</span>
+<span class="fc" id="L33">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L35">                ProfileData before=repository.findByUserId(connection, actor.getDatabaseId(), true)</span>
+<span class="pc" id="L36">                        .orElseThrow(() -&gt; ProfileException.notFound(&quot;profile_not_found&quot;));</span>
+<span class="fc" id="L37">                List&lt;String&gt; changed=new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">                if (!before.name().equals(clean.name())) changed.add(&quot;name&quot;);</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                if (!java.util.Objects.equals(before.course(), clean.course())) changed.add(&quot;course&quot;);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">                if (!java.util.Objects.equals(before.bio(), clean.bio())) changed.add(&quot;bio&quot;);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">                if (!java.util.Objects.equals(before.avatarUrl(), clean.avatarUrl())) changed.add(&quot;avatarUrl&quot;);</span>
+<span class="fc" id="L42">                ProfileData result=repository.update(connection, actor.getDatabaseId(), clean.name(), clean.course(), clean.bio(), clean.avatarUrl());</span>
+<span class="fc" id="L43">                audit.record(connection, actor, AuditAction.PROFILE_UPDATED, &quot;PROFILE&quot;, actor.getExternalId(), true,</span>
+<span class="fc" id="L44">                        metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;changedFields&quot;, changed));</span>
+<span class="fc" id="L45">                connection.commit(); return result;</span>
+<span class="nc" id="L46">            } catch (Exception ex) {</span>
+<span class="nc" id="L47">                connection.rollback();</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">                if (ex instanceof ProfileException pe) throw pe;</span>
+<span class="nc bnc" id="L49" title="All 2 branches missed.">                if (ex instanceof SQLException se) throw se;</span>
+<span class="nc" id="L50">                throw new SQLException(&quot;Profile transaction failed&quot;, ex);</span>
+            }
+        }
+    }
+
+    public void auditRejected(AuthenticatedPrincipal actor, String reason, RequestMetadata metadata) {
+<span class="fc" id="L56">        audit.recordBestEffort(actor, AuditAction.PROFILE_OPERATION_REJECTED, &quot;PROFILE&quot;, actor.getExternalId(), false,</span>
+<span class="fc" id="L57">                metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;reasonCode&quot;, reason));</span>
+<span class="fc" id="L58">    }</span>
+
+    private static ProfileInput validate(ProfileInput input) throws ProfileException {
+<span class="pc bpc" id="L61" title="3 of 8 branches missed.">        if (input==null || input.name()==null || input.name().trim().isEmpty() || input.name().trim().length()&gt;150)</span>
+<span class="fc" id="L62">            throw ProfileException.invalid(&quot;invalid_name&quot;);</span>
+<span class="fc" id="L63">        String course=clean(input.course()), bio=clean(input.bio()), avatar=clean(input.avatarUrl());</span>
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        if (course!=null &amp;&amp; course.length()&gt;180) throw ProfileException.invalid(&quot;invalid_course&quot;);</span>
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">        if (bio!=null &amp;&amp; bio.length()&gt;2000) throw ProfileException.invalid(&quot;invalid_bio&quot;);</span>
+<span class="pc bpc" id="L66" title="3 of 6 branches missed.">        if (avatar!=null &amp;&amp; (avatar.length()&gt;1_000_000 || !validAvatar(avatar)))</span>
+<span class="nc" id="L67">            throw ProfileException.invalid(&quot;invalid_avatar_url&quot;);</span>
+<span class="fc" id="L68">        return new ProfileInput(input.name().trim(), course, bio, avatar);</span>
+    }
+
+    private static boolean validAvatar(String value) {
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (value.startsWith(&quot;data:image/&quot;)) return true;</span>
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">        try { URI uri=URI.create(value); return &quot;http&quot;.equalsIgnoreCase(uri.getScheme()) || &quot;https&quot;.equalsIgnoreCase(uri.getScheme()); }</span>
+<span class="nc" id="L74">        catch (IllegalArgumentException ex) { return false; }</span>
+    }
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">    private static String clean(String value) { return value==null || value.trim().isEmpty() ? null : value.trim(); }</span>
+<span class="fc" id="L77">    public record ProfileInput(String name,String course,String bio,String avatarUrl) {}</span>
+<span class="fc" id="L78">    public record RequestMetadata(String ipAddress,String userAgent) {}</span>
+    public static final class ProfileException extends Exception {
+<span class="fc" id="L80">        public enum Kind { NOT_FOUND, INVALID } private final Kind kind; private final String reason;</span>
+<span class="fc" id="L81">        private ProfileException(Kind kind,String reason){this.kind=kind;this.reason=reason;}</span>
+<span class="fc" id="L82">        public Kind kind(){return kind;} public String reason(){return reason;}</span>
+<span class="nc" id="L83">        public static ProfileException notFound(String reason){return new ProfileException(Kind.NOT_FOUND,reason);}</span>
+<span class="fc" id="L84">        public static ProfileException invalid(String reason){return new ProfileException(Kind.INVALID,reason);}</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

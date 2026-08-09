@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HttpObservability.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.observability</a> &gt; <span class="el_source">HttpObservability.java</span></div><h1>HttpObservability.java</h1><pre class="source lang-java linenums">package br.com.tabula.observability;
+
+import io.javalin.Javalin;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.instrumentation.api.semconv.http.HttpServerRoute;
+import io.opentelemetry.instrumentation.api.semconv.http.HttpServerRouteSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public final class HttpObservability {
+<span class="fc" id="L13">    private static final Logger LOGGER = LoggerFactory.getLogger(HttpObservability.class);</span>
+<span class="fc" id="L14">    private static final String ATTRIBUTE = HttpObservability.class.getName() + &quot;.request&quot;;</span>
+<span class="fc" id="L15">    private static final String ROUTE_ATTRIBUTE = HttpObservability.class.getName() + &quot;.route&quot;;</span>
+
+    private HttpObservability() {
+    }
+
+    public static void register(Javalin app) {
+<span class="fc" id="L21">        app.before(ctx -&gt; {</span>
+<span class="fc" id="L22">            String method = ctx.method().name();</span>
+<span class="fc" id="L23">            String path = ctx.path();</span>
+<span class="fc" id="L24">            Span span = Span.current();</span>
+<span class="fc" id="L25">            span.setAttribute(&quot;http.request.method&quot;, method);</span>
+<span class="fc" id="L26">            span.setAttribute(&quot;url.path&quot;, path);</span>
+<span class="fc" id="L27">            ctx.attribute(ATTRIBUTE, new RequestTrace(span, System.nanoTime(), method, path));</span>
+<span class="fc" id="L28">        });</span>
+
+<span class="fc" id="L30">        app.beforeMatched(ctx -&gt; {</span>
+<span class="fc" id="L31">            String route = ctx.matchedPath();</span>
+<span class="fc" id="L32">            ctx.attribute(ROUTE_ATTRIBUTE, route);</span>
+<span class="fc" id="L33">            HttpServerRoute.update(Context.current(), HttpServerRouteSource.CONTROLLER, route);</span>
+<span class="fc" id="L34">        });</span>
+
+<span class="fc" id="L36">        app.after(ctx -&gt; {</span>
+<span class="fc" id="L37">            RequestTrace request = ctx.attribute(ATTRIBUTE);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">            if (request == null) return;</span>
+<span class="fc" id="L39">            int status = ctx.statusCode();</span>
+<span class="fc" id="L40">            long durationMs = Math.max(0L, (System.nanoTime() - request.startedAtNanos()) / 1_000_000L);</span>
+<span class="fc" id="L41">            String route = normalizedRoute(ctx.attribute(ROUTE_ATTRIBUTE));</span>
+<span class="fc" id="L42">            request.span().updateName(request.method() + &quot; &quot; + route);</span>
+<span class="fc" id="L43">            request.span().setAttribute(&quot;http.route&quot;, route);</span>
+<span class="fc" id="L44">            request.span().setAttribute(&quot;http.response.status_code&quot;, status);</span>
+<span class="fc" id="L45">            request.span().setAttribute(&quot;http.server.request.duration_ms&quot;, durationMs);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            if (status &gt;= 500) request.span().setStatus(StatusCode.ERROR, &quot;server error&quot;);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            else if (status &gt;= 400) request.span().setAttribute(&quot;http.response.is_client_error&quot;, true);</span>
+
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            if (!&quot;/ping&quot;.equals(request.path())) {</span>
+<span class="fc" id="L50">                LOGGER.atInfo()</span>
+<span class="fc" id="L51">                        .addKeyValue(&quot;http_method&quot;, request.method())</span>
+<span class="fc" id="L52">                        .addKeyValue(&quot;http_route&quot;, route)</span>
+<span class="fc" id="L53">                        .addKeyValue(&quot;http_status&quot;, status)</span>
+<span class="fc" id="L54">                        .addKeyValue(&quot;duration_ms&quot;, durationMs)</span>
+<span class="fc" id="L55">                        .addKeyValue(&quot;trace_id&quot;, request.span().getSpanContext().getTraceId())</span>
+<span class="fc" id="L56">                        .log(&quot;HTTP request completed&quot;);</span>
+            }
+<span class="fc" id="L58">        });</span>
+<span class="fc" id="L59">    }</span>
+
+    static String normalizedRoute(String matchedPath) {
+<span class="fc bfc" id="L62" title="All 4 branches covered.">        return matchedPath == null || matchedPath.isBlank() ? &quot;unmatched&quot; : matchedPath;</span>
+    }
+
+<span class="fc" id="L65">    private record RequestTrace(</span>
+            Span span, long startedAtNanos, String method, String path) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

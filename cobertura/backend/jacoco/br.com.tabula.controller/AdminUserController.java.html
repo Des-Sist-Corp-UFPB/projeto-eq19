@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AdminUserController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">AdminUserController.java</span></div><h1>AdminUserController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.Map;
+import java.util.Optional;
+
+public final class AdminUserController {
+    private AdminUserController() {}
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L21">        AuthenticatedUserService auth = new AuthenticatedUserService(dataSource);</span>
+<span class="fc" id="L22">        AuditLogService audit = new AuditLogService(dataSource);</span>
+<span class="fc" id="L23">        app.patch(&quot;/users/{userId}/role&quot;, ctx -&gt; authorized(ctx, auth, actor -&gt; {</span>
+            RoleRequest request;
+<span class="fc" id="L25">            try { request = ctx.bodyAsClass(RoleRequest.class); }</span>
+<span class="pc" id="L26">            catch (Exception ex) { ctx.status(422).json(Map.of(&quot;error&quot;, &quot;Cargo inválido.&quot;)); return; }</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">            String role = &quot;admin&quot;.equalsIgnoreCase(request.role()) ? &quot;ADMIN&quot;</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">                    : &quot;student&quot;.equalsIgnoreCase(request.role()) ? &quot;USER&quot; : null;</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            if (role == null) { ctx.status(422).json(Map.of(&quot;error&quot;, &quot;Cargo inválido.&quot;)); return; }</span>
+<span class="fc" id="L30">            try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L31">                connection.setAutoCommit(false);</span>
+<span class="fc" id="L32">                try (PreparedStatement statement = connection.prepareStatement(</span>
+                        &quot;UPDATE usuarios SET role=?,atualizado_em=CURRENT_TIMESTAMP WHERE external_id=?&quot;)) {
+<span class="fc" id="L34">                    statement.setString(1, role); statement.setString(2, ctx.pathParam(&quot;userId&quot;));</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                    if (statement.executeUpdate() != 1) { connection.rollback(); ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Usuário não encontrado.&quot;)); return; }</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">                }</span>
+<span class="fc" id="L37">                audit.record(connection, actor, AuditAction.USER_ROLE_UPDATED, &quot;USER&quot;, ctx.pathParam(&quot;userId&quot;), true,</span>
+<span class="fc" id="L38">                        ctx.ip(), ctx.userAgent(), Map.of(&quot;changedFields&quot;, java.util.List.of(&quot;role&quot;)));</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">                connection.commit(); ctx.json(Map.of(&quot;id&quot;, ctx.pathParam(&quot;userId&quot;), &quot;role&quot;, &quot;ADMIN&quot;.equals(role) ? &quot;admin&quot; : &quot;student&quot;));</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            }</span>
+<span class="fc" id="L41">        }));</span>
+<span class="fc" id="L42">        app.delete(&quot;/users/{userId}&quot;, ctx -&gt; authorized(ctx, auth, actor -&gt; {</span>
+<span class="fc" id="L43">            String id = ctx.pathParam(&quot;userId&quot;);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (actor.getExternalId().equals(id)) { ctx.status(409).json(Map.of(&quot;error&quot;, &quot;Você não pode remover sua própria conta.&quot;)); return; }</span>
+<span class="fc" id="L45">            try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L46">                connection.setAutoCommit(false);</span>
+                long targetId;
+<span class="fc" id="L48">                try (PreparedStatement find = connection.prepareStatement(&quot;SELECT id FROM usuarios WHERE external_id=? FOR UPDATE&quot;)) {</span>
+<span class="fc" id="L49">                    find.setString(1, id); try (ResultSet rows = find.executeQuery()) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                        if (!rows.next()) { connection.rollback(); ctx.status(404).json(Map.of(&quot;error&quot;, &quot;Usuário não encontrado.&quot;)); return; }</span>
+<span class="fc" id="L51">                        targetId = rows.getLong(1);</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">                    }</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">                }</span>
+<span class="fc" id="L54">                try (PreparedStatement statement = connection.prepareStatement(&quot;DELETE FROM usuarios WHERE id=?&quot;)) {</span>
+<span class="fc" id="L55">                    statement.setLong(1, targetId); statement.executeUpdate();</span>
+                }
+<span class="fc" id="L57">                audit.record(connection, actor, AuditAction.USER_DELETED, &quot;USER&quot;, id, true,</span>
+<span class="fc" id="L58">                        ctx.ip(), ctx.userAgent(), Map.of());</span>
+<span class="fc" id="L59">                connection.commit(); ctx.status(204);</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">            }</span>
+<span class="fc" id="L61">        }));</span>
+<span class="fc" id="L62">    }</span>
+
+    private static void authorized(Context ctx, AuthenticatedUserService auth, Handler handler) throws Exception {
+<span class="fc" id="L65">        Optional&lt;AuthenticatedPrincipal&gt; actor = auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (actor.isEmpty()) { ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;)); return; }</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (!actor.get().isAdmin()) { ctx.status(403).json(Map.of(&quot;error&quot;, &quot;Acesso negado.&quot;)); return; }</span>
+<span class="fc" id="L68">        handler.handle(actor.get());</span>
+<span class="fc" id="L69">    }</span>
+<span class="fc" id="L70">    private record RoleRequest(String role) {}</span>
+    @FunctionalInterface private interface Handler { void handle(AuthenticatedPrincipal actor) throws Exception; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

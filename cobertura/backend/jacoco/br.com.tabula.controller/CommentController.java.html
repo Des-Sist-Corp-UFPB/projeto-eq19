@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CommentController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">CommentController.java</span></div><h1>CommentController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.CommentRepository;
+import br.com.tabula.repository.CommentRepository.CommentData;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
+import br.com.tabula.service.CommentService;
+import br.com.tabula.service.CommentService.CommentException;
+import br.com.tabula.service.CommentService.RequestMetadata;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.Optional;
+
+public final class CommentController {
+<span class="fc" id="L22">    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();</span>
+
+    private CommentController() {}
+
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L27">        AuthenticatedUserService auth = new AuthenticatedUserService(dataSource);</span>
+<span class="fc" id="L28">        CommentService service = new CommentService(dataSource, new CommentRepository(),</span>
+                new AuditLogService(dataSource));
+
+<span class="pc" id="L31">        app.get(&quot;/sessions/{sessionId}/comments&quot;, ctx -&gt; authenticated(ctx, auth, service, principal -&gt;</span>
+<span class="nc" id="L32">                ctx.json(service.list(ctx.pathParam(&quot;sessionId&quot;)).stream().map(CommentResponse::from).toList())));</span>
+<span class="fc" id="L33">        app.post(&quot;/sessions/{sessionId}/comments&quot;, ctx -&gt; authenticated(ctx, auth, service, principal -&gt; {</span>
+<span class="fc" id="L34">            CommentRequest request = parseRequest(ctx);</span>
+<span class="fc" id="L35">            CommentData created = service.create(principal, ctx.pathParam(&quot;sessionId&quot;),</span>
+<span class="fc" id="L36">                    request.content(), metadata(ctx));</span>
+<span class="fc" id="L37">            ctx.status(201).json(CommentResponse.from(created));</span>
+<span class="fc" id="L38">        }));</span>
+<span class="fc" id="L39">        app.delete(&quot;/sessions/{sessionId}/comments/{commentId}&quot;, ctx -&gt;</span>
+<span class="nc" id="L40">                authenticated(ctx, auth, service, principal -&gt; {</span>
+<span class="nc" id="L41">                    service.delete(principal, ctx.pathParam(&quot;sessionId&quot;), ctx.pathParam(&quot;commentId&quot;), metadata(ctx));</span>
+<span class="nc" id="L42">                    ctx.status(204);</span>
+<span class="nc" id="L43">                }));</span>
+<span class="fc" id="L44">    }</span>
+
+    private static void authenticated(Context ctx, AuthenticatedUserService auth, CommentService service,
+                                      Handler handler) throws Exception {
+<span class="fc" id="L48">        Optional&lt;AuthenticatedPrincipal&gt; principal = auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (principal.isEmpty()) {</span>
+<span class="fc" id="L50">            ctx.status(401).json(Map.of(&quot;error&quot;, &quot;Sessão inválida ou expirada.&quot;));</span>
+<span class="fc" id="L51">            return;</span>
+        }
+<span class="fc" id="L53">        try { handler.handle(principal.get()); }</span>
+<span class="nc" id="L54">        catch (CommentException ex) {</span>
+<span class="nc bnc" id="L55" title="All 3 branches missed.">            int status = switch (ex.kind()) {</span>
+<span class="nc" id="L56">                case FORBIDDEN -&gt; 403;</span>
+<span class="nc" id="L57">                case NOT_FOUND -&gt; 404;</span>
+<span class="nc" id="L58">                case INVALID -&gt; 422;</span>
+            };
+<span class="nc" id="L60">            service.auditRejected(principal.get(), ctx.pathParam(&quot;sessionId&quot;),</span>
+<span class="nc" id="L61">                    ctx.pathParamMap().get(&quot;commentId&quot;), ex.reason(), metadata(ctx));</span>
+<span class="nc bnc" id="L62" title="All 3 branches missed.">            ctx.status(status).json(Map.of(&quot;error&quot;, switch (ex.kind()) {</span>
+<span class="nc" id="L63">                case FORBIDDEN -&gt; &quot;Operação não permitida.&quot;;</span>
+<span class="nc" id="L64">                case NOT_FOUND -&gt; &quot;Partida ou comentário não encontrado.&quot;;</span>
+<span class="nc" id="L65">                case INVALID -&gt; &quot;Comentário inválido.&quot;;</span>
+            }));
+<span class="fc" id="L67">        }</span>
+<span class="fc" id="L68">    }</span>
+
+    private static CommentRequest parseRequest(Context ctx) throws CommentException {
+        try {
+<span class="fc" id="L72">            JsonNode root = OBJECT_MAPPER.readTree(ctx.body());</span>
+<span class="pc bpc" id="L73" title="2 of 4 branches missed.">            if (root == null || !root.isObject()) {</span>
+<span class="nc" id="L74">                throw CommentException.invalid(&quot;invalid_payload&quot;);</span>
+            }
+<span class="fc" id="L76">            JsonNode contentNode = root.get(&quot;content&quot;);</span>
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">            if (contentNode == null || !contentNode.isTextual()) {</span>
+<span class="nc" id="L78">                throw CommentException.invalid(&quot;invalid_payload&quot;);</span>
+            }
+<span class="fc" id="L80">            return new CommentRequest(contentNode.asText());</span>
+<span class="nc" id="L81">        } catch (Exception ex) {</span>
+<span class="nc" id="L82">            throw CommentException.invalid(&quot;invalid_payload&quot;);</span>
+        }
+    }
+
+<span class="fc" id="L86">    private static RequestMetadata metadata(Context ctx) { return new RequestMetadata(ctx.ip(), ctx.userAgent()); }</span>
+<span class="fc" id="L87">    private record CommentRequest(String content) {}</span>
+<span class="fc" id="L88">    private record CommentResponse(String id, String userId, String userName, String userAvatar,</span>
+                                   String content, String createdAt) {
+        static CommentResponse from(CommentData value) {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            return new CommentResponse(value.externalId(), value.userId() == null ? &quot;system&quot; : value.userId(),</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                    value.userName() == null ? &quot;Sistema&quot; : value.userName(), value.userAvatar(), value.content(),</span>
+<span class="fc" id="L93">                    value.createdAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));</span>
+        }
+    }
+    @FunctionalInterface private interface Handler { void handle(AuthenticatedPrincipal principal) throws Exception; }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FavoriteService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">FavoriteService.java</span></div><h1>FavoriteService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.FavoriteRepository;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Map;
+
+public final class FavoriteService {
+    private final HikariDataSource dataSource;
+    private final FavoriteRepository repository;
+    private final AuditLogService audit;
+
+<span class="fc" id="L18">    public FavoriteService(HikariDataSource dataSource, FavoriteRepository repository, AuditLogService audit) {</span>
+<span class="fc" id="L19">        this.dataSource = dataSource; this.repository = repository; this.audit = audit;</span>
+<span class="fc" id="L20">    }</span>
+
+    public List&lt;String&gt; list(AuthenticatedPrincipal actor) throws SQLException {
+<span class="fc" id="L23">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L24">            return repository.findGameIds(connection, actor.getDatabaseId());</span>
+        }
+    }
+
+    public AddResult add(AuthenticatedPrincipal actor, String gameId, RequestMetadata metadata)
+            throws SQLException, FavoriteException {
+<span class="fc" id="L30">        return transaction(connection -&gt; {</span>
+<span class="fc" id="L31">            long databaseGameId = requireGame(connection, gameId);</span>
+<span class="fc" id="L32">            boolean created = repository.insert(connection, actor.getDatabaseId(), databaseGameId);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            if (created) audit.record(connection, actor, AuditAction.FAVORITE_ADDED, &quot;GAME&quot;, gameId, true,</span>
+<span class="fc" id="L34">                    metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;targetId&quot;, gameId, &quot;targetType&quot;, &quot;GAME&quot;));</span>
+<span class="fc" id="L35">            return new AddResult(gameId, created);</span>
+        });
+    }
+
+    public boolean remove(AuthenticatedPrincipal actor, String gameId, RequestMetadata metadata)
+            throws SQLException, FavoriteException {
+<span class="fc" id="L41">        return transaction(connection -&gt; {</span>
+<span class="fc" id="L42">            long databaseGameId = requireGame(connection, gameId);</span>
+<span class="fc" id="L43">            boolean removed = repository.delete(connection, actor.getDatabaseId(), databaseGameId);</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (removed) audit.record(connection, actor, AuditAction.FAVORITE_REMOVED, &quot;GAME&quot;, gameId, true,</span>
+<span class="fc" id="L45">                    metadata.ipAddress(), metadata.userAgent(), Map.of(&quot;targetId&quot;, gameId, &quot;targetType&quot;, &quot;GAME&quot;));</span>
+<span class="fc" id="L46">            return removed;</span>
+        });
+    }
+
+    public void auditRejected(AuthenticatedPrincipal actor, String gameId, String reason, RequestMetadata metadata) {
+<span class="fc" id="L51">        audit.recordBestEffort(actor, AuditAction.FAVORITE_OPERATION_REJECTED, &quot;GAME&quot;, gameId, false,</span>
+<span class="fc" id="L52">                metadata.ipAddress(), metadata.userAgent(),</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                Map.of(&quot;reasonCode&quot;, reason, &quot;targetId&quot;, gameId == null ? &quot;&quot; : gameId, &quot;targetType&quot;, &quot;GAME&quot;));</span>
+<span class="fc" id="L54">    }</span>
+
+    private long requireGame(Connection connection, String gameId) throws SQLException, FavoriteException {
+<span class="pc bpc" id="L57" title="3 of 6 branches missed.">        if (gameId == null || gameId.isBlank() || gameId.length() &gt; 80) throw FavoriteException.invalid(&quot;invalid_game_id&quot;);</span>
+<span class="fc" id="L58">        try { return repository.requireGameId(connection, gameId); }</span>
+<span class="fc" id="L59">        catch (SQLException ex) {</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            if (&quot;game_not_found&quot;.equals(ex.getMessage())) throw FavoriteException.notFound(ex.getMessage());</span>
+<span class="nc" id="L61">            throw ex;</span>
+        }
+    }
+
+    private &lt;T&gt; T transaction(Work&lt;T&gt; work) throws SQLException, FavoriteException {
+<span class="fc" id="L66">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L67">            connection.setAutoCommit(false);</span>
+<span class="fc" id="L68">            try { T result = work.run(connection); connection.commit(); return result; }</span>
+<span class="fc" id="L69">            catch (Exception ex) {</span>
+<span class="fc" id="L70">                connection.rollback();</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (ex instanceof FavoriteException fe) throw fe;</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">                if (ex instanceof SQLException se) throw se;</span>
+<span class="nc" id="L73">                throw new SQLException(&quot;Favorite transaction failed&quot;, ex);</span>
+            }
+        }
+    }
+
+<span class="fc" id="L78">    public record AddResult(String gameId, boolean created) {}</span>
+<span class="fc" id="L79">    public record RequestMetadata(String ipAddress, String userAgent) {}</span>
+    @FunctionalInterface private interface Work&lt;T&gt; { T run(Connection connection) throws Exception; }
+    public static final class FavoriteException extends Exception {
+<span class="fc" id="L82">        public enum Kind { NOT_FOUND, INVALID }</span>
+        private final Kind kind; private final String reason;
+<span class="fc" id="L84">        private FavoriteException(Kind kind, String reason) { this.kind = kind; this.reason = reason; }</span>
+<span class="fc" id="L85">        public Kind kind() { return kind; } public String reason() { return reason; }</span>
+<span class="fc" id="L86">        static FavoriteException notFound(String reason) { return new FavoriteException(Kind.NOT_FOUND, reason); }</span>
+<span class="nc" id="L87">        static FavoriteException invalid(String reason) { return new FavoriteException(Kind.INVALID, reason); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

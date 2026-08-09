@@ -116,76 +116,101 @@ public class AuditLogService {
 <span class="pc bpc" id="L116" title="1 of 4 branches missed.">        if (reason instanceof String text &amp;&amp; !text.isBlank()) {</span>
 <span class="fc" id="L117">            sanitized.put(&quot;reason&quot;, safeText(text, 80));</span>
         }
-
-<span class="fc" id="L120">        Object initialization = details.get(&quot;initialization&quot;);</span>
-<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (initialization instanceof Boolean bool) {</span>
-<span class="fc" id="L122">            sanitized.put(&quot;initialization&quot;, bool);</span>
+<span class="fc" id="L119">        copySafeString(sanitized, details, &quot;reasonCode&quot;, 80);</span>
+<span class="fc" id="L120">        copySafeString(sanitized, details, &quot;validationStage&quot;, 80);</span>
+<span class="fc" id="L121">        copySafeString(sanitized, details, &quot;section&quot;, 80);</span>
+<span class="fc" id="L122">        copySafeString(sanitized, details, &quot;resourceId&quot;, 120);</span>
+<span class="fc" id="L123">        copySafeString(sanitized, details, &quot;parentId&quot;, 120);</span>
+<span class="fc" id="L124">        copySafeString(sanitized, details, &quot;parentType&quot;, 80);</span>
+<span class="fc" id="L125">        copySafeString(sanitized, details, &quot;targetId&quot;, 120);</span>
+<span class="fc" id="L126">        copySafeString(sanitized, details, &quot;targetType&quot;, 80);</span>
+<span class="fc" id="L127">        copySafeString(sanitized, details, &quot;field&quot;, 80);</span>
+<span class="fc" id="L128">        copySafeString(sanitized, details, &quot;detail&quot;, 160);</span>
+<span class="fc" id="L129">        Object validationSource = details.get(&quot;validationSource&quot;);</span>
+<span class="pc bpc" id="L130" title="1 of 4 branches missed.">        if (&quot;current&quot;.equals(validationSource) || &quot;requested&quot;.equals(validationSource)) {</span>
+<span class="fc" id="L131">            sanitized.put(&quot;validationSource&quot;, validationSource.toString());</span>
         }
 
-<span class="fc" id="L125">        copySafeString(sanitized, details, &quot;model&quot;, 80);</span>
-<span class="fc" id="L126">        copySafeString(sanitized, details, &quot;resultGameId&quot;, 80);</span>
-<span class="fc" id="L127">        copySafeString(sanitized, details, &quot;failureReason&quot;, 80);</span>
-<span class="fc" id="L128">        copySafeString(sanitized, details, &quot;failureCategory&quot;, 80);</span>
-<span class="fc" id="L129">        copySafeInteger(sanitized, details, &quot;promptLength&quot;);</span>
-<span class="fc" id="L130">        copySafeInteger(sanitized, details, &quot;instructionLength&quot;);</span>
-<span class="fc" id="L131">        copySafeInteger(sanitized, details, &quot;warningCount&quot;);</span>
-<span class="fc" id="L132">        copySafeInteger(sanitized, details, &quot;durationMs&quot;);</span>
-<span class="fc" id="L133">        copySafeInteger(sanitized, details, &quot;promptTokens&quot;);</span>
-<span class="fc" id="L134">        copySafeInteger(sanitized, details, &quot;completionTokens&quot;);</span>
-<span class="fc" id="L135">        copySafeInteger(sanitized, details, &quot;totalTokens&quot;);</span>
-<span class="fc" id="L136">        copySafeInteger(sanitized, details, &quot;providerCalls&quot;);</span>
-<span class="fc" id="L137">        Object success = details.get(&quot;success&quot;);</span>
-<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (success instanceof Boolean bool) sanitized.put(&quot;success&quot;, bool);</span>
-
-<span class="fc" id="L140">        Object changedSections = details.get(&quot;changedSections&quot;);</span>
-<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (changedSections instanceof Collection&lt;?&gt; values) {</span>
-<span class="fc" id="L142">            ArrayNode array = sanitized.putArray(&quot;changedSections&quot;);</span>
-<span class="fc" id="L143">            values.stream()</span>
-<span class="fc" id="L144">                    .filter(String.class::isInstance)</span>
-<span class="fc" id="L145">                    .map(String.class::cast)</span>
-<span class="fc" id="L146">                    .filter(ALLOWED_CHANGED_SECTIONS::contains)</span>
-<span class="fc" id="L147">                    .distinct()</span>
-<span class="fc" id="L148">                    .forEach(array::add);</span>
+<span class="fc" id="L134">        Object initialization = details.get(&quot;initialization&quot;);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (initialization instanceof Boolean bool) {</span>
+<span class="fc" id="L136">            sanitized.put(&quot;initialization&quot;, bool);</span>
         }
-<span class="fc" id="L150">        return sanitized;</span>
+
+<span class="fc" id="L139">        copySafeString(sanitized, details, &quot;model&quot;, 80);</span>
+<span class="fc" id="L140">        copySafeString(sanitized, details, &quot;resultGameId&quot;, 80);</span>
+<span class="fc" id="L141">        copySafeString(sanitized, details, &quot;failureReason&quot;, 80);</span>
+<span class="fc" id="L142">        copySafeString(sanitized, details, &quot;failureCategory&quot;, 80);</span>
+<span class="fc" id="L143">        copySafeInteger(sanitized, details, &quot;promptLength&quot;);</span>
+<span class="fc" id="L144">        copySafeInteger(sanitized, details, &quot;instructionLength&quot;);</span>
+<span class="fc" id="L145">        copySafeInteger(sanitized, details, &quot;warningCount&quot;);</span>
+<span class="fc" id="L146">        copySafeInteger(sanitized, details, &quot;durationMs&quot;);</span>
+<span class="fc" id="L147">        copySafeInteger(sanitized, details, &quot;promptTokens&quot;);</span>
+<span class="fc" id="L148">        copySafeInteger(sanitized, details, &quot;completionTokens&quot;);</span>
+<span class="fc" id="L149">        copySafeInteger(sanitized, details, &quot;totalTokens&quot;);</span>
+<span class="fc" id="L150">        copySafeInteger(sanitized, details, &quot;providerCalls&quot;);</span>
+<span class="fc" id="L151">        Object success = details.get(&quot;success&quot;);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (success instanceof Boolean bool) sanitized.put(&quot;success&quot;, bool);</span>
+
+<span class="fc" id="L154">        Object changedSections = details.get(&quot;changedSections&quot;);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (changedSections instanceof Collection&lt;?&gt; values) {</span>
+<span class="fc" id="L156">            ArrayNode array = sanitized.putArray(&quot;changedSections&quot;);</span>
+<span class="fc" id="L157">            values.stream()</span>
+<span class="fc" id="L158">                    .filter(String.class::isInstance)</span>
+<span class="fc" id="L159">                    .map(String.class::cast)</span>
+<span class="fc" id="L160">                    .filter(ALLOWED_CHANGED_SECTIONS::contains)</span>
+<span class="fc" id="L161">                    .distinct()</span>
+<span class="fc" id="L162">                    .forEach(array::add);</span>
+        }
+<span class="fc" id="L164">        Object changedFields = details.get(&quot;changedFields&quot;);</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (changedFields instanceof Collection&lt;?&gt; values) {</span>
+<span class="fc" id="L166">            ArrayNode array = sanitized.putArray(&quot;changedFields&quot;);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            for (Object value : values) {</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                if (value instanceof String field &amp;&amp; Set.of(&quot;name&quot;, &quot;course&quot;, &quot;bio&quot;, &quot;avatarUrl&quot;,</span>
+                        &quot;description&quot;, &quot;coverUrl&quot;, &quot;category&quot;, &quot;minPlayers&quot;, &quot;maxPlayers&quot;,
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                        &quot;avgPlayTime&quot;, &quot;complexity&quot;, &quot;role&quot;).contains(field)) {</span>
+<span class="fc" id="L171">                    array.add(field);</span>
+                }
+<span class="fc" id="L173">            }</span>
+        }
+<span class="fc" id="L175">        return sanitized;</span>
     }
 
     private static void copySafeString(ObjectNode target, Map&lt;String, ?&gt; source, String key, int limit) {
-<span class="fc" id="L154">        Object value = source.get(key);</span>
-<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (value instanceof String text) {</span>
-<span class="fc" id="L156">            String safe = safeText(text, limit);</span>
-<span class="pc bpc" id="L157" title="1 of 2 branches missed.">            if (safe != null) target.put(key, safe);</span>
+<span class="fc" id="L179">        Object value = source.get(key);</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (value instanceof String text) {</span>
+<span class="fc" id="L181">            String safe = safeText(text, limit);</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            if (safe != null) target.put(key, safe);</span>
         }
-<span class="fc" id="L159">    }</span>
+<span class="fc" id="L184">    }</span>
 
     private static void copySafeInteger(ObjectNode target, Map&lt;String, ?&gt; source, String key) {
-<span class="fc" id="L162">        Object value = source.get(key);</span>
-<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (value instanceof Number number) target.put(key, Math.max(0, number.intValue()));</span>
-<span class="fc" id="L164">    }</span>
+<span class="fc" id="L187">        Object value = source.get(key);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        if (value instanceof Number number) target.put(key, Math.max(0, number.intValue()));</span>
+<span class="fc" id="L189">    }</span>
 
     private static String currentTraceId() {
-<span class="fc" id="L167">        SpanContext spanContext = Span.current().getSpanContext();</span>
-<span class="fc bfc" id="L168" title="All 2 branches covered.">        return spanContext.isValid() ? spanContext.getTraceId() : null;</span>
+<span class="fc" id="L192">        SpanContext spanContext = Span.current().getSpanContext();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        return spanContext.isValid() ? spanContext.getTraceId() : null;</span>
     }
 
     private static String normalizeIp(String candidate) {
-<span class="pc bpc" id="L172" title="1 of 4 branches missed.">        if (candidate == null || candidate.isBlank()) return null;</span>
-<span class="fc" id="L173">        String value = candidate.trim();</span>
-<span class="fc" id="L174">        boolean ipv4Shape = value.matches(&quot;\\d{1,3}(\\.\\d{1,3}){3}&quot;);</span>
-<span class="pc bpc" id="L175" title="3 of 4 branches missed.">        boolean ipv6Shape = value.contains(&quot;:&quot;) &amp;&amp; value.matches(&quot;[0-9a-fA-F:]{2,45}&quot;);</span>
-<span class="pc bpc" id="L176" title="1 of 4 branches missed.">        if (!ipv4Shape &amp;&amp; !ipv6Shape) return null;</span>
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">        if (candidate == null || candidate.isBlank()) return null;</span>
+<span class="fc" id="L198">        String value = candidate.trim();</span>
+<span class="fc" id="L199">        boolean ipv4Shape = value.matches(&quot;\\d{1,3}(\\.\\d{1,3}){3}&quot;);</span>
+<span class="pc bpc" id="L200" title="3 of 4 branches missed.">        boolean ipv6Shape = value.contains(&quot;:&quot;) &amp;&amp; value.matches(&quot;[0-9a-fA-F:]{2,45}&quot;);</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">        if (!ipv4Shape &amp;&amp; !ipv6Shape) return null;</span>
         try {
-<span class="fc" id="L178">            return InetAddress.getByName(value).getHostAddress();</span>
-<span class="nc" id="L179">        } catch (Exception ignored) {</span>
-<span class="nc" id="L180">            return null;</span>
+<span class="fc" id="L203">            return InetAddress.getByName(value).getHostAddress();</span>
+<span class="nc" id="L204">        } catch (Exception ignored) {</span>
+<span class="nc" id="L205">            return null;</span>
         }
     }
 
     private static String safeText(String value, int maximumLength) {
-<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (value == null) return null;</span>
-<span class="fc" id="L186">        String trimmed = value.trim();</span>
-<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        if (trimmed.isEmpty()) return null;</span>
-<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        return trimmed.length() &lt;= maximumLength ? trimmed : trimmed.substring(0, maximumLength);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (value == null) return null;</span>
+<span class="fc" id="L211">        String trimmed = value.trim();</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (trimmed.isEmpty()) return null;</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        return trimmed.length() &lt;= maximumLength ? trimmed : trimmed.substring(0, maximumLength);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

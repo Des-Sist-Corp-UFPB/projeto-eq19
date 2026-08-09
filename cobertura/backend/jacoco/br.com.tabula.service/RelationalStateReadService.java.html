@@ -32,180 +32,179 @@ public class RelationalStateReadService {
 <span class="fc" id="L32">        ArrayNode boardGamesArray = root.putArray(&quot;boardGames&quot;);</span>
 <span class="fc" id="L33">        ArrayNode sessionsArray = root.putArray(&quot;sessions&quot;);</span>
 <span class="fc" id="L34">        ArrayNode eventsArray = root.putArray(&quot;events&quot;);</span>
-<span class="fc" id="L35">        ArrayNode logsArray = root.putArray(&quot;logs&quot;);</span>
 
-<span class="fc" id="L37">        try (Connection conn = dataSource.getConnection()) {</span>
-<span class="fc" id="L38">            conn.setReadOnly(true);</span>
+<span class="fc" id="L36">        try (Connection conn = dataSource.getConnection()) {</span>
+<span class="fc" id="L37">            conn.setReadOnly(true);</span>
 
-            // 1. Users favorite games cache
-<span class="fc" id="L41">            Map&lt;String, List&lt;String&gt;&gt; userFavorites = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L42">            String favsSql = &quot;&quot;&quot;</span>
+            // 1. Cache de jogos favoritos dos usuários
+<span class="fc" id="L40">            Map&lt;String, List&lt;String&gt;&gt; userFavorites = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L41">            String favsSql = &quot;&quot;&quot;</span>
                     SELECT u.external_id AS user_ext, j.external_id AS game_ext
                     FROM favoritos f
                     JOIN usuarios u ON f.usuario_id = u.id
                     JOIN jogos j ON f.jogo_id = j.id
                     WHERE u.external_id IS NOT NULL AND j.external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L49">            try (PreparedStatement stmt = conn.prepareStatement(favsSql);</span>
-<span class="fc" id="L50">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L51" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L52">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
-<span class="fc" id="L53">                    String gameExt = rs.getString(&quot;game_ext&quot;);</span>
-<span class="fc" id="L54">                    userFavorites.computeIfAbsent(userExt, k -&gt; new ArrayList&lt;&gt;()).add(gameExt);</span>
-<span class="fc" id="L55">                }</span>
+<span class="fc" id="L48">            try (PreparedStatement stmt = conn.prepareStatement(favsSql);</span>
+<span class="fc" id="L49">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L51">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
+<span class="fc" id="L52">                    String gameExt = rs.getString(&quot;game_ext&quot;);</span>
+<span class="fc" id="L53">                    userFavorites.computeIfAbsent(userExt, k -&gt; new ArrayList&lt;&gt;()).add(gameExt);</span>
+<span class="fc" id="L54">                }</span>
             }
 
-            // 2. Reconstruct users
-<span class="fc" id="L59">            String usersSql = &quot;&quot;&quot;</span>
+            // 2. Reconstruir usuários
+<span class="fc" id="L58">            String usersSql = &quot;&quot;&quot;</span>
                     SELECT external_id, nome, email, role, avatar_url, bio, curso, criado_em
                     FROM usuarios
                     WHERE external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L64">            try (PreparedStatement stmt = conn.prepareStatement(usersSql);</span>
-<span class="fc" id="L65">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L66" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L67">                    String externalId = rs.getString(&quot;external_id&quot;);</span>
-<span class="fc" id="L68">                    ObjectNode userNode = MAPPER.createObjectNode();</span>
-<span class="fc" id="L69">                    userNode.put(&quot;id&quot;, externalId);</span>
-<span class="fc" id="L70">                    userNode.put(&quot;name&quot;, rs.getString(&quot;nome&quot;));</span>
-<span class="fc" id="L71">                    userNode.put(&quot;email&quot;, rs.getString(&quot;email&quot;));</span>
+<span class="fc" id="L63">            try (PreparedStatement stmt = conn.prepareStatement(usersSql);</span>
+<span class="fc" id="L64">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L66">                    String externalId = rs.getString(&quot;external_id&quot;);</span>
+<span class="fc" id="L67">                    ObjectNode userNode = MAPPER.createObjectNode();</span>
+<span class="fc" id="L68">                    userNode.put(&quot;id&quot;, externalId);</span>
+<span class="fc" id="L69">                    userNode.put(&quot;name&quot;, rs.getString(&quot;nome&quot;));</span>
+<span class="fc" id="L70">                    userNode.put(&quot;email&quot;, rs.getString(&quot;email&quot;));</span>
                     
-<span class="fc" id="L73">                    String role = rs.getString(&quot;role&quot;);</span>
-<span class="fc bfc" id="L74" title="All 2 branches covered.">                    userNode.put(&quot;role&quot;, &quot;ADMIN&quot;.equalsIgnoreCase(role) ? &quot;admin&quot; : &quot;student&quot;);</span>
-<span class="fc" id="L75">                    userNode.put(&quot;avatar&quot;, &quot;🎲&quot;);</span>
+<span class="fc" id="L72">                    String role = rs.getString(&quot;role&quot;);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                    userNode.put(&quot;role&quot;, &quot;ADMIN&quot;.equalsIgnoreCase(role) ? &quot;admin&quot; : &quot;student&quot;);</span>
+<span class="fc" id="L74">                    userNode.put(&quot;avatar&quot;, &quot;🎲&quot;);</span>
                     
-<span class="fc" id="L77">                    String avatarUrl = rs.getString(&quot;avatar_url&quot;);</span>
-<span class="fc" id="L78">                    userNode.put(&quot;avatarUrl&quot;, avatarUrl);</span>
+<span class="fc" id="L76">                    String avatarUrl = rs.getString(&quot;avatar_url&quot;);</span>
+<span class="fc" id="L77">                    userNode.put(&quot;avatarUrl&quot;, avatarUrl);</span>
                     
-<span class="fc" id="L80">                    String course = rs.getString(&quot;curso&quot;);</span>
-<span class="fc bfc" id="L81" title="All 2 branches covered.">                    userNode.put(&quot;course&quot;, course != null ? course : &quot;&quot;);</span>
+<span class="fc" id="L79">                    String course = rs.getString(&quot;curso&quot;);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                    userNode.put(&quot;course&quot;, course != null ? course : &quot;&quot;);</span>
                     
-<span class="fc" id="L83">                    String bio = rs.getString(&quot;bio&quot;);</span>
-<span class="fc bfc" id="L84" title="All 2 branches covered.">                    userNode.put(&quot;bio&quot;, bio != null ? bio : &quot;&quot;);</span>
+<span class="fc" id="L82">                    String bio = rs.getString(&quot;bio&quot;);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                    userNode.put(&quot;bio&quot;, bio != null ? bio : &quot;&quot;);</span>
                     
-<span class="fc" id="L86">                    userNode.put(&quot;joinedAt&quot;, formatTimestamp(rs.getTimestamp(&quot;criado_em&quot;)));</span>
-<span class="fc" id="L87">                    userNode.put(&quot;winCount&quot;, 0);</span>
+<span class="fc" id="L85">                    userNode.put(&quot;joinedAt&quot;, formatTimestamp(rs.getTimestamp(&quot;criado_em&quot;)));</span>
+<span class="fc" id="L86">                    userNode.put(&quot;winCount&quot;, 0);</span>
 
-<span class="fc" id="L89">                    ArrayNode favsArr = userNode.putArray(&quot;favoriteGames&quot;);</span>
-<span class="fc" id="L90">                    List&lt;String&gt; favs = userFavorites.get(externalId);</span>
-<span class="fc bfc" id="L91" title="All 2 branches covered.">                    if (favs != null) {</span>
-<span class="fc bfc" id="L92" title="All 2 branches covered.">                        for (String f : favs) {</span>
-<span class="fc" id="L93">                            favsArr.add(f);</span>
-<span class="fc" id="L94">                        }</span>
+<span class="fc" id="L88">                    ArrayNode favsArr = userNode.putArray(&quot;favoriteGames&quot;);</span>
+<span class="fc" id="L89">                    List&lt;String&gt; favs = userFavorites.get(externalId);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    if (favs != null) {</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                        for (String f : favs) {</span>
+<span class="fc" id="L92">                            favsArr.add(f);</span>
+<span class="fc" id="L93">                        }</span>
                     }
 
-<span class="fc" id="L97">                    usersArray.add(userNode);</span>
-<span class="fc" id="L98">                }</span>
+<span class="fc" id="L96">                    usersArray.add(userNode);</span>
+<span class="fc" id="L97">                }</span>
             }
 
-            // 3. Reconstruct boardGames
-<span class="fc" id="L102">            String gamesSql = &quot;&quot;&quot;</span>
+            // 3. Reconstruir jogos de tabuleiro
+<span class="fc" id="L101">            String gamesSql = &quot;&quot;&quot;</span>
                     SELECT external_id, nome, descricao, cover_url, categoria, min_players, max_players, avg_play_time, complexity
                     FROM jogos
                     WHERE external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L107">            try (PreparedStatement stmt = conn.prepareStatement(gamesSql);</span>
-<span class="fc" id="L108">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L109" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L110">                    ObjectNode gameNode = MAPPER.createObjectNode();</span>
-<span class="fc" id="L111">                    gameNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
-<span class="fc" id="L112">                    gameNode.put(&quot;name&quot;, rs.getString(&quot;nome&quot;));</span>
+<span class="fc" id="L106">            try (PreparedStatement stmt = conn.prepareStatement(gamesSql);</span>
+<span class="fc" id="L107">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L109">                    ObjectNode gameNode = MAPPER.createObjectNode();</span>
+<span class="fc" id="L110">                    gameNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
+<span class="fc" id="L111">                    gameNode.put(&quot;name&quot;, rs.getString(&quot;nome&quot;));</span>
                     
-<span class="fc" id="L114">                    String desc = rs.getString(&quot;descricao&quot;);</span>
-<span class="fc bfc" id="L115" title="All 2 branches covered.">                    gameNode.put(&quot;description&quot;, desc != null ? desc : &quot;&quot;);</span>
+<span class="fc" id="L113">                    String desc = rs.getString(&quot;descricao&quot;);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                    gameNode.put(&quot;description&quot;, desc != null ? desc : &quot;&quot;);</span>
                     
-<span class="fc" id="L117">                    String cover = rs.getString(&quot;cover_url&quot;);</span>
-<span class="pc bpc" id="L118" title="1 of 4 branches missed.">                    gameNode.put(&quot;coverUrl&quot;, cover != null &amp;&amp; !cover.isBlank() ? cover : &quot;/images/tabletop-placeholder.svg&quot;);</span>
+<span class="fc" id="L116">                    String cover = rs.getString(&quot;cover_url&quot;);</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">                    gameNode.put(&quot;coverUrl&quot;, cover != null &amp;&amp; !cover.isBlank() ? cover : &quot;/images/tabletop-placeholder.svg&quot;);</span>
                     
-<span class="fc" id="L120">                    String cat = rs.getString(&quot;categoria&quot;);</span>
-<span class="pc bpc" id="L121" title="1 of 4 branches missed.">                    gameNode.put(&quot;category&quot;, cat != null &amp;&amp; !cat.isBlank() ? cat : &quot;Geral&quot;);</span>
+<span class="fc" id="L119">                    String cat = rs.getString(&quot;categoria&quot;);</span>
+<span class="fc bfc" id="L120" title="All 4 branches covered.">                    gameNode.put(&quot;category&quot;, cat != null &amp;&amp; !cat.isBlank() ? cat : &quot;Geral&quot;);</span>
                     
-<span class="fc" id="L123">                    int min = rs.getInt(&quot;min_players&quot;);</span>
-<span class="pc bpc" id="L124" title="1 of 4 branches missed.">                    if (rs.wasNull() || min &lt;= 0) {</span>
-<span class="fc" id="L125">                        min = 1;</span>
+<span class="fc" id="L122">                    int min = rs.getInt(&quot;min_players&quot;);</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">                    if (rs.wasNull() || min &lt;= 0) {</span>
+<span class="fc" id="L124">                        min = 1;</span>
                     }
-<span class="fc" id="L127">                    gameNode.put(&quot;minPlayers&quot;, min);</span>
+<span class="fc" id="L126">                    gameNode.put(&quot;minPlayers&quot;, min);</span>
                     
-<span class="fc" id="L129">                    int max = rs.getInt(&quot;max_players&quot;);</span>
-<span class="pc bpc" id="L130" title="1 of 4 branches missed.">                    if (rs.wasNull() || max &lt;= 0) {</span>
-<span class="fc" id="L131">                        max = min;</span>
+<span class="fc" id="L128">                    int max = rs.getInt(&quot;max_players&quot;);</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">                    if (rs.wasNull() || max &lt;= 0) {</span>
+<span class="fc" id="L130">                        max = min;</span>
                     }
-<span class="fc" id="L133">                    gameNode.put(&quot;maxPlayers&quot;, max);</span>
+<span class="fc" id="L132">                    gameNode.put(&quot;maxPlayers&quot;, max);</span>
                     
-<span class="fc" id="L135">                    int avg = rs.getInt(&quot;avg_play_time&quot;);</span>
-<span class="fc bfc" id="L136" title="All 2 branches covered.">                    gameNode.put(&quot;avgPlayTime&quot;, rs.wasNull() ? 0 : avg);</span>
+<span class="fc" id="L134">                    int avg = rs.getInt(&quot;avg_play_time&quot;);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                    gameNode.put(&quot;avgPlayTime&quot;, rs.wasNull() ? 0 : avg);</span>
                     
-<span class="fc" id="L138">                    double comp = rs.getDouble(&quot;complexity&quot;);</span>
-<span class="fc bfc" id="L139" title="All 2 branches covered.">                    gameNode.put(&quot;complexity&quot;, rs.wasNull() ? 1.0 : comp);</span>
+<span class="fc" id="L137">                    double comp = rs.getDouble(&quot;complexity&quot;);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                    gameNode.put(&quot;complexity&quot;, rs.wasNull() ? 1.0 : comp);</span>
 
-<span class="fc" id="L141">                    boardGamesArray.add(gameNode);</span>
-<span class="fc" id="L142">                }</span>
+<span class="fc" id="L140">                    boardGamesArray.add(gameNode);</span>
+<span class="fc" id="L141">                }</span>
             }
 
-            // 4. Cache session participants
-<span class="fc" id="L146">            Map&lt;Long, List&lt;String&gt;&gt; sessionParticipants = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L147">            String sessionPartsSql = &quot;&quot;&quot;</span>
+            // 4. Cache de participantes das partidas
+<span class="fc" id="L145">            Map&lt;Long, List&lt;String&gt;&gt; sessionParticipants = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L146">            String sessionPartsSql = &quot;&quot;&quot;</span>
                     SELECT pp.partida_id, u.external_id AS user_ext
                     FROM partida_participantes pp
                     JOIN usuarios u ON pp.usuario_id = u.id
                     WHERE u.external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L153">            try (PreparedStatement stmt = conn.prepareStatement(sessionPartsSql);</span>
-<span class="fc" id="L154">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L155" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L156">                    long partId = rs.getLong(&quot;partida_id&quot;);</span>
-<span class="fc" id="L157">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
-<span class="fc" id="L158">                    sessionParticipants.computeIfAbsent(partId, k -&gt; new ArrayList&lt;&gt;()).add(userExt);</span>
-<span class="fc" id="L159">                }</span>
+<span class="fc" id="L152">            try (PreparedStatement stmt = conn.prepareStatement(sessionPartsSql);</span>
+<span class="fc" id="L153">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L155">                    long partId = rs.getLong(&quot;partida_id&quot;);</span>
+<span class="fc" id="L156">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
+<span class="fc" id="L157">                    sessionParticipants.computeIfAbsent(partId, k -&gt; new ArrayList&lt;&gt;()).add(userExt);</span>
+<span class="fc" id="L158">                }</span>
             }
 
-            // 5. Cache session photos
-<span class="fc" id="L163">            Map&lt;Long, List&lt;String&gt;&gt; sessionPhotos = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L164">            String sessionPhotosSql = &quot;&quot;&quot;</span>
+            // 5. Cache de fotos das partidas
+<span class="fc" id="L162">            Map&lt;Long, List&lt;String&gt;&gt; sessionPhotos = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L163">            String sessionPhotosSql = &quot;&quot;&quot;</span>
                     SELECT pf.partida_id, pf.url
                     FROM partida_fotos pf
                     ORDER BY pf.partida_id, pf.ordem, pf.id
                     &quot;&quot;&quot;;
-<span class="fc" id="L169">            try (PreparedStatement stmt = conn.prepareStatement(sessionPhotosSql);</span>
-<span class="fc" id="L170">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L171" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L172">                    long partId = rs.getLong(&quot;partida_id&quot;);</span>
-<span class="fc" id="L173">                    String url = rs.getString(&quot;url&quot;);</span>
-<span class="fc" id="L174">                    sessionPhotos.computeIfAbsent(partId, k -&gt; new ArrayList&lt;&gt;()).add(url);</span>
-<span class="fc" id="L175">                }</span>
+<span class="fc" id="L168">            try (PreparedStatement stmt = conn.prepareStatement(sessionPhotosSql);</span>
+<span class="fc" id="L169">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L171">                    long partId = rs.getLong(&quot;partida_id&quot;);</span>
+<span class="fc" id="L172">                    String url = rs.getString(&quot;url&quot;);</span>
+<span class="fc" id="L173">                    sessionPhotos.computeIfAbsent(partId, k -&gt; new ArrayList&lt;&gt;()).add(url);</span>
+<span class="fc" id="L174">                }</span>
             }
 
-            // 6. Cache session comments
-<span class="fc" id="L179">            Map&lt;Long, List&lt;ObjectNode&gt;&gt; sessionComments = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L180">            String commentsSql = &quot;&quot;&quot;</span>
+            // 6. Cache de comentários das partidas
+<span class="fc" id="L178">            Map&lt;Long, List&lt;ObjectNode&gt;&gt; sessionComments = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L179">            String commentsSql = &quot;&quot;&quot;</span>
                     SELECT c.external_id, c.partida_id, u.external_id AS user_ext, u.nome AS user_name, c.conteudo, c.criado_em
                     FROM comentarios c
                     LEFT JOIN usuarios u ON c.usuario_id = u.id
                     ORDER BY c.partida_id, c.criado_em, c.id
                     &quot;&quot;&quot;;
-<span class="fc" id="L186">            try (PreparedStatement stmt = conn.prepareStatement(commentsSql);</span>
-<span class="fc" id="L187">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L188" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L189">                    long partId = rs.getLong(&quot;partida_id&quot;);</span>
+<span class="fc" id="L185">            try (PreparedStatement stmt = conn.prepareStatement(commentsSql);</span>
+<span class="fc" id="L186">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L188">                    long partId = rs.getLong(&quot;partida_id&quot;);</span>
                     
-<span class="fc" id="L191">                    ObjectNode commentNode = MAPPER.createObjectNode();</span>
-<span class="fc" id="L192">                    commentNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
+<span class="fc" id="L190">                    ObjectNode commentNode = MAPPER.createObjectNode();</span>
+<span class="fc" id="L191">                    commentNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
                     
-<span class="fc" id="L194">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
-<span class="fc bfc" id="L195" title="All 2 branches covered.">                    commentNode.put(&quot;userId&quot;, userExt != null ? userExt : &quot;system&quot;);</span>
+<span class="fc" id="L193">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                    commentNode.put(&quot;userId&quot;, userExt != null ? userExt : &quot;system&quot;);</span>
                     
-<span class="fc" id="L197">                    String userName = rs.getString(&quot;user_name&quot;);</span>
-<span class="fc bfc" id="L198" title="All 2 branches covered.">                    commentNode.put(&quot;userName&quot;, userName != null ? userName : &quot;Sistema&quot;);</span>
-<span class="fc" id="L199">                    commentNode.put(&quot;userAvatar&quot;, &quot;🎲&quot;);</span>
-<span class="fc" id="L200">                    commentNode.put(&quot;content&quot;, rs.getString(&quot;conteudo&quot;));</span>
-<span class="fc" id="L201">                    commentNode.put(&quot;createdAt&quot;, formatTimestamp(rs.getTimestamp(&quot;criado_em&quot;)));</span>
+<span class="fc" id="L196">                    String userName = rs.getString(&quot;user_name&quot;);</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                    commentNode.put(&quot;userName&quot;, userName != null ? userName : &quot;Sistema&quot;);</span>
+<span class="fc" id="L198">                    commentNode.put(&quot;userAvatar&quot;, &quot;🎲&quot;);</span>
+<span class="fc" id="L199">                    commentNode.put(&quot;content&quot;, rs.getString(&quot;conteudo&quot;));</span>
+<span class="fc" id="L200">                    commentNode.put(&quot;createdAt&quot;, formatTimestamp(rs.getTimestamp(&quot;criado_em&quot;)));</span>
 
-<span class="fc" id="L203">                    sessionComments.computeIfAbsent(partId, k -&gt; new ArrayList&lt;&gt;()).add(commentNode);</span>
-<span class="fc" id="L204">                }</span>
+<span class="fc" id="L202">                    sessionComments.computeIfAbsent(partId, k -&gt; new ArrayList&lt;&gt;()).add(commentNode);</span>
+<span class="fc" id="L203">                }</span>
             }
 
-            // 7. Reconstruct sessions (partidas)
-<span class="fc" id="L208">            String sessionsSql = &quot;&quot;&quot;</span>
+            // 7. Reconstruir partidas
+<span class="fc" id="L207">            String sessionsSql = &quot;&quot;&quot;</span>
                     SELECT p.id, p.external_id, j.external_id AS game_ext, p.data_hora, p.local, u_org.external_id AS org_ext, u_win.external_id AS win_ext, p.duracao_minutos, p.notas
                     FROM partidas p
                     JOIN jogos j ON p.jogo_id = j.id
@@ -213,198 +212,170 @@ public class RelationalStateReadService {
                     LEFT JOIN usuarios u_win ON p.vencedor_id = u_win.id
                     WHERE p.external_id IS NOT NULL AND j.external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L216">            try (PreparedStatement stmt = conn.prepareStatement(sessionsSql);</span>
-<span class="fc" id="L217">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L218" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L219">                    long partId = rs.getLong(&quot;id&quot;);</span>
-<span class="fc" id="L220">                    ObjectNode sessionNode = MAPPER.createObjectNode();</span>
-<span class="fc" id="L221">                    sessionNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
-<span class="fc" id="L222">                    sessionNode.put(&quot;gameId&quot;, rs.getString(&quot;game_ext&quot;));</span>
-<span class="fc" id="L223">                    sessionNode.put(&quot;date&quot;, formatTimestamp(rs.getTimestamp(&quot;data_hora&quot;)));</span>
+<span class="fc" id="L215">            try (PreparedStatement stmt = conn.prepareStatement(sessionsSql);</span>
+<span class="fc" id="L216">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L218">                    long partId = rs.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L219">                    ObjectNode sessionNode = MAPPER.createObjectNode();</span>
+<span class="fc" id="L220">                    sessionNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
+<span class="fc" id="L221">                    sessionNode.put(&quot;gameId&quot;, rs.getString(&quot;game_ext&quot;));</span>
+<span class="fc" id="L222">                    sessionNode.put(&quot;date&quot;, formatTimestamp(rs.getTimestamp(&quot;data_hora&quot;)));</span>
                     
-<span class="fc" id="L225">                    String loc = rs.getString(&quot;local&quot;);</span>
-<span class="fc bfc" id="L226" title="All 2 branches covered.">                    sessionNode.put(&quot;location&quot;, loc != null ? loc : &quot;&quot;);</span>
+<span class="fc" id="L224">                    String loc = rs.getString(&quot;local&quot;);</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                    sessionNode.put(&quot;location&quot;, loc != null ? loc : &quot;&quot;);</span>
                     
-<span class="fc" id="L228">                    String orgExt = rs.getString(&quot;org_ext&quot;);</span>
-<span class="fc bfc" id="L229" title="All 2 branches covered.">                    sessionNode.put(&quot;organizerId&quot;, orgExt != null ? orgExt : &quot;system&quot;);</span>
+<span class="fc" id="L227">                    String orgExt = rs.getString(&quot;org_ext&quot;);</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">                    sessionNode.put(&quot;organizerId&quot;, orgExt != null ? orgExt : &quot;system&quot;);</span>
                     
-<span class="fc" id="L231">                    String winExt = rs.getString(&quot;win_ext&quot;);</span>
-<span class="fc bfc" id="L232" title="All 2 branches covered.">                    if (winExt == null) {</span>
-<span class="fc" id="L233">                        sessionNode.putNull(&quot;winnerId&quot;);</span>
+<span class="fc" id="L230">                    String winExt = rs.getString(&quot;win_ext&quot;);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    if (winExt == null) {</span>
+<span class="nc" id="L232">                        sessionNode.putNull(&quot;winnerId&quot;);</span>
                     } else {
-<span class="fc" id="L235">                        sessionNode.put(&quot;winnerId&quot;, winExt);</span>
+<span class="fc" id="L234">                        sessionNode.put(&quot;winnerId&quot;, winExt);</span>
                     }
                     
-<span class="fc" id="L238">                    int dur = rs.getInt(&quot;duracao_minutos&quot;);</span>
-<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                    sessionNode.put(&quot;duration&quot;, rs.wasNull() ? 0 : dur);</span>
+<span class="fc" id="L237">                    int dur = rs.getInt(&quot;duracao_minutos&quot;);</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">                    sessionNode.put(&quot;duration&quot;, rs.wasNull() ? 0 : dur);</span>
                     
-<span class="fc" id="L241">                    String notes = rs.getString(&quot;notas&quot;);</span>
-<span class="fc bfc" id="L242" title="All 2 branches covered.">                    sessionNode.put(&quot;notes&quot;, notes != null ? notes : &quot;&quot;);</span>
+<span class="fc" id="L240">                    String notes = rs.getString(&quot;notas&quot;);</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">                    sessionNode.put(&quot;notes&quot;, notes != null ? notes : &quot;&quot;);</span>
 
-<span class="fc" id="L244">                    ArrayNode partsArr = sessionNode.putArray(&quot;participantIds&quot;);</span>
-<span class="fc" id="L245">                    List&lt;String&gt; participants = sessionParticipants.get(partId);</span>
-<span class="pc bpc" id="L246" title="1 of 2 branches missed.">                    if (participants != null) {</span>
-<span class="fc bfc" id="L247" title="All 2 branches covered.">                        for (String p : participants) {</span>
-<span class="fc" id="L248">                            partsArr.add(p);</span>
-<span class="fc" id="L249">                        }</span>
+<span class="fc" id="L243">                    ArrayNode partsArr = sessionNode.putArray(&quot;participantIds&quot;);</span>
+<span class="fc" id="L244">                    List&lt;String&gt; participants = sessionParticipants.get(partId);</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">                    if (participants != null) {</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                        for (String p : participants) {</span>
+<span class="fc" id="L247">                            partsArr.add(p);</span>
+<span class="fc" id="L248">                        }</span>
                     }
 
-<span class="fc" id="L252">                    ArrayNode photosArr = sessionNode.putArray(&quot;photos&quot;);</span>
-<span class="fc" id="L253">                    List&lt;String&gt; photos = sessionPhotos.get(partId);</span>
-<span class="fc bfc" id="L254" title="All 2 branches covered.">                    if (photos != null) {</span>
-<span class="fc bfc" id="L255" title="All 2 branches covered.">                        for (String p : photos) {</span>
-<span class="fc" id="L256">                            photosArr.add(p);</span>
-<span class="fc" id="L257">                        }</span>
+<span class="fc" id="L251">                    ArrayNode photosArr = sessionNode.putArray(&quot;photos&quot;);</span>
+<span class="fc" id="L252">                    List&lt;String&gt; photos = sessionPhotos.get(partId);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">                    if (photos != null) {</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                        for (String p : photos) {</span>
+<span class="fc" id="L255">                            photosArr.add(p);</span>
+<span class="fc" id="L256">                        }</span>
                     }
 
-<span class="fc" id="L260">                    ArrayNode commentsArr = sessionNode.putArray(&quot;comments&quot;);</span>
-<span class="fc" id="L261">                    List&lt;ObjectNode&gt; comments = sessionComments.get(partId);</span>
-<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                    if (comments != null) {</span>
-<span class="fc bfc" id="L263" title="All 2 branches covered.">                        for (ObjectNode c : comments) {</span>
-<span class="fc" id="L264">                            commentsArr.add(c);</span>
-<span class="fc" id="L265">                        }</span>
+<span class="fc" id="L259">                    ArrayNode commentsArr = sessionNode.putArray(&quot;comments&quot;);</span>
+<span class="fc" id="L260">                    List&lt;ObjectNode&gt; comments = sessionComments.get(partId);</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">                    if (comments != null) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">                        for (ObjectNode c : comments) {</span>
+<span class="fc" id="L263">                            commentsArr.add(c);</span>
+<span class="fc" id="L264">                        }</span>
                     }
 
-<span class="fc" id="L268">                    sessionsArray.add(sessionNode);</span>
-<span class="fc" id="L269">                }</span>
+<span class="fc" id="L267">                    sessionsArray.add(sessionNode);</span>
+<span class="fc" id="L268">                }</span>
             }
 
-            // 8. Cache event participants
-<span class="fc" id="L273">            Map&lt;Long, List&lt;String&gt;&gt; eventParticipants = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L274">            Map&lt;Long, List&lt;String&gt;&gt; eventWaitingList = new HashMap&lt;&gt;();</span>
-<span class="fc" id="L275">            String eventPartsSql = &quot;&quot;&quot;</span>
+            // 8. Cache de participantes dos eventos
+<span class="fc" id="L272">            Map&lt;Long, List&lt;String&gt;&gt; eventParticipants = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L273">            Map&lt;Long, List&lt;String&gt;&gt; eventWaitingList = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L274">            String eventPartsSql = &quot;&quot;&quot;</span>
                     SELECT ep.evento_id, u.external_id AS user_ext, ep.tipo
                     FROM evento_participantes ep
                     JOIN usuarios u ON ep.usuario_id = u.id
                     WHERE u.external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L281">            try (PreparedStatement stmt = conn.prepareStatement(eventPartsSql);</span>
-<span class="fc" id="L282">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L283" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L284">                    long evtId = rs.getLong(&quot;evento_id&quot;);</span>
-<span class="fc" id="L285">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
-<span class="fc" id="L286">                    String type = rs.getString(&quot;tipo&quot;);</span>
+<span class="fc" id="L280">            try (PreparedStatement stmt = conn.prepareStatement(eventPartsSql);</span>
+<span class="fc" id="L281">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L283">                    long evtId = rs.getLong(&quot;evento_id&quot;);</span>
+<span class="fc" id="L284">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
+<span class="fc" id="L285">                    String type = rs.getString(&quot;tipo&quot;);</span>
 
-<span class="fc bfc" id="L288" title="All 2 branches covered.">                    if (&quot;PARTICIPANT&quot;.equalsIgnoreCase(type)) {</span>
-<span class="fc" id="L289">                        eventParticipants.computeIfAbsent(evtId, k -&gt; new ArrayList&lt;&gt;()).add(userExt);</span>
-<span class="fc bfc" id="L290" title="All 2 branches covered.">                    } else if (&quot;WAITING&quot;.equalsIgnoreCase(type)) {</span>
-<span class="fc" id="L291">                        eventWaitingList.computeIfAbsent(evtId, k -&gt; new ArrayList&lt;&gt;()).add(userExt);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                    if (&quot;PARTICIPANT&quot;.equalsIgnoreCase(type)) {</span>
+<span class="fc" id="L288">                        eventParticipants.computeIfAbsent(evtId, k -&gt; new ArrayList&lt;&gt;()).add(userExt);</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">                    } else if (&quot;WAITING&quot;.equalsIgnoreCase(type)) {</span>
+<span class="fc" id="L290">                        eventWaitingList.computeIfAbsent(evtId, k -&gt; new ArrayList&lt;&gt;()).add(userExt);</span>
                     }
-<span class="fc" id="L293">                }</span>
+<span class="fc" id="L292">                }</span>
             }
 
-            // 9. Reconstruct events
-<span class="fc" id="L297">            String eventsSql = &quot;&quot;&quot;</span>
+            // 9. Reconstruir eventos
+<span class="fc" id="L296">            String eventsSql = &quot;&quot;&quot;</span>
                     SELECT e.id, e.external_id, j.external_id AS game_ext, e.data_hora, e.local, e.descricao, e.max_participantes, e.status, u_org.external_id AS org_ext
                     FROM eventos e
                     JOIN jogos j ON e.jogo_id = j.id
                     LEFT JOIN usuarios u_org ON e.organizador_id = u_org.id
                     WHERE e.external_id IS NOT NULL AND j.external_id IS NOT NULL
                     &quot;&quot;&quot;;
-<span class="fc" id="L304">            try (PreparedStatement stmt = conn.prepareStatement(eventsSql);</span>
-<span class="fc" id="L305">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L306" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L307">                    long evtId = rs.getLong(&quot;id&quot;);</span>
-<span class="fc" id="L308">                    ObjectNode eventNode = MAPPER.createObjectNode();</span>
-<span class="fc" id="L309">                    eventNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
-<span class="fc" id="L310">                    eventNode.put(&quot;gameId&quot;, rs.getString(&quot;game_ext&quot;));</span>
+<span class="fc" id="L303">            try (PreparedStatement stmt = conn.prepareStatement(eventsSql);</span>
+<span class="fc" id="L304">                 ResultSet rs = stmt.executeQuery()) {</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">                while (rs.next()) {</span>
+<span class="fc" id="L306">                    long evtId = rs.getLong(&quot;id&quot;);</span>
+<span class="fc" id="L307">                    ObjectNode eventNode = MAPPER.createObjectNode();</span>
+<span class="fc" id="L308">                    eventNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
+<span class="fc" id="L309">                    eventNode.put(&quot;gameId&quot;, rs.getString(&quot;game_ext&quot;));</span>
                     
-<span class="fc" id="L312">                    Timestamp ts = rs.getTimestamp(&quot;data_hora&quot;);</span>
-<span class="fc" id="L313">                    eventNode.put(&quot;date&quot;, formatDate(ts));</span>
-<span class="fc" id="L314">                    eventNode.put(&quot;time&quot;, formatTime(ts));</span>
+<span class="fc" id="L311">                    Timestamp ts = rs.getTimestamp(&quot;data_hora&quot;);</span>
+<span class="fc" id="L312">                    eventNode.put(&quot;date&quot;, formatDate(ts));</span>
+<span class="fc" id="L313">                    eventNode.put(&quot;time&quot;, formatTime(ts));</span>
                     
-<span class="fc" id="L316">                    String loc = rs.getString(&quot;local&quot;);</span>
-<span class="fc bfc" id="L317" title="All 2 branches covered.">                    eventNode.put(&quot;location&quot;, loc != null ? loc : &quot;&quot;);</span>
+<span class="fc" id="L315">                    String loc = rs.getString(&quot;local&quot;);</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">                    eventNode.put(&quot;location&quot;, loc != null ? loc : &quot;&quot;);</span>
                     
-<span class="fc" id="L319">                    int maxParts = rs.getInt(&quot;max_participantes&quot;);</span>
-<span class="pc bpc" id="L320" title="1 of 2 branches missed.">                    eventNode.put(&quot;maxParticipants&quot;, rs.wasNull() ? 0 : maxParts);</span>
+<span class="fc" id="L318">                    int maxParts = rs.getInt(&quot;max_participantes&quot;);</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">                    eventNode.put(&quot;maxParticipants&quot;, rs.wasNull() ? 0 : maxParts);</span>
                     
-<span class="fc" id="L322">                    String desc = rs.getString(&quot;descricao&quot;);</span>
-<span class="fc bfc" id="L323" title="All 2 branches covered.">                    eventNode.put(&quot;description&quot;, desc != null ? desc : &quot;&quot;);</span>
+<span class="fc" id="L321">                    String desc = rs.getString(&quot;descricao&quot;);</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">                    eventNode.put(&quot;description&quot;, desc != null ? desc : &quot;&quot;);</span>
                     
-<span class="fc" id="L325">                    String orgExt = rs.getString(&quot;org_ext&quot;);</span>
-<span class="fc bfc" id="L326" title="All 2 branches covered.">                    eventNode.put(&quot;organizerId&quot;, orgExt != null ? orgExt : &quot;system&quot;);</span>
+<span class="fc" id="L324">                    String orgExt = rs.getString(&quot;org_ext&quot;);</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">                    eventNode.put(&quot;organizerId&quot;, orgExt != null ? orgExt : &quot;system&quot;);</span>
                     
-<span class="fc" id="L328">                    String status = rs.getString(&quot;status&quot;);</span>
-<span class="pc bpc" id="L329" title="1 of 4 branches missed.">                    eventNode.put(&quot;status&quot;, status != null &amp;&amp; !status.isBlank() ? status : &quot;active&quot;);</span>
+<span class="fc" id="L327">                    String status = rs.getString(&quot;status&quot;);</span>
+<span class="pc bpc" id="L328" title="2 of 4 branches missed.">                    eventNode.put(&quot;status&quot;, status != null &amp;&amp; !status.isBlank() ? status : &quot;active&quot;);</span>
 
-<span class="fc" id="L331">                    ArrayNode partsArr = eventNode.putArray(&quot;participantIds&quot;);</span>
-<span class="fc" id="L332">                    List&lt;String&gt; participants = eventParticipants.get(evtId);</span>
-<span class="fc bfc" id="L333" title="All 2 branches covered.">                    if (participants != null) {</span>
-<span class="fc bfc" id="L334" title="All 2 branches covered.">                        for (String p : participants) {</span>
-<span class="fc" id="L335">                            partsArr.add(p);</span>
-<span class="fc" id="L336">                        }</span>
+<span class="fc" id="L330">                    ArrayNode partsArr = eventNode.putArray(&quot;participantIds&quot;);</span>
+<span class="fc" id="L331">                    List&lt;String&gt; participants = eventParticipants.get(evtId);</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">                    if (participants != null) {</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">                        for (String p : participants) {</span>
+<span class="fc" id="L334">                            partsArr.add(p);</span>
+<span class="fc" id="L335">                        }</span>
                     }
 
-<span class="fc" id="L339">                    ArrayNode waitArr = eventNode.putArray(&quot;waitingListIds&quot;);</span>
-<span class="fc" id="L340">                    List&lt;String&gt; waitList = eventWaitingList.get(evtId);</span>
-<span class="fc bfc" id="L341" title="All 2 branches covered.">                    if (waitList != null) {</span>
-<span class="fc bfc" id="L342" title="All 2 branches covered.">                        for (String w : waitList) {</span>
-<span class="fc" id="L343">                            waitArr.add(w);</span>
-<span class="fc" id="L344">                        }</span>
+<span class="fc" id="L338">                    ArrayNode waitArr = eventNode.putArray(&quot;waitingListIds&quot;);</span>
+<span class="fc" id="L339">                    List&lt;String&gt; waitList = eventWaitingList.get(evtId);</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">                    if (waitList != null) {</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">                        for (String w : waitList) {</span>
+<span class="fc" id="L342">                            waitArr.add(w);</span>
+<span class="fc" id="L343">                        }</span>
                     }
 
-<span class="fc" id="L347">                    eventsArray.add(eventNode);</span>
-<span class="fc" id="L348">                }</span>
+<span class="fc" id="L346">                    eventsArray.add(eventNode);</span>
+<span class="fc" id="L347">                }</span>
             }
 
-            // 10. Reconstruct logs
-<span class="fc" id="L352">            String logsSql = &quot;&quot;&quot;</span>
-                    SELECT l.external_id, u.external_id AS user_ext, l.nome_usuario, l.acao, l.criado_em
-                    FROM logs l
-                    LEFT JOIN usuarios u ON l.usuario_id = u.id
-                    WHERE l.external_id IS NOT NULL
-                    &quot;&quot;&quot;;
-<span class="fc" id="L358">            try (PreparedStatement stmt = conn.prepareStatement(logsSql);</span>
-<span class="fc" id="L359">                 ResultSet rs = stmt.executeQuery()) {</span>
-<span class="fc bfc" id="L360" title="All 2 branches covered.">                while (rs.next()) {</span>
-<span class="fc" id="L361">                    ObjectNode logNode = MAPPER.createObjectNode();</span>
-<span class="fc" id="L362">                    logNode.put(&quot;id&quot;, rs.getString(&quot;external_id&quot;));</span>
-                    
-<span class="fc" id="L364">                    String userExt = rs.getString(&quot;user_ext&quot;);</span>
-<span class="fc bfc" id="L365" title="All 2 branches covered.">                    logNode.put(&quot;userId&quot;, userExt != null ? userExt : &quot;system&quot;);</span>
-                    
-<span class="fc" id="L367">                    String userName = rs.getString(&quot;nome_usuario&quot;);</span>
-<span class="fc bfc" id="L368" title="All 2 branches covered.">                    logNode.put(&quot;userName&quot;, userName != null ? userName : &quot;Sistema&quot;);</span>
-                    
-<span class="fc" id="L370">                    String act = rs.getString(&quot;acao&quot;);</span>
-<span class="fc bfc" id="L371" title="All 2 branches covered.">                    logNode.put(&quot;action&quot;, act != null ? act : &quot;&quot;);</span>
-                    
-<span class="fc" id="L373">                    logNode.put(&quot;timestamp&quot;, formatTimestamp(rs.getTimestamp(&quot;criado_em&quot;)));</span>
-
-<span class="fc" id="L375">                    logsArray.add(logNode);</span>
-<span class="fc" id="L376">                }</span>
-            }
         }
 
-        // Verify all 5 top-level arrays are present
-<span class="pc bpc" id="L381" title="5 of 10 branches missed.">        if (!root.has(&quot;users&quot;) || !root.has(&quot;boardGames&quot;) || !root.has(&quot;sessions&quot;) || !root.has(&quot;events&quot;) || !root.has(&quot;logs&quot;)) {</span>
-<span class="nc" id="L382">            throw new IllegalStateException(&quot;Reconstructed JSON is missing one or more required top-level arrays.&quot;);</span>
+<span class="pc bpc" id="L352" title="4 of 8 branches missed.">        if (!root.has(&quot;users&quot;) || !root.has(&quot;boardGames&quot;) || !root.has(&quot;sessions&quot;) || !root.has(&quot;events&quot;)) {</span>
+<span class="nc" id="L353">            throw new IllegalStateException(&quot;Reconstructed JSON is missing one or more required top-level arrays.&quot;);</span>
         }
 
-<span class="fc" id="L385">        return MAPPER.writeValueAsString(root);</span>
+<span class="fc" id="L356">        return MAPPER.writeValueAsString(root);</span>
     }
 
     private static String formatTimestamp(Timestamp timestamp) {
-<span class="fc bfc" id="L389" title="All 2 branches covered.">        if (timestamp == null) {</span>
-<span class="fc" id="L390">            return null;</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">        if (timestamp == null) {</span>
+<span class="nc" id="L361">            return null;</span>
         }
-<span class="fc" id="L392">        return timestamp.toInstant().toString();</span>
+<span class="fc" id="L363">        return timestamp.toInstant().toString();</span>
     }
 
     private static String formatDate(Timestamp timestamp) {
-<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (timestamp == null) {</span>
-<span class="fc" id="L397">            return &quot;&quot;;</span>
+<span class="pc bpc" id="L367" title="1 of 2 branches missed.">        if (timestamp == null) {</span>
+<span class="nc" id="L368">            return &quot;&quot;;</span>
         }
-<span class="fc" id="L399">        return timestamp.toLocalDateTime().toLocalDate().toString();</span>
+<span class="fc" id="L370">        return timestamp.toLocalDateTime().toLocalDate().toString();</span>
     }
 
     private static String formatTime(Timestamp timestamp) {
-<span class="fc bfc" id="L403" title="All 2 branches covered.">        if (timestamp == null) {</span>
-<span class="fc" id="L404">            return &quot;&quot;;</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">        if (timestamp == null) {</span>
+<span class="nc" id="L375">            return &quot;&quot;;</span>
         }
-<span class="fc" id="L406">        java.time.LocalTime time = timestamp.toLocalDateTime().toLocalTime();</span>
-<span class="fc" id="L407">        return String.format(&quot;%02d:%02d&quot;, time.getHour(), time.getMinute());</span>
+<span class="fc" id="L377">        java.time.LocalTime time = timestamp.toLocalDateTime().toLocalTime();</span>
+<span class="fc" id="L378">        return String.format(&quot;%02d:%02d&quot;, time.getHour(), time.getMinute());</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

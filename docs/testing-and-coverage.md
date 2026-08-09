@@ -1,6 +1,6 @@
 # Testes e cobertura
 
-Resultados gerados em 30 de julho de 2026 a partir do código atual. Os percentuais abaixo vêm diretamente de `jacoco.xml` e `coverage-summary.json`.
+Resultados da execução atual do backend e do frontend. Os percentuais abaixo vêm diretamente dos relatórios gerados na execução atual de `jacoco.xml` e `coverage-summary.json`.
 
 ## Backend
 
@@ -13,11 +13,16 @@ mvn clean test jacoco:report
 
 Resultado:
 
-- 201 testes executados e aprovados;
+- 163 testes executados e aprovados;
 - 0 falhas, 0 erros e 0 ignorados;
-- 88,14% de instruções (14.993 de 17.010);
-- 71,32% de branches (1.094 de 1.534);
-- pacote `br.com.tabula.ai`: 90,65% de instruções (708 de 781) e 71,95% de branches (59 de 82).
+- instruções: 88%;
+- branches: 66%;
+- linhas: aproximadamente 89,7%;
+- methods: aproximadamente 93,0%;
+- classes: aproximadamente 97,4%;
+- 114 classes analisadas;
+- resultado: BUILD SUCCESS;
+- JaCoCo confirmou: "All coverage checks have been met."
 
 Relatórios versionados:
 
@@ -43,12 +48,13 @@ npm run test:coverage
 
 Resultado:
 
-- 14 arquivos de teste;
-- 46 testes aprovados;
-- statements: 86,49% (1.191 de 1.377);
-- branches: 76,52% (502 de 656);
-- functions: 75,65% (289 de 382);
-- lines: 88,67% (1.112 de 1.254).
+- 15 arquivos de teste;
+- 63 testes aprovados;
+- 0 falhas;
+- statements: 86,12%;
+- branches: 77,35%;
+- functions: 76,79%;
+- lines: 88,30%.
 
 Relatórios versionados:
 
@@ -76,6 +82,7 @@ git diff --check
 ```
 
 Os relatórios gerados fora de `cobertura/`, como `backend/target/` e `coverage/`, são artefatos locais e não devem ser versionados.
+
 ## Migração relacional de partidas
 
 Os testes PostgreSQL usam Testcontainers sem `disabledWithoutDocker` e cobrem

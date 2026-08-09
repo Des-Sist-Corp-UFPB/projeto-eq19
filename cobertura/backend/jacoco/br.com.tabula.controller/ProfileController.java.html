@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProfileController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.controller</a> &gt; <span class="el_source">ProfileController.java</span></div><h1>ProfileController.java</h1><pre class="source lang-java linenums">package br.com.tabula.controller;
+
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.ProfileRepository;
+import br.com.tabula.repository.ProfileRepository.ProfileData;
+import br.com.tabula.service.AuditLogService;
+import br.com.tabula.service.AuthenticatedUserService;
+import br.com.tabula.service.ProfileService;
+import br.com.tabula.service.ProfileService.ProfileException;
+import br.com.tabula.service.ProfileService.ProfileInput;
+import br.com.tabula.service.ProfileService.RequestMetadata;
+import com.zaxxer.hikari.HikariDataSource;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
+import java.util.Optional;
+
+public final class ProfileController {
+    private ProfileController() {}
+    public static void register(Javalin app, HikariDataSource dataSource) {
+<span class="fc" id="L23">        AuthenticatedUserService auth=new AuthenticatedUserService(dataSource);</span>
+<span class="fc" id="L24">        ProfileService service=new ProfileService(dataSource,new ProfileRepository(),new AuditLogService(dataSource));</span>
+<span class="fc" id="L25">        app.get(&quot;/profile&quot;,ctx-&gt;authenticated(ctx,auth,service,principal-&gt;ctx.json(ProfileResponse.from(service.get(principal)))));</span>
+<span class="fc" id="L26">        app.put(&quot;/profile&quot;,ctx-&gt;authenticated(ctx,auth,service,principal-&gt;{</span>
+            ProfileRequest request;
+<span class="fc" id="L28">            try { request=ctx.bodyAsClass(ProfileRequest.class); }</span>
+<span class="pc" id="L29">            catch (Exception ex) { throw ProfileException.invalid(&quot;invalid_payload&quot;); }</span>
+<span class="fc" id="L30">            ctx.json(ProfileResponse.from(service.update(principal,request.toInput(),metadata(ctx))));</span>
+<span class="fc" id="L31">        }));</span>
+<span class="fc" id="L32">    }</span>
+    private static void authenticated(Context ctx,AuthenticatedUserService auth,ProfileService service,Handler handler)throws Exception{
+<span class="fc" id="L34">        Optional&lt;AuthenticatedPrincipal&gt; principal=auth.resolve(ctx.header(&quot;Authorization&quot;));</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if(principal.isEmpty()){ctx.status(401).json(Map.of(&quot;error&quot;,&quot;Sessão inválida ou expirada.&quot;));return;}</span>
+<span class="fc" id="L36">        try{handler.handle(principal.get());}</span>
+<span class="fc" id="L37">        catch(ProfileException ex){</span>
+<span class="fc" id="L38">            service.auditRejected(principal.get(),ex.reason(),metadata(ctx));</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            ctx.status(ex.kind()==ProfileException.Kind.NOT_FOUND?404:422)</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">                    .json(Map.of(&quot;error&quot;,ex.kind()==ProfileException.Kind.NOT_FOUND?&quot;Perfil não encontrado.&quot;:&quot;Dados de perfil inválidos.&quot;));</span>
+<span class="fc" id="L41">        }</span>
+<span class="fc" id="L42">    }</span>
+<span class="fc" id="L43">    private static RequestMetadata metadata(Context ctx){return new RequestMetadata(ctx.ip(),ctx.userAgent());}</span>
+<span class="fc" id="L44">    private record ProfileRequest(String name,String course,String bio,String avatarUrl){</span>
+<span class="fc" id="L45">        ProfileInput toInput(){return new ProfileInput(name,course,bio,avatarUrl);}</span>
+    }
+<span class="fc" id="L47">    private record ProfileResponse(String id,String name,String course,String bio,String avatarUrl,String joinedAt){</span>
+<span class="fc" id="L48">        static ProfileResponse from(ProfileData value){return new ProfileResponse(value.externalId(),value.name(),</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">                value.course()==null?&quot;&quot;:value.course(),value.bio()==null?&quot;&quot;:value.bio(),value.avatarUrl(),</span>
+<span class="fc" id="L50">                value.joinedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));}</span>
+    }
+    @FunctionalInterface private interface Handler{void handle(AuthenticatedPrincipal principal)throws Exception;}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

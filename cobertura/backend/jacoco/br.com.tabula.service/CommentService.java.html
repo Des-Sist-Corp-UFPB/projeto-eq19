@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="pt"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CommentService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Tabula Backend</a> &gt; <a href="index.source.html" class="el_package">br.com.tabula.service</a> &gt; <span class="el_source">CommentService.java</span></div><h1>CommentService.java</h1><pre class="source lang-java linenums">package br.com.tabula.service;
+
+import br.com.tabula.model.AuditAction;
+import br.com.tabula.model.AuthenticatedPrincipal;
+import br.com.tabula.repository.CommentRepository;
+import br.com.tabula.repository.CommentRepository.CommentData;
+import com.zaxxer.hikari.HikariDataSource;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+public final class CommentService {
+    private static final int MAX_CONTENT_LENGTH = 4000;
+    private final HikariDataSource dataSource;
+    private final CommentRepository repository;
+    private final AuditLogService audit;
+
+<span class="fc" id="L21">    public CommentService(HikariDataSource dataSource, CommentRepository repository, AuditLogService audit) {</span>
+<span class="fc" id="L22">        this.dataSource = dataSource;</span>
+<span class="fc" id="L23">        this.repository = repository;</span>
+<span class="fc" id="L24">        this.audit = audit;</span>
+<span class="fc" id="L25">    }</span>
+
+    public List&lt;CommentData&gt; list(String sessionId) throws SQLException, CommentException {
+<span class="fc" id="L28">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L29">            long id = requireSession(connection, sessionId);</span>
+<span class="fc" id="L30">            return repository.findBySession(connection, id);</span>
+        }
+    }
+
+    public CommentData create(AuthenticatedPrincipal actor, String sessionId, String content,
+                              RequestMetadata metadata) throws SQLException, CommentException {
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        String cleanContent = content == null ? null : content.trim();</span>
+<span class="pc bpc" id="L37" title="2 of 6 branches missed.">        if (cleanContent == null || cleanContent.isEmpty() || cleanContent.length() &gt; MAX_CONTENT_LENGTH) {</span>
+<span class="fc" id="L38">            throw CommentException.invalid(&quot;invalid_comment_content&quot;);</span>
+        }
+<span class="fc" id="L40">        return transaction(connection -&gt; {</span>
+<span class="fc" id="L41">            long parentId = requireSession(connection, sessionId);</span>
+<span class="fc" id="L42">            String externalId = &quot;c_&quot; + UUID.randomUUID();</span>
+<span class="fc" id="L43">            CommentData created = repository.insert(connection, externalId, parentId,</span>
+<span class="fc" id="L44">                    actor.getDatabaseId(), cleanContent);</span>
+<span class="fc" id="L45">            audit.record(connection, actor, AuditAction.COMMENT_CREATED, &quot;COMMENT&quot;, externalId, true,</span>
+<span class="fc" id="L46">                    metadata.ipAddress(), metadata.userAgent(),</span>
+<span class="fc" id="L47">                    Map.of(&quot;parentId&quot;, sessionId, &quot;parentType&quot;, &quot;SESSION&quot;));</span>
+<span class="fc" id="L48">            return created;</span>
+        });
+    }
+
+    public void delete(AuthenticatedPrincipal actor, String sessionId, String commentId,
+                       RequestMetadata metadata) throws SQLException, CommentException {
+<span class="fc" id="L54">        transaction(connection -&gt; {</span>
+<span class="fc" id="L55">            long parentId = requireSession(connection, sessionId);</span>
+<span class="fc" id="L56">            CommentData comment = repository.findById(connection, parentId, commentId, true)</span>
+<span class="fc" id="L57">                    .orElseThrow(() -&gt; CommentException.notFound(&quot;comment_not_found&quot;));</span>
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">            if ((comment.authorDatabaseId() == null || comment.authorDatabaseId() != actor.getDatabaseId())</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                    &amp;&amp; !actor.isAdmin()) {</span>
+<span class="fc" id="L60">                throw CommentException.forbidden(&quot;not_comment_author&quot;);</span>
+            }
+<span class="fc" id="L62">            repository.delete(connection, comment.databaseId());</span>
+<span class="fc" id="L63">            audit.record(connection, actor, AuditAction.COMMENT_DELETED, &quot;COMMENT&quot;, commentId, true,</span>
+<span class="fc" id="L64">                    metadata.ipAddress(), metadata.userAgent(),</span>
+<span class="fc" id="L65">                    Map.of(&quot;parentId&quot;, sessionId, &quot;parentType&quot;, &quot;SESSION&quot;));</span>
+<span class="fc" id="L66">            return null;</span>
+        });
+<span class="fc" id="L68">    }</span>
+
+    public void auditRejected(AuthenticatedPrincipal actor, String sessionId, String commentId,
+                              String reason, RequestMetadata metadata) {
+<span class="nc" id="L72">        audit.recordBestEffort(actor, AuditAction.COMMENT_OPERATION_REJECTED, &quot;COMMENT&quot;, commentId, false,</span>
+<span class="nc" id="L73">                metadata.ipAddress(), metadata.userAgent(), Map.of(</span>
+                        &quot;reasonCode&quot;, reason, &quot;parentId&quot;, sessionId, &quot;parentType&quot;, &quot;SESSION&quot;));
+<span class="nc" id="L75">    }</span>
+
+    private long requireSession(Connection connection, String sessionId) throws SQLException, CommentException {
+<span class="fc" id="L78">        try { return repository.requireSessionId(connection, sessionId); }</span>
+<span class="fc" id="L79">        catch (SQLException ex) {</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (&quot;session_not_found&quot;.equals(ex.getMessage())) throw CommentException.notFound(ex.getMessage());</span>
+<span class="nc" id="L81">            throw ex;</span>
+        }
+    }
+
+    private &lt;T&gt; T transaction(Work&lt;T&gt; work) throws SQLException, CommentException {
+<span class="fc" id="L86">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L87">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L89">                T result = work.run(connection);</span>
+<span class="fc" id="L90">                connection.commit();</span>
+<span class="fc" id="L91">                return result;</span>
+<span class="fc" id="L92">            } catch (Exception ex) {</span>
+<span class="fc" id="L93">                connection.rollback();</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                if (ex instanceof CommentException ce) throw ce;</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">                if (ex instanceof SQLException se) throw se;</span>
+<span class="nc" id="L96">                throw new SQLException(&quot;Comment transaction failed&quot;, ex);</span>
+            }
+        }
+    }
+
+<span class="fc" id="L101">    public record RequestMetadata(String ipAddress, String userAgent) {}</span>
+    @FunctionalInterface private interface Work&lt;T&gt; { T run(Connection connection) throws Exception; }
+
+    public static final class CommentException extends Exception {
+<span class="fc" id="L105">        public enum Kind { FORBIDDEN, NOT_FOUND, INVALID }</span>
+        private final Kind kind;
+        private final String reason;
+<span class="fc" id="L108">        private CommentException(Kind kind, String reason) { this.kind = kind; this.reason = reason; }</span>
+<span class="fc" id="L109">        public Kind kind() { return kind; }</span>
+<span class="nc" id="L110">        public String reason() { return reason; }</span>
+<span class="fc" id="L111">        public static CommentException forbidden(String reason) { return new CommentException(Kind.FORBIDDEN, reason); }</span>
+<span class="fc" id="L112">        public static CommentException notFound(String reason) { return new CommentException(Kind.NOT_FOUND, reason); }</span>
+<span class="fc" id="L113">        public static CommentException invalid(String reason) { return new CommentException(Kind.INVALID, reason); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
