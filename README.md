@@ -2,6 +2,10 @@
 
 Tabula é uma aplicação real para comunidade de jogos de mesa. O projeto permite cadastrar usuários, autenticar login, manter acervo de jogos, marcar eventos, registrar partidas concluídas e acompanhar ranking de vitórias por jogo.
 
+## Vídeo
+
+Link para o vídeo: 
+
 ## Produção
 
 A imagem de produção usa um único container com:
@@ -40,48 +44,75 @@ GET /ping
 
 ## Variáveis de ambiente
 
-A aplicação espera variáveis de ambiente para configurar banco de dados, URL pública do frontend, porta do backend e envio de e-mails.
+A aplicação espera variáveis de ambiente para configurar banco de dados, URLs do sistema, e-mail SMTP, assistente de IA e observabilidade via OpenTelemetry.
 
-Exemplo de configuração:
+Exemplo de configuração (`.env`):
 
 ```env
+# Banco de dados (PostgreSQL relacional)
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=eq19
 DB_USER=eq19
 DB_PASSWORD=********
 
-FRONTEND_URL=https://eq19.dsc.rodrigor.com
+# Servidor e URLs
 BACKEND_PORT=8119
+FRONTEND_URL=https://eq19.dsc.rodrigor.com
+BACKEND_URL=https://eq19.dsc.rodrigor.com
+VITE_API_BASE_URL=/api
 
+# Envio de e-mail (SMTP transacional)
 SMTP_HOST=smtp.exemplo.com
 SMTP_PORT=587
 SMTP_USER=usuario_smtp
 SMTP_PASSWORD=senha_smtp
 SMTP_FROM=tabula@exemplo.com
 SMTP_FROM_NAME=Tabula
+
+# Assistente de eventos com IA (LiteLLM / somente backend)
+LITELLM_API_KEY=<CHAVE_LITELLM_DA_EQUIPE>
+LITELLM_BASE_URL=https://llm.rodrigor.com
+LITELLM_MODEL=gpt-4o-mini
+AI_REQUEST_TIMEOUT_SECONDS=15
+AI_MAX_COMPLETION_TOKENS=300
+AI_MAX_CANDIDATE_GAMES=15
+AI_MAX_REQUESTS_PER_USER_HOUR=3
+AI_MAX_REQUESTS_PER_DAY=10
+AI_RETRY_ENABLED=false
+APP_TIME_ZONE=America/Sao_Paulo
+
+# Observabilidade OpenTelemetry
+JAVA_TOOL_OPTIONS=-javaagent:/app/opentelemetry-javaagent.jar
+OTEL_SERVICE_NAME=dsc-eq19
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.dsc.rodrigor.com
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer ********
 ```
 
-As credenciais reais não devem ser versionadas no Git.
+As credenciais e tokens reais não devem ser versionadas no Git.
 
 ## Endpoints principais
 
 Externamente, os endpoints são acessados pelo prefixo `/api`:
 
-* `GET /api/ping` — healthcheck do ambiente/professor, dependente do PostgreSQL (retorna HTTP 200 se estiver UP, ou HTTP 503 se estiver DOWN).
-* `GET /api/live` — liveness da aplicação, não dependente do PostgreSQL (retorna HTTP 200 se a aplicação estiver rodando).
-* `POST /api/auth/login` — login real no backend.
-* `POST /api/auth/register` — cadastro real no backend.
-* `POST /api/auth/verify-email` — verificação de e-mail por código.
-* `POST /api/auth/resend-verification` — reenvio do código de verificação.
-* `POST /api/auth/reset-password` — redefinição de senha.
-* `POST /api/auth/change-password` — alteração de senha.
-* `GET /api/state` — carrega os dados persistidos no PostgreSQL.
-* `PUT /api/state` — salva o estado da aplicação no PostgreSQL, exigindo sessão autenticada após a inicialização.
-* `GET /api/events` e `GET /api/events/{id}` — consultam eventos relacionais.
-* `POST /api/events` e `PATCH /api/events/{id}` — criam e editam eventos.
-* `POST /api/events/{id}/join` e `POST /api/events/{id}/leave` — gerenciam a própria participação e fila.
-* `POST /api/events/{id}/cancel` e `POST /api/events/{id}/complete` — encerram eventos do organizador.
+* `GET /api/ping` — healthcheck do ambiente/professor, dependente do PostgreSQL (retorna HTTP 200 se UP, HTTP 503 se DOWN).
+* `GET /api/live` — liveness da aplicação, independente do banco de dados (retorna HTTP 200 se a aplicação estiver rodando).
+* `POST /api/auth/login` e `POST /api/auth/register` — autenticação e cadastro de usuários no backend.
+* `POST /api/auth/verify-email` e `POST /api/auth/resend-verification` — verificação de e-mail por código.
+* `POST /api/auth/reset-password` e `POST /api/auth/change-password` — gestão de senhas.
+* `GET /api/state` — projeção 100% relacional para compatibilidade com o cache frontend (`DatabaseState`).
+* `GET /api/games`, `POST /api/games`, `PUT /api/games/{id}`, `DELETE /api/games/{id}` — catálogo de jogos.
+* `GET /api/events`, `POST /api/events`, `PATCH /api/events/{id}` — consulta, criação e edição de eventos.
+* `POST /api/events/{id}/join`, `POST /api/events/{id}/leave` — participação e fila de espera em eventos.
+* `POST /api/events/{id}/cancel`, `POST /api/events/{id}/complete` — cancelamento e encerramento de eventos.
+* `GET /api/sessions`, `POST /api/sessions`, `DELETE /api/sessions/{id}` — registro e gestão de partidas.
+* `GET /api/sessions/{id}/comments`, `POST /api/sessions/{id}/comments`, `DELETE /api/sessions/{id}/comments/{id}` — comentários.
+* `GET /api/favorites`, `POST /api/favorites/{gameId}`, `DELETE /api/favorites/{gameId}` — jogos favoritos do usuário.
+* `GET /api/profile`, `PUT /api/profile` — consulta e atualização de perfil do usuário.
+* `GET /api/audit-logs` — consulta da trilha append-only de auditoria oficial (somente admins).
+* `PATCH /api/users/{id}/role`, `DELETE /api/users/{id}` — administração de papéis e exclusão de contas (somente admins).
+* `POST /api/ai/event-drafts`, `POST /api/ai/event-drafts/refine` — geração e refinamento de rascunhos de eventos por IA.
 
 Internamente, o backend registra as rotas sem o prefixo `/api`, pois esse prefixo é tratado pelo Nginx.
 
@@ -93,150 +124,21 @@ Gerações e refinamentos são auditados, mas nunca salvam o evento automaticame
 
 ## Persistência dos dados
 
-> Estado atual (V14): a migração incremental foi concluída. Todos os domínios são
-> relacionais, `app_state` foi removida e não existem mais autosave, shadow sync
-> ou `PUT /api/state`. `GET /api/state` permanece somente como agregador relacional
-> compatível com o cache `DatabaseState`. Consulte
-> [docs/persistence-migration.md](docs/persistence-migration.md). A descrição
-> incremental abaixo é mantida apenas como histórico do projeto.
+O Tabula utiliza PostgreSQL relacional como fonte de verdade dos dados da aplicação.
 
-O Tabula persiste os dados no PostgreSQL por meio do backend.
+A migração incremental foi concluída na V15:
 
-Todos os domínios usam tabelas relacionais como fonte canônica. A auditoria
-oficial usa exclusivamente `audit_logs`.
+- a V14 removeu a tabela legada `app_state`;
+- a V15 removeu a tabela legada `logs`;
+- usuários, autenticação, perfis, jogos, favoritos, eventos, partidas, comentários e auditoria são persistidos em tabelas relacionais;
+- `GET /api/state` permanece apenas como uma projeção agregada de compatibilidade para o frontend;
+- não existe mais `PUT /api/state`, shadow sync, fallback JSON, backfill ou comparação entre estados;
+- a auditoria oficial utiliza exclusivamente a tabela `audit_logs`.
 
-Tabela principal usada pelo estado da aplicação:
+O `DatabaseState` utilizado pelo frontend funciona apenas como DTO agregado e cache em memória. As alterações são persistidas por meio das APIs específicas de cada domínio.
 
-```text
-app_state
-```
-
-Campos principais:
-
-```text
-id
-data
-updated_at
-```
-
-A aplicação também possui migrations para tabelas relacionais, como `jogos`,
-`eventos`, `evento_participantes`, `partidas`, `comentarios`, `favoritos` e
-`audit_logs`. A migração é incremental: eventos já usam endpoints específicos,
-enquanto as fatias restantes preservam compatibilidade via `/api/state`. Veja
+Mais detalhes sobre a arquitetura e o histórico da migração estão em
 [docs/persistence-migration.md](docs/persistence-migration.md).
-
-| Domínio | Fonte atual | Endpoints específicos | Situação |
-| --- | --- | --- | --- |
-| Eventos | Relacional | Sim | Migrado |
-| Participantes | Relacional | Sim | Migrado |
-| Fila de espera | Relacional | Sim | Migrado |
-| Demais domínios | `app_state`/legado | Não ou parcial | Pendente |
-
-## Histórico da migração relacional (desativado)
-
-> O conteúdo desta seção documenta etapas anteriores à V14. Não use os endpoints,
-> flags ou procedimentos abaixo na aplicação atual; eles foram removidos.
-
-Este projeto utiliza uma estratégia de migração segura, incremental e tolerante a falhas para mover os dados da aplicação para um modelo relacional no PostgreSQL.
-
-### 1. Arquitetura usada durante a migração
-
-Para os domínios ainda não migrados, a aplicação utiliza `app_state` (coluna
-`data` do tipo JSONB) como fonte de dados e fallback. Eventos, participantes e
-fila já são canônicos no relacional e não fazem rollback para o JSON legado.
-
-O fluxo de escrita ocorre da seguinte forma:
-1. **Salvamento Principal**: O endpoint `PUT /state` recebe o JSON do frontend e o salva diretamente no banco de dados na tabela `app_state.data`.
-2. **Sincronização em Sombra (Shadow Sync)**: Após o salvamento com sucesso, o backend inicia uma sincronização em segundo plano (shadow mode) utilizando o `RelationalStateSyncService`.
-3. Sincroniza as fatias legadas mapeadas. Eventos e participantes são
-explicitamente ignorados nesse shadow sync e só são importados pelo bootstrap ou
-backfill administrativo.
-
-Pontos importantes:
-- A tabela `app_state.data` **não foi removida** e continua sendo atualizada.
-- Se a sincronização relacional falhar por qualquer motivo (erros de chave, constraint ou banco), o erro é registrado no log do servidor, mas a resposta de sucesso (`200 OK`) é retornada normalmente ao cliente.
-- A rota `/ping` e `/api/ping` dependem do PostgreSQL, retornando status unhealthy se o banco estiver indisponível (garantindo que o status do projeto fique vermelho para o monitoramento do professor), enquanto as rotas `/live` e `/api/live` permanecem independentes do banco.
-
-### 2. Arquitetura de Leitura
-
-O fluxo de leitura (`GET /state`) possui três modos operacionais controlados por flags de recurso:
-
-1. **Leitura Padrão (Legada)**: Quando a leitura relacional está desativada, a aplicação lê diretamente a coluna `app_state.data`.
-2. **Leitura Relacional Sem Guardão**: Quando `RELATIONAL_STATE_READ_ENABLED=true` e o guardão está desativado, o backend tenta reconstruir o JSON a partir das tabelas relacionais usando `RelationalStateReadService`. Se houver falha, ele reverte automaticamente para o `app_state.data`.
-3. **Leitura Relacional Protegida (Guarded Relational Read)**: Quando `RELATIONAL_STATE_READ_ENABLED=true` e `RELATIONAL_STATE_READ_GUARD_ENABLED=true`, a rota executa uma verificação ativa de consistência em tempo de execução:
-   - Lê o `app_state.data` legado e o JSON reconstruído relacional.
-   - Compara ambos através do `RelationalStateComparisonService`.
-   - Se a comparação for bem-sucedida (`comparison.ok = true`), retorna o JSON relacional.
-   - Se a comparação falhar (`comparison.ok = false`) ou se houver qualquer erro/exceção, o sistema registra um aviso no log do servidor e retorna o `app_state.data` com status `200 OK`, sem afetar o usuário final.
-
-### 3. Serviços da Migração Relacional
-
-- **RelationalStateSyncService**: Responsável pela sincronização e inserção idempotente das tabelas relacionais a partir do JSONB. Utilizado no shadow sync (`PUT /state`) e no endpoint administrativo de backfill.
-- **RelationalStateReadService**: Reconstrói e formata o payload JSON compatível com o tipo `DatabaseState` do frontend a partir das tabelas relacionais do banco.
-- **RelationalStateComparisonService**: Compara estruturalmente os dois payloads JSON e gera um relatório. Ele detecta arrays de primeiro nível, discrepâncias de contagem de itens, IDs ausentes (erros críticos) e IDs extras ou diferenças em campos principais como `name`, `email`, `role`, `category`, `gameId`, `organizerId`, `winnerId`, `status` e `action` (warnings). Ignora safe defaults como avatares, imagens de capa, descrições, formatações de timestamp e campos opcionais vazios.
-
-### 4. Endpoints de Diagnóstico e Administração
-
-O backend expõe dois endpoints estritamente administrativos e protegidos por flags de recursos:
-
-- **GET /state/relational-comparison** (Flag: `RELATIONAL_STATE_COMPARISON_ENABLED=true`):
-  Retorna um relatório estruturado comparando as duas fontes de dados em tempo real. Não altera nenhum dado (operação somente leitura). Se a flag estiver desativada ou ausente, retorna `404 Not Found`.
-- **POST /state/relational-backfill** (Flag: `RELATIONAL_STATE_BACKFILL_ENABLED=true`):
-  Lê o `app_state.data` e realiza a carga inicial (sincronização) relacional de forma manual e idempotente. Retorna um relatório de comparação pós-sincronização. Deve ser desativado após o uso. Se a flag estiver desativada ou ausente, retorna `404 Not Found`.
-
-### 5. Variáveis de Ambiente e Feature Flags
-
-- `RELATIONAL_STATE_READ_ENABLED=true`: Ativa a tentativa de leitura relacional no `GET /state`.
-- `RELATIONAL_STATE_READ_GUARD_ENABLED=true`: Ativa a verificação ativa de integridade e comparação no `GET /state` antes de servir o JSON relacional.
-- `RELATIONAL_STATE_COMPARISON_ENABLED=true`: Habilita o endpoint de diagnóstico `/state/relational-comparison`.
-- `RELATIONAL_STATE_BACKFILL_ENABLED=true`: Habilita o endpoint administrativo `/state/relational-backfill`.
-
-### 6. Roteiro Recomendado de Rollout Seguro
-
-Siga este procedimento para ativar a leitura relacional em produção sem downtime ou riscos:
-
-1. **Passo 1 — Modo Seguro Padrão**: Mantenha as variáveis de leitura desativadas. A escrita shadow sync já popula gradualmente as tabelas relacionais a cada ação do usuário.
-2. **Passo 2 — Executar Carga Inicial (Backfill)**:
-   - Configure temporariamente `RELATIONAL_STATE_BACKFILL_ENABLED=true` no ambiente.
-   - Faça uma chamada `POST /api/state/relational-backfill`.
-   - Certifique-se de que a resposta retorne sucesso e remova a flag `RELATIONAL_STATE_BACKFILL_ENABLED`.
-3. **Passo 3 — Executar Validação Cruzada**:
-   - Configure temporariamente `RELATIONAL_STATE_COMPARISON_ENABLED=true`.
-   - Faça uma chamada `GET /api/state/relational-comparison`.
-   - Confirme se a comparação retornou `"ok": true`. Remova a flag `RELATIONAL_STATE_COMPARISON_ENABLED`.
-4. **Passo 4 — Habilitar Leitura Protegida (Guarded Read)**:
-   - Configure no ambiente:
-     ```env
-     RELATIONAL_STATE_READ_ENABLED=true
-     RELATIONAL_STATE_READ_GUARD_ENABLED=true
-     ```
-   - Reinicie a aplicação. O sistema agora lê do relacional de forma protegida. Mismatches reverterão automaticamente de forma silenciosa para o `app_state`.
-5. **Passo 5 — Ativação Direta Opcional**:
-   - Após constatar estabilidade e logs livres de avisos, você pode opcionalmente desativar a leitura protegida mantendo apenas `RELATIONAL_STATE_READ_ENABLED=true` e definindo `RELATIONAL_STATE_READ_GUARD_ENABLED=false`.
-   - **Nota**: A tabela `app_state` e o shadow sync continuam ativos em produção como fallback essencial.
-
-### 7. Instruções de Rollback Imediato
-
-Se houver qualquer instabilidade, indisponibilidade ou inconsistência de dados com a leitura relacional, remova ou defina as seguintes flags de leitura como `false`:
-
-```env
-RELATIONAL_STATE_READ_ENABLED=false
-RELATIONAL_STATE_READ_GUARD_ENABLED=false
-RELATIONAL_STATE_COMPARISON_ENABLED=false
-RELATIONAL_STATE_BACKFILL_ENABLED=false
-```
-
-As fatias ainda legadas voltarão a usar `app_state.data`. Essa configuração não
-reverte eventos, participantes ou fila, que permanecem relacionais.
-
-### 8. Explicação para Avaliação / Professor
-
-Esta migração seguiu uma estratégia incremental recomendada para sistemas em produção:
-- **Evolução Não Destrutiva**: Preserva o `app_state.data` original como fonte primária e backup.
-- **Sincronização em Sombra**: A escrita relacional funciona de forma passiva sem afetar o tempo de resposta ou disponibilidade do cliente.
-- **Auditoria ao Vivo**: Os endpoints de comparação e backfill permitem verificar a consistência da migração antes de ligar a chave.
-- **Rede de Segurança Ativa (Guarded Read)**: Se houver qualquer divergência em produção, a aplicação reverte de forma transparente e serve o estado JSONB original.
-- **Rollback Instantâneo**: Desfazer a mudança requer apenas alterar variáveis de ambiente, sem necessidade de reverter migrations ou dados.
 
 ## Conta administrativa inicial
 
@@ -284,7 +186,7 @@ Entre as regras aplicadas:
 - participantes entram ou saem de eventos somente em nome próprio;
 - comentários são alterados apenas pelo respectivo autor;
 - usuários comuns não podem alterar papéis;
-- logs oficiais só podem ser criados pelo backend;
+- logs de auditoria oficiais só podem ser criados pelo backend;
 - operações sem permissão retornam HTTP 403 e são auditadas.
 
 A autorização é executada antes de qualquer gravação de domínio.
@@ -346,16 +248,21 @@ O projeto possui testes automatizados para backend e frontend, com relatórios d
 
 Os testes automatizados do backend foram executados com Maven e JaCoCo.
 
-Resultado da última execução:
+Resultado da execução atual:
 
-- Testes executados: 201
-- Testes aprovados: 201
+- Testes executados: 163
+- Testes aprovados: 163
 - Falhas: 0
 - Erros: 0
 - Ignorados: 0
-- Cobertura por instruções: 88,14% (14.993/17.010)
-- Cobertura por branches: 71,32% (1.094/1.534)
-- Pacote `br.com.tabula.ai`: 90,65% de instruções e 71,95% de branches
+- Instruções: 88%
+- Linhas: aproximadamente 89,7%
+- Branches: 66%
+- Methods: aproximadamente 93,0%
+- Classes: aproximadamente 97,4%
+- Classes analisadas: 114
+- Resultado: BUILD SUCCESS
+- JaCoCo confirmou: "All coverage checks have been met."
 
 Os testes incluem cenários específicos da trilha de auditoria e da integração com IA, como autenticação, limites de consumo, retry e telemetria de tokens. Os testes da IA usam clientes simulados e servidores HTTP locais; não consomem a cota LiteLLM.
 
@@ -377,19 +284,21 @@ mvn clean test jacoco:report
 
 Os testes automatizados do frontend foram executados com Vitest e V8 Coverage.
 
-Resultado da última execução:
+Resultado da execução atual:
 
-* Arquivos de teste: 14
-* Testes aprovados: 46
-* Falhas: 0
-* Cobertura por statements: 86,49% (1.191/1.377)
-* Cobertura por linhas: 88,67% (1.112/1.254)
-* Cobertura por branches: 76,52% (502/656)
-* Cobertura por funções: 75,65% (289/382)
+- Arquivos de teste: 15
+- Arquivos aprovados: 15
+- Testes: 63
+- Testes aprovados: 63
+- Falhas: 0
+- Statements: 86,12%
+- Branches: 77,35%
+- Functions: 76,79%
+- Lines: 88,30%
+- Threshold global de statements: 85%
+- Resultado: cobertura aprovada
 
 Os testes de interface cobrem também a auditoria, os fluxos manuais de eventos e os fluxos de geração e refinamento por IA, inclusive refinamentos sucessivos, erros do provedor e preservação do formulário.
-
-Os builds de cobertura exigem no mínimo 85% de statements e 85% de linhas no frontend. O JaCoCo exige no mínimo 85% de instruções no backend.
 
 Relatórios:
 
@@ -409,7 +318,7 @@ Detalhes, limitações e links para os relatórios estão em [docs/testing-and-c
 ## Observações importantes
 
 * O frontend não salva mais os dados principais da aplicação no `localStorage`.
-* Os dados de jogos, eventos, partidas, participantes, ranking, comentários, logs e usuários do painel são persistidos no PostgreSQL via backend.
+* Os dados de jogos, eventos, partidas, participantes, ranking, comentários, logs de auditoria e usuários do painel são persistidos no PostgreSQL via backend.
 * Esses dados são armazenados nas tabelas relacionais do PostgreSQL.
 * O navegador guarda apenas o identificador/token de sessão para manter o usuário logado.
 * Credenciais reais, como `.env`, senhas de banco e senhas de SMTP, não devem ser versionadas no Git.
