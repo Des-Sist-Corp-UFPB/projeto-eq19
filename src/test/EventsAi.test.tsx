@@ -137,6 +137,9 @@ describe('Events AI draft assistant', () => {
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
 
     expect(await screen.findByText('Informe data, horário e local.')).toBeInTheDocument();
+    expect(document.querySelector('input[type="date"]')).toHaveValue('');
+    expect(document.querySelector('input[type="time"]')).toHaveValue('');
+    expect(screen.getByLabelText(/Local de Encontro/i)).toHaveValue('');
     expect(screen.queryByRole('heading', { name: /Refinar com IA/i })).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('/events'),
       expect.objectContaining({ method: 'POST' }));

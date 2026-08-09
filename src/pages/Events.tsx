@@ -49,7 +49,7 @@ export const Events: React.FC = () => {
   const [date, setDate] = useState(tomorrowAsLocalIsoDate);
   const [time, setTime] = useState('12:00');
   const [location, setLocation] = useState('');
-  const [maxParticipants, setMaxParticipants] = useState(4);
+  const [maxParticipants, setMaxParticipants] = useState<number | ''>(4);
   const [description, setDescription] = useState('');
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -141,8 +141,8 @@ export const Events: React.FC = () => {
   // 3. Create event submit
   const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gameId) {
-      alert('Selecione um jogo.');
+    if (!gameId || maxParticipants === '') {
+      alert(!gameId ? 'Selecione um jogo.' : 'Informe o número de participantes.');
       return;
     }
 
@@ -194,12 +194,17 @@ export const Events: React.FC = () => {
     setAiWarnings(draft.warnings);
   };
 
-  const applyAiPartialDraft = (draft: AiEventPartialDraftResponse) => {
+  const applyAiPartialDraft = (draft: AiEventPartialDraftResponse, missingFields: string[]) => {
     if (draft.gameId !== undefined) setGameId(draft.gameId);
+    else if (missingFields.includes('gameId')) setGameId('');
     if (draft.date !== undefined) setDate(draft.date);
+    else if (missingFields.includes('date')) setDate('');
     if (draft.time !== undefined) setTime(draft.time);
+    else if (missingFields.includes('time')) setTime('');
     if (draft.location !== undefined) setLocation(draft.location);
+    else if (missingFields.includes('location')) setLocation('');
     if (draft.maxParticipants !== undefined) setMaxParticipants(draft.maxParticipants);
+    else if (missingFields.includes('maxParticipants')) setMaxParticipants('');
     if (draft.description !== undefined) setDescription(draft.description);
     if (draft.warnings !== undefined) setAiWarnings(draft.warnings);
   };
@@ -215,7 +220,7 @@ export const Events: React.FC = () => {
         applyAiDraft(response.draft);
         setHasAiDraft(true);
       } else if (response.status === 'needs_clarification') {
-        applyAiPartialDraft(response.partialDraft);
+        applyAiPartialDraft(response.partialDraft, response.missingFields);
         setAiError(response.message);
       } else {
         setAiError(unsupportedAiMessage);
@@ -241,13 +246,15 @@ export const Events: React.FC = () => {
     setAiError('');
     try {
       const response = await refineEventDraft(refinementInstruction, {
-        gameId, gameName, date, time, location, maxParticipants, description, warnings: aiWarnings,
+        gameId, gameName, date, time, location,
+        maxParticipants: maxParticipants === '' ? 0 : maxParticipants,
+        description, warnings: aiWarnings,
       });
       if (response.status === 'draft') {
         applyAiDraft(response.draft);
         setRefinementInstruction('');
       } else if (response.status === 'needs_clarification') {
-        applyAiPartialDraft(response.partialDraft);
+        applyAiPartialDraft(response.partialDraft, response.missingFields);
         setAiError(response.message);
       } else {
         setAiError(unsupportedAiMessage);
@@ -636,7 +643,7 @@ export const Events: React.FC = () => {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Vagas Máximas *</label>
-                  <input type="number" className="form-input" min={2} max={100} value={maxParticipants} onChange={e => setMaxParticipants(Number(e.target.value))} />
+                  <input type="number" className="form-input" min={2} max={100} value={maxParticipants} onChange={e => setMaxParticipants(e.target.value === '' ? '' : Number(e.target.value))} />
                 </div>
               </div>
 

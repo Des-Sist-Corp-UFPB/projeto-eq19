@@ -90,7 +90,7 @@ export const Home: React.FC = () => {
             <div style={heroGraphicBgStyle}>
               <div style={heroVisualBadgeStyle}>
                 <CrownIcon size={18} style={{ color: 'var(--color-accent)' }} />
-                <span>Community nights com ranking</span>
+                <span>Encontros com ranking da comunidade</span>
               </div>
               <div style={heroVisualPanelStyle}>
                 <div style={heroVisualChipStyle}>

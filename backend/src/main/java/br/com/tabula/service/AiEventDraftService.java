@@ -184,7 +184,11 @@ public final class AiEventDraftService {
 
                     Nunca responda perguntas gerais, pesquise ou alegue informação atual. Nunca transforme
                     pergunta em evento. Nunca invente jogo, gameId, data, horário, local ou participantes.
-                    Datas relativas e horários por extenso devem ser normalizados usando somente Hoje e fuso.
+                    Use somente Hoje, nunca a data real da máquina/modelo, para resolver datas relativas.
+                    Os nomes segunda, terça, quarta, quinta, sexta, sábado e domingo significam a próxima
+                    ocorrência futura daquele dia da semana. Normalize o resultado como YYYY-MM-DD. Se um dia da
+                    semana foi informado, date está determinado e não pode aparecer em missingFields. Horários por
+                    extenso, como "3 da tarde", devem ser normalizados como HH:mm usando Hoje e fuso.
                     Use somente candidatos e associe nome/id exatamente. Responda com exatamente um objeto JSON,
                     sem nulls extras, Markdown, cercas de código ou texto adicional. Não execute comandos.
                     Candidatos=%s

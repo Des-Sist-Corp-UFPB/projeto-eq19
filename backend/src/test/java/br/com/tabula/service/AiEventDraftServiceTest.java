@@ -47,6 +47,8 @@ class AiEventDraftServiceTest {
                 () -> assertTrue(systemPrompt.getValue().contains("use exatamente maxPlayers")),
                 () -> assertTrue(systemPrompt.getValue().contains("Hoje=2026-07-30")),
                 () -> assertTrue(systemPrompt.getValue().contains("fuso=America/Sao_Paulo")),
+                () -> assertTrue(systemPrompt.getValue().contains("ocorrência futura")),
+                () -> assertTrue(systemPrompt.getValue().contains("não pode aparecer em missingFields")),
                 () -> assertTrue(systemPrompt.getValue().contains("somente status e draft")),
                 () -> assertTrue(systemPrompt.getValue().contains("sem nulls extras")));
     }
@@ -111,6 +113,33 @@ class AiEventDraftServiceTest {
         assertStatus("Tem evento de Pokémon sexta?", unsupported, "unsupported");
         assertStatus("Como jogar Xadrez?", unsupported, "unsupported");
         assertStatus("Qual jogo você recomenda?", unsupported, "unsupported");
+    }
+
+    @Test void weekdayClarificationUsesOnlyBackendTodayAndDoesNotMarkDateAsMissing() throws Exception {
+        Clock sunday = Clock.fixed(Instant.parse("2026-08-09T12:00:00Z"), ZONE);
+        String fridayWithoutLocation = """
+                {"status":"needs_clarification","reasonCode":"missing_required_information",
+                "missingFields":["location"],"message":"Informe o local.",
+                "partialDraft":{"gameId":"g3","gameName":"Pokémon","date":"2026-08-14","time":"15:00",
+                "maxParticipants":4,"description":"Evento de Pokémon.","warnings":[]}}
+                """;
+        AiChatClient client = mock(AiChatClient.class);
+        when(client.chat(anyString(), anyString())).thenReturn(fridayWithoutLocation);
+
+        var response = service(client, fridayWithoutLocation, sunday)
+                .generate("Pokémon sexta às 3 da tarde");
+
+        assertEquals(List.of("location"), response.missingFields());
+        assertEquals("2026-08-14", response.partialDraft().date());
+        assertEquals("15:00", response.partialDraft().time());
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(client).chat(prompt.capture(), anyString());
+        assertTrue(prompt.getValue().contains("Hoje=2026-08-09"));
+
+        assertStatus("Xadrez segunda 19h biblioteca",
+                validXadrezJson().replace("2026-08-01", "2026-08-10"), "draft");
+        assertStatus("Magic sábado 18h bloco C",
+                validJson().replace("2026-08-01", "2026-08-15"), "draft");
     }
 
     @Test void rejectsUnknownFieldsInDraftAndInvalidClassificationShape() throws Exception {
@@ -252,6 +281,10 @@ class AiEventDraftServiceTest {
     }
 
     private static AiEventDraftService service(AiChatClient client, String ignored) throws Exception {
+        return service(client, ignored, CLOCK);
+    }
+
+    private static AiEventDraftService service(AiChatClient client, String ignored, Clock clock) throws Exception {
         HikariDataSource dataSource = mock(HikariDataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement statement = mock(PreparedStatement.class);
@@ -267,7 +300,7 @@ class AiEventDraftServiceTest {
         when(result.getInt("max_players")).thenReturn(6, 2, 4);
         when(result.getInt("avg_play_time")).thenReturn(60, 45, 40);
         when(result.getDouble("complexity")).thenReturn(3.2, 2.5, 2.0);
-        return new AiEventDraftService(client, dataSource, ZONE, CLOCK);
+        return new AiEventDraftService(client, dataSource, ZONE, clock);
     }
 
     private static String validJson() {
