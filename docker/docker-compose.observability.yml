@@ -10,6 +10,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        DEPLOYMENT_ENVIRONMENT: local
+        SERVICE_VERSION: ${SERVICE_VERSION:-development}
     environment:
       JAVA_TOOL_OPTIONS: "-javaagent:/app/opentelemetry-javaagent.jar"
       OTEL_SERVICE_NAME: dsc-eq19

@@ -25,6 +25,9 @@ RUN mvn -B -q -DskipTests package
 
 FROM eclipse-temurin:17-jre-alpine
 
+ARG DEPLOYMENT_ENVIRONMENT=local
+ARG SERVICE_VERSION=development
+
 RUN apk add --no-cache nginx curl
 WORKDIR /app
 
@@ -34,7 +37,8 @@ COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/start.sh /app/start.sh
 COPY --from=agent-download /opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 
-ENV BACKEND_PORT=8119
+ENV BACKEND_PORT=8119 \
+    OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=${DEPLOYMENT_ENVIRONMENT},service.version=${SERVICE_VERSION}"
 
 EXPOSE 8080
 
@@ -42,4 +46,3 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=3 \
   CMD curl --fail --silent --show-error http://localhost:8080/api/ping >/dev/null || exit 1
 
 CMD ["sh", "/app/start.sh"]
-

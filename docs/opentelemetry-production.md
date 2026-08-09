@@ -56,6 +56,18 @@ OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED=true
 OTEL_INSTRUMENTATION_LOGBACK_APPENDER_EXPERIMENTAL_CAPTURE_KEY_VALUE_PAIR_ATTRIBUTES=true
 ```
 
+`service.name` permanece `dsc-eq19`. No build de produção, o GitHub Actions
+passa `DEPLOYMENT_ENVIRONMENT=production` e `SERVICE_VERSION=${{ github.sha }}`
+ao mesmo `docker/build-push-action` que publica a imagem. O Java Agent recebe:
+
+```text
+deployment.environment.name=production
+service.version=<SHA exato do commit implantado>
+```
+
+O valor não depende de hostname ou URL: `github.sha` identifica o checkout
+usado como contexto do build e acompanha a imagem efetivamente publicada.
+
 > [!WARNING]
 > Do **NOT** put double or single quotes around `OTEL_EXPORTER_OTLP_HEADERS` in the `.env` file, as doing so can corrupt the HTTP header value sent to the OTLP exporter, resulting in `401 Unauthorized` errors.
 
@@ -118,10 +130,16 @@ Once traffic is generated (e.g. by logging in, registering, or running the datab
 
 ### A. Traces (Tempo)
 - In **Explore**, select **Tempo** as the data source.
-- Query using the tag `service.name = dsc-eq19`.
+- Query using `service.name = dsc-eq19 && deployment.environment.name = production`.
+- Add `service.version = <SHA>` to isolate the exact deployed revision.
 - Look for the manual span `@WithSpan("verify-user-email")` to verify user email flow.
 - Look for the manual span `@WithSpan("sync-from-state-json")` to verify database synchronization.
 - Inspect automatic spans like incoming HTTP endpoints (e.g. `POST /auth/login`) and outgoing JDBC spans representing database queries.
+
+Local e produção continuam exportando para a mesma infraestrutura. Para o
+ambiente local, troque o filtro por `deployment.environment.name = local`.
+Nenhum resource attribute anterior do repositório foi removido: antes desta
+mudança não havia `OTEL_RESOURCE_ATTRIBUTES` nos arquivos de execução.
 
 ### B. Logs (Loki)
 - Select **Loki** as the data source.

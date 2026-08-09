@@ -33,6 +33,9 @@ jobs:
           file: docker/Dockerfile
           push: true
           tags: ${{ env.IMAGE }}
+          build-args: |
+            DEPLOYMENT_ENVIRONMENT=production
+            SERVICE_VERSION=${{ github.sha }}
 
       - name: Deploy no servidor
         run: |
