@@ -16,7 +16,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <>
-      {/* Main Header / Navigation */}
+      {/* Cabeçalho Principal / Navegação */}
       <header style={headerStyle} className="no-print">
         <div className="container" style={headerContainerStyle}>
           {/* Logo */}
@@ -30,7 +30,7 @@ export const Navbar: React.FC = () => {
             </div>
           </Link>
 
-          {/* Navigation Links */}
+          {/* Links de Navegação */}
           <nav style={navStyle}>
             <Link to="/" style={isActive('/') ? activeLinkStyle : navLinkStyle}>Início</Link>
             <Link to="/games" style={isActive('/games') ? activeLinkStyle : navLinkStyle}>Jogos</Link>
@@ -45,15 +45,15 @@ export const Navbar: React.FC = () => {
             )}
           </nav>
 
-          {/* Right Section Actions */}
+          {/* Ações da Seção Direita */}
           <div style={rightActionsStyle}>
-            {/* Global Search Trigger */}
+            {/* Gatilho de Busca Global */}
             <button style={searchTriggerStyle} onClick={() => setSearchOpen(true)} title="Buscar (Ctrl+K)">
               <SearchIcon size={18} />
               <span style={searchPlaceholderTextStyle}>Buscar...</span>
             </button>
 
-            {/* Auth Actions */}
+            {/* Ações de Autenticação */}
             {currentUser ? (
               <>
                 <Link to={`/players/${currentUser.id}`} style={profileBadgeStyle}>
@@ -75,18 +75,18 @@ export const Navbar: React.FC = () => {
         </div>
       </header>
 
-      {/* Global Search Overlay */}
+      {/* Overlay de Busca Global */}
       <GlobalSearch isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   );
 };
 
-// Styling Object declarations
+// Declarações de Objetos de Estilo
 const headerStyle: React.CSSProperties = {
   backgroundColor: 'var(--color-card)',
   borderBottom: '1px solid var(--color-border)',
   position: 'sticky',
-  top: '0', // Stays below the simulator bar
+  top: '0', // Permanece abaixo da barra do simulador
   zIndex: 999,
   padding: '12px 0',
   boxShadow: 'var(--shadow-sm)',
@@ -228,8 +228,8 @@ const adminBadgeStyle: React.CSSProperties = {
   marginTop: '2px',
 };
 
-// Add CSS selectors to make nav hide on small screens
-// We can embed a small media queries tag in the head or handle responsive navbar inside App layout
+// Adicionar seletores CSS para ocultar a navegação em telas pequenas
+// Podemos incorporar uma pequena tag de media queries no head ou tratar a navbar responsiva dentro do layout do App
 const responsiveStyle = `
 @media (max-width: 800px) {
   header nav {

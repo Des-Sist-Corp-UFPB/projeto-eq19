@@ -15,7 +15,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input on open
+  // Focar entrada ao abrir
   useEffect(() => {
     if (!isOpen) return;
 
@@ -27,7 +27,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     return () => window.clearTimeout(focusTimer);
   }, [isOpen]);
 
-  // Handle escape key
+  // Tratar tecla escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -40,7 +40,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
 
   const searchQuery = query.trim().toLowerCase();
 
-  // 1. Search Games
+  // 1. Buscar Jogos
   const matchingGames = searchQuery
     ? state.boardGames.filter(
         g =>
@@ -49,7 +49,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
       )
     : [];
 
-  // 2. Search Players (Users)
+  // 2. Buscar Jogadores (Usuários)
   const matchingPlayers = searchQuery
     ? state.users.filter(
         u =>
@@ -58,7 +58,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
       )
     : [];
 
-  // 3. Search Events
+  // 3. Buscar Eventos
   const matchingEvents = searchQuery
     ? state.events.filter(e => {
         const game = state.boardGames.find(g => g.id === e.gameId);
@@ -70,7 +70,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
       })
     : [];
 
-  // 4. Search Sessions
+  // 4. Buscar Sessões
   const matchingSessions = searchQuery
     ? state.sessions.filter(s => {
         const game = state.boardGames.find(g => g.id === s.gameId);

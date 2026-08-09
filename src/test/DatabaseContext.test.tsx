@@ -9,7 +9,7 @@ function TestConsumer() {
   return (
     <div>
       <span>{state.users.length}</span>
-      <button onClick={() => addUser({ name: 'Novo Usuário', email: 'novo@tabula.com' })}>Add user</button>
+      <button onClick={() => addUser({ name: 'Novo Usuário', email: 'novo@tabula.com', course: 'Sem curso informado', role: 'student', })}>Add user</button>
     </div>
   );
 }

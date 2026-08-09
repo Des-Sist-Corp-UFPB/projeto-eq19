@@ -187,7 +187,7 @@ public class AuthController {
                           .addKeyValue("operation", "email_verification_delivery")
                           .setCause(ex)
                           .log("Verification email delivery failed");
-                    // As requested: Do NOT delete the user. Keep unverified and return clear error
+                    // Conforme solicitado: NÃO excluir o usuário. Manter não verificado e retornar erro claro
                     ctx.status(201).json(Map.of(
                             "ok", true,
                             "message", "Conta criada com sucesso, mas não foi possível enviar o e-mail de verificação. Por favor, utilize a opção de reenviar verificação para ativar sua conta."
@@ -320,7 +320,7 @@ public class AuthController {
                     return;
                 }
 
-                // Generate a new 6-digit code
+                // Gerar um novo código de 6 dígitos
                 String code = generateVerificationCode();
                 VerificationTokenRepository tokenRepository = new VerificationTokenRepository(dataSource);
 
@@ -337,7 +337,7 @@ public class AuthController {
                     return null;
                 });
 
-                // External delivery intentionally happens only after the database transaction commits.
+                // O envio externo ocorre intencionalmente apenas após o commit da transação do banco de dados.
                 EmailService emailService = new EmailService();
 
                 try {

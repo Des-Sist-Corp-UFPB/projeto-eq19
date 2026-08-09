@@ -36,7 +36,7 @@ public class RelationalStateReadService {
         try (Connection conn = dataSource.getConnection()) {
             conn.setReadOnly(true);
 
-            // 1. Users favorite games cache
+            // 1. Cache de jogos favoritos dos usuários
             Map<String, List<String>> userFavorites = new HashMap<>();
             String favsSql = """
                     SELECT u.external_id AS user_ext, j.external_id AS game_ext
@@ -54,7 +54,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 2. Reconstruct users
+            // 2. Reconstruir usuários
             String usersSql = """
                     SELECT external_id, nome, email, role, avatar_url, bio, curso, criado_em
                     FROM usuarios
@@ -97,7 +97,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 3. Reconstruct boardGames
+            // 3. Reconstruir jogos de tabuleiro
             String gamesSql = """
                     SELECT external_id, nome, descricao, cover_url, categoria, min_players, max_players, avg_play_time, complexity
                     FROM jogos
@@ -141,7 +141,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 4. Cache session participants
+            // 4. Cache de participantes das partidas
             Map<Long, List<String>> sessionParticipants = new HashMap<>();
             String sessionPartsSql = """
                     SELECT pp.partida_id, u.external_id AS user_ext
@@ -158,7 +158,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 5. Cache session photos
+            // 5. Cache de fotos das partidas
             Map<Long, List<String>> sessionPhotos = new HashMap<>();
             String sessionPhotosSql = """
                     SELECT pf.partida_id, pf.url
@@ -174,7 +174,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 6. Cache session comments
+            // 6. Cache de comentários das partidas
             Map<Long, List<ObjectNode>> sessionComments = new HashMap<>();
             String commentsSql = """
                     SELECT c.external_id, c.partida_id, u.external_id AS user_ext, u.nome AS user_name, c.conteudo, c.criado_em
@@ -203,7 +203,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 7. Reconstruct sessions (partidas)
+            // 7. Reconstruir partidas
             String sessionsSql = """
                     SELECT p.id, p.external_id, j.external_id AS game_ext, p.data_hora, p.local, u_org.external_id AS org_ext, u_win.external_id AS win_ext, p.duracao_minutos, p.notas
                     FROM partidas p
@@ -268,7 +268,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 8. Cache event participants
+            // 8. Cache de participantes dos eventos
             Map<Long, List<String>> eventParticipants = new HashMap<>();
             Map<Long, List<String>> eventWaitingList = new HashMap<>();
             String eventPartsSql = """
@@ -292,7 +292,7 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 9. Reconstruct events
+            // 9. Reconstruir eventos
             String eventsSql = """
                     SELECT e.id, e.external_id, j.external_id AS game_ext, e.data_hora, e.local, e.descricao, e.max_participantes, e.status, u_org.external_id AS org_ext
                     FROM eventos e

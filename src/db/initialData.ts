@@ -183,11 +183,11 @@ export const INITIAL_EVENTS: Event[] = [
   {
     id: 'e1',
     gameId: 'g2', // Magic: The Gathering
-    date: '2026-06-12', // Future event
+    date: '2026-06-12', // Evento futuro
     time: '18:00',
     location: 'Laboratório de Design (Sala 204 - Bloco D)',
     maxParticipants: 5,
-    participantIds: ['u1', 'u5'], // Cauã and Gabriel
+    participantIds: ['u1', 'u5'], // Cauã e Gabriel
     waitingListIds: [],
     description: 'Mesa de Magic: The Gathering para quem gosta de baralhos, mana e decisões de alto impacto. Começaremos pontualmente às 18:00.',
     organizerId: 'u1', // Cauã Botelho

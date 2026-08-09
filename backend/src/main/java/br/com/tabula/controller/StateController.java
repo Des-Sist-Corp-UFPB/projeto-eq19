@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
-/** Compatibility aggregate for the frontend cache. It never persists state. */
+/** Agregado de compatibilidade para o cache do frontend. Ele nunca persiste estado. */
 public final class StateController {
     private static final Logger LOGGER = LoggerFactory.getLogger(StateController.class);
     private StateController() {}

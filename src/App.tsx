@@ -4,7 +4,7 @@ import { DatabaseProvider } from './context/DatabaseContext';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 
-// Pages
+// Páginas
 import { Home } from './pages/Home';
 import { Games } from './pages/Games';
 import { GameDetails } from './pages/GameDetails';
@@ -21,7 +21,7 @@ import { ResendVerification } from './pages/ResendVerification';
 import { VerifyEmail } from './pages/VerifyEmail';
 import { AuditLogs } from './pages/AuditLogs';
 
-// Components
+// Componentes
 import { Navbar } from './components/Navbar';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
@@ -32,10 +32,10 @@ function App() {
         <AuthProvider>
           <Router>
             <div style={appWrapperStyle}>
-              {/* Navbar houses the login simulator bar and search modal */}
+              {/* Navbar abriga a barra do simulador de login e o modal de busca */}
               <Navbar />
 
-              {/* Main Content Area */}
+              {/* Área de Conteúdo Principal */}
               <main style={mainContentStyle}>
                 <Routes>
                   <Route path="/" element={<Home />} />
@@ -63,7 +63,7 @@ function App() {
   );
 }
 
-// Global App Styles
+// Estilos Globais da Aplicação
 const appWrapperStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',

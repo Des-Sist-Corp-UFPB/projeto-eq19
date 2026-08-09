@@ -7,11 +7,11 @@ export interface User {
   passwordHash?: string;
   role: UserRole;
   course: string;
-  avatar: string; // Emoji or simple icon/image name
-  avatarUrl?: string; // Optional profile photo URL
+  avatar: string; // Emoji ou nome simples de ícone/imagem
+  avatarUrl?: string; // URL opcional da foto de perfil
   winCount: number;
-  favoriteGames: string[]; // BoardGame IDs
-  joinedAt: string; // ISO date string
+  favoriteGames: string[]; // IDs dos jogos de tabuleiro
+  joinedAt: string; // Data no formato ISO
   bio: string;
 }
 
@@ -19,12 +19,12 @@ export interface BoardGame {
   id: string;
   name: string;
   description: string;
-  coverUrl: string; // Reference to a local or public URL
-  category: string; // e.g. "Estratégia", "Cooperativo", "Party"
+  coverUrl: string; // Referência para uma URL local ou pública
+  category: string; // ex.: "Estratégia", "Cooperativo", "Party"
   minPlayers: number;
   maxPlayers: number;
-  avgPlayTime: number; // in minutes
-  complexity: number; // 1 to 5
+  avgPlayTime: number; // em minutos
+  complexity: number; // 1 a 5
 }
 
 export interface Comment {
@@ -33,20 +33,20 @@ export interface Comment {
   userName: string;
   userAvatar: string;
   content: string;
-  createdAt: string; // ISO date string
+  createdAt: string; // Data no formato ISO
 }
 
 export interface Session {
   id: string;
   gameId: string;
-  date: string; // ISO date string
+  date: string; // Data no formato ISO
   location: string;
   organizerId: string;
   participantIds: string[];
-  winnerId: string | null; // User ID
-  duration: number; // in minutes
+  winnerId: string | null; // ID do usuário
+  duration: number; // em minutos
   notes: string;
-  photos: string[]; // Image URLs or placeholders
+  photos: string[]; // URLs de imagens ou marcadores de posição
   comments: Comment[];
 }
 

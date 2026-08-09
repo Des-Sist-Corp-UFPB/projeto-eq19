@@ -114,6 +114,129 @@ describe('API helpers and database utilities', () => {
     }));
   });
 
+  it('covers the remaining session, event, favorite, and game helper wrappers', async () => {
+    const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
+    const sessionPayload = {
+      gameId: 'g1',
+      date: '2026-01-01',
+      location: 'Casa',
+      participantIds: ['u1'],
+      winnerId: null,
+      duration: 45,
+      notes: 'Partida teste',
+    };
+    const eventPayload = {
+      gameId: 'g1',
+      date: '2026-01-02',
+      time: '19:00',
+      location: 'Sala',
+      maxParticipants: 4,
+      description: 'Evento teste',
+    };
+    const completionPayload = {
+      winnerId: 'u1',
+      duration: 30,
+      notes: 'Concluído',
+      initialComment: 'Boa partida',
+      photoUrl: 'https://example.com/photo.png',
+    };
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 's1' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '' })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'c1' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '' })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify(['g1']) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ gameId: 'g1' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ users: [], sessions: [], events: [], boardGames: [] }),
+        text: async () => JSON.stringify({ users: [], sessions: [], events: [], boardGames: [] }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'e1' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'e2' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'e3' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ event: { id: 'e4' }, waitlisted: false }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ event: { id: 'e5' }, promoted: true }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'e6' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'e7' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          status: 'draft',
+          draft: {
+            gameId: 'g1',
+            gameName: 'Catan',
+            date: '2026-01-02',
+            time: '19:00',
+            location: 'Sala',
+            maxParticipants: 4,
+            description: 'Evento teste',
+            warnings: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          status: 'draft',
+          draft: {
+            gameId: 'g1',
+            gameName: 'Catan',
+            date: '2026-01-03',
+            time: '20:00',
+            location: 'Casa',
+            maxParticipants: 6,
+            description: 'Refinado',
+            warnings: ['x'],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify([{ id: 'g1', name: 'Catan' }]) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'g2', name: 'Azul' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => JSON.stringify({ id: 'g2', name: 'Azul' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '' });
+
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(AUTH_TOKEN_KEY, 'helper-token');
+
+    await expect(actualApi.createSession(sessionPayload)).resolves.toMatchObject({ id: 's1' });
+    await expect(actualApi.deleteSessionRequest('s1')).resolves.toBeUndefined();
+    await expect(actualApi.createComment('s1', 'Muito bom')).resolves.toMatchObject({ id: 'c1' });
+    await expect(actualApi.deleteCommentRequest('s1', 'c1')).resolves.toBeUndefined();
+    await expect(actualApi.getFavorites()).resolves.toEqual(['g1']);
+    await expect(actualApi.addFavoriteRequest('g1')).resolves.toMatchObject({ gameId: 'g1' });
+    await expect(actualApi.removeFavoriteRequest('g1')).resolves.toBeUndefined();
+
+    await expect(actualApi.getServerState()).resolves.toEqual({ users: [], sessions: [], events: [], boardGames: [] });
+
+    await expect(actualApi.getEvent('e1')).resolves.toMatchObject({ id: 'e1' });
+    await expect(actualApi.createEvent(eventPayload)).resolves.toMatchObject({ id: 'e2' });
+    await expect(actualApi.updateEvent('e3', eventPayload)).resolves.toMatchObject({ id: 'e3' });
+    await expect(actualApi.joinEventRequest('e4')).resolves.toEqual({ event: { id: 'e4' }, waitlisted: false });
+    await expect(actualApi.leaveEventRequest('e5')).resolves.toEqual({ event: { id: 'e5' }, promoted: true });
+    await expect(actualApi.cancelEventRequest('e6')).resolves.toMatchObject({ id: 'e6' });
+    await expect(actualApi.completeEventRequest('e7', completionPayload)).resolves.toMatchObject({ id: 'e7' });
+    await expect(actualApi.generateEventDraft('Crie um evento')).resolves.toMatchObject({ status: 'draft' });
+    await expect(actualApi.refineEventDraft('Melhore', { gameId: 'g1', gameName: 'Catan', date: '2026-01-02', time: '19:00', location: 'Sala', maxParticipants: 4, description: 'Evento teste', warnings: [] })).resolves.toMatchObject({ status: 'draft' });
+
+    await expect(actualApi.getGames()).resolves.toEqual([{ id: 'g1', name: 'Catan' }]);
+    await expect(actualApi.createGame({ name: 'Azul', category: 'Family', minPlayers: 2, maxPlayers: 4, avgPlayTime: 30, complexity: 2, description: 'Jogo' })).resolves.toMatchObject({ id: 'g2' });
+    await expect(actualApi.updateGame({ id: 'g2', name: 'Azul', category: 'Family', minPlayers: 2, maxPlayers: 4, avgPlayTime: 30, complexity: 2, description: 'Jogo' })).resolves.toMatchObject({ id: 'g2' });
+    await expect(actualApi.deleteGameRequest('g2')).resolves.toBeUndefined();
+
+    const [sessionUrl, sessionOptions] = fetchMock.mock.calls[0];
+    expect(sessionUrl).toBe('/api/sessions');
+    expect(sessionOptions).toMatchObject({ method: 'POST', body: JSON.stringify(sessionPayload) });
+    expect(sessionOptions?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer helper-token' }));
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/sessions/s1');
+    expect(fetchMock.mock.calls[18][0]).toBe('/api/games');
+  });
+
   it('does not expose whole-state persistence', async () => {
     const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
     expect(actualApi).not.toHaveProperty('saveServerState');

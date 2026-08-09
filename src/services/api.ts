@@ -6,7 +6,7 @@ export interface PingResponse {
   status: string;
   service: string;
   timestamp: string;
-}
+} 
 
 export interface AuthResponse {
   ok: boolean;
@@ -138,7 +138,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       message = parsed.error || message;
       code = parsed.code;
     } catch {
-      // External details are intentionally not surfaced by callers.
+      // Detalhes externos intencionalmente não são exibidos pelos chamadores.
     }
     throw new ApiError(response.status, message, code, body);
   }
