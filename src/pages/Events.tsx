@@ -7,17 +7,9 @@ import { PlusIcon, CalendarIcon, MapPinIcon, ClockIcon, UsersIcon, CrownIcon, Tr
 import { UserAvatar } from '../components/UserAvatar';
 import { ApiError, generateEventDraft, refineEventDraft } from '../services/api';
 import type { AiEventDraftResponse, AiEventPartialDraftResponse } from '../services/api';
+import { tomorrowAsLocalIsoDate } from './eventsDate';
 
 const unsupportedAiMessage = 'A IA desta tela é usada apenas para ajudar a criar eventos. Descreva o jogo, data, horário, local ou outras informações do evento.';
-
-export const tomorrowAsLocalIsoDate = (now = new Date()) => {
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const year = tomorrow.getFullYear();
-  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
-  const day = String(tomorrow.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 const eventErrorMessage = (error: unknown) => {
   if (!(error instanceof ApiError)) return 'Não foi possível concluir a operação agora.';
