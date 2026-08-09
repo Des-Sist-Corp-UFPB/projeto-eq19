@@ -221,6 +221,69 @@ class StateAuthorizationServiceTest {
     }
 
     @Test
+    void allowsCleanRequestedStateToRemoveLegacyCurrentFields() {
+        String current = baseState().replace(
+                "\"name\":\"Xadrez\"", "\"name\":\"Xadrez\",\"tags\":[\"strategy\"]");
+        String requested = baseState().replace(
+                "\"name\":\"Xadrez\"", "\"name\":\"Xadrez\",\"complexity\":4");
+
+        assertTrue(service.authorize(current, baseState(), admin).allowed());
+        assertTrue(service.authorize(current, requested, admin).allowed());
+    }
+
+    @Test
+    void keepsRequestedStrictAndReportsRequestedAsValidationSource() {
+        String requested = baseState().replace(
+                "\"name\":\"Xadrez\"", "\"name\":\"Xadrez\",\"tags\":[\"strategy\"]");
+
+        var decision = service.authorize(baseState(), requested, admin);
+
+        assertTrue(decision.invalidPayload());
+        assertEquals("unknown_field", decision.reasonCode());
+        assertEquals("boardGames", decision.section());
+        assertEquals("g1", decision.resourceId());
+        assertEquals("tags", decision.field());
+        assertEquals("requested", decision.validationSource());
+    }
+
+    @Test
+    void stillRejectsStructurallyUnsafeCurrentState() {
+        var duplicate = service.authorize(
+                baseState().replace("\"id\":\"u2\"", "\"id\":\"u1\""), baseState(), admin);
+        var invalidSection = service.authorize(
+                baseState().replace(
+                        "\"boardGames\":[{\"id\":\"g1\",\"name\":\"Xadrez\"}]",
+                        "\"boardGames\":{}"),
+                baseState(), admin);
+
+        assertTrue(duplicate.invalidPayload());
+        assertEquals("duplicate_id", duplicate.reasonCode());
+        assertEquals("current", duplicate.validationSource());
+        assertTrue(invalidSection.invalidPayload());
+        assertEquals("expected_entity_array", invalidSection.reasonCode());
+        assertEquals("current", invalidSection.validationSource());
+    }
+
+    @Test
+    void reportsRequestedSourceForMalformedRequestedStructures() {
+        var duplicate = service.authorize(
+                baseState(), baseState().replace("\"id\":\"u2\"", "\"id\":\"u1\""), admin);
+        var invalidSection = service.authorize(
+                baseState(),
+                baseState().replace(
+                        "\"boardGames\":[{\"id\":\"g1\",\"name\":\"Xadrez\"}]",
+                        "\"boardGames\":{}"),
+                admin);
+
+        assertTrue(duplicate.invalidPayload());
+        assertEquals("duplicate_id", duplicate.reasonCode());
+        assertEquals("requested", duplicate.validationSource());
+        assertTrue(invalidSection.invalidPayload());
+        assertEquals("expected_entity_array", invalidSection.reasonCode());
+        assertEquals("requested", invalidSection.validationSource());
+    }
+
+    @Test
     void distinguishesMissingSectionsAndInvalidEntityArrays() {
         assertValidation(
                 baseState().replace("\"boardGames\":[{\"id\":\"g1\",\"name\":\"Xadrez\"}],", ""),
@@ -266,6 +329,7 @@ class StateAuthorizationServiceTest {
         assertEquals(section, decision.section());
         assertEquals(resourceId, decision.resourceId());
         assertEquals(field, decision.field());
+        assertEquals("requested", decision.validationSource());
     }
 
     private static String baseState() {

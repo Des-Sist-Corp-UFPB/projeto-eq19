@@ -4,6 +4,8 @@ import br.com.tabula.model.AuditAction;
 import br.com.tabula.model.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,42 +40,73 @@ public final class StateAuthorizationService {
             String requestedPayload,
             AuthenticatedPrincipal principal) {
         final JsonNode current;
-        final JsonNode requested;
         try {
             current = MAPPER.readTree(currentPayload);
+        } catch (Exception ex) {
+            return AuthorizationDecision.invalid("invalid_payload", "current");
+        }
+        final JsonNode requested;
+        try {
             requested = MAPPER.readTree(requestedPayload);
         } catch (Exception ex) {
-            return AuthorizationDecision.invalid("invalid_payload");
+            return AuthorizationDecision.invalid("invalid_payload", "requested");
         }
-        ValidationResult currentValidation = validateState(current);
-        if (!currentValidation.valid()) return AuthorizationDecision.invalid(currentValidation);
+        JsonNode canonicalCurrent = canonicalizeCurrent(current);
+        ValidationResult currentValidation = validateState(canonicalCurrent);
+        if (!currentValidation.valid()) {
+            return AuthorizationDecision.invalid(currentValidation, "current");
+        }
         ValidationResult requestedValidation = validateState(requested);
-        if (!requestedValidation.valid()) return AuthorizationDecision.invalid(requestedValidation);
-        if (!Objects.equals(current.get("logs"), requested.get("logs"))
+        if (!requestedValidation.valid()) {
+            return AuthorizationDecision.invalid(requestedValidation, "requested");
+        }
+        if (!Objects.equals(canonicalCurrent.get("logs"), requested.get("logs"))
                 || requested.has("audit_logs") || requested.has("auditLogs")) {
             return denied(AuditAction.STATE_UPDATE_REJECTED, "AUDIT_LOG", "official_audit_data");
         }
-        if (hasUnknownTopLevelField(current) || hasUnknownTopLevelField(requested)) {
+        if (hasUnknownTopLevelField(canonicalCurrent) || hasUnknownTopLevelField(requested)) {
             return denied(AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "unsupported_section");
         }
         if (principal.isAdmin()) {
             return AuthorizationDecision.permit();
         }
 
-        AuthorizationDecision decision = authorizeUsers(current, requested, principal.getExternalId());
+        AuthorizationDecision decision = authorizeUsers(canonicalCurrent, requested, principal.getExternalId());
         if (!decision.allowed()) return decision;
-        if (!Objects.equals(current.get("boardGames"), requested.get("boardGames"))) {
+        if (!Objects.equals(canonicalCurrent.get("boardGames"), requested.get("boardGames"))) {
             return denied(AuditAction.STATE_UPDATE_REJECTED, "BOARD_GAME", "admin_required");
         }
-        decision = authorizeSessions(current, requested, principal.getExternalId());
+        decision = authorizeSessions(canonicalCurrent, requested, principal.getExternalId());
         if (!decision.allowed()) return decision;
-        return authorizeEvents(current, requested, principal.getExternalId());
+        return authorizeEvents(canonicalCurrent, requested, principal.getExternalId());
+    }
+
+    private static JsonNode canonicalizeCurrent(JsonNode current) {
+        if (current == null || !current.isObject()) return current;
+        ObjectNode canonical = current.deepCopy();
+        canonicalizeEntityArray(canonical.get("users"), USER_FIELDS, null);
+        canonicalizeEntityArray(canonical.get("boardGames"), GAME_FIELDS, null);
+        canonicalizeEntityArray(canonical.get("events"), EVENT_FIELDS, null);
+        canonicalizeEntityArray(canonical.get("sessions"), SESSION_FIELDS, "comments");
+        return canonical;
+    }
+
+    private static void canonicalizeEntityArray(
+            JsonNode candidate, Set<String> allowedFields, String nestedCommentsField) {
+        if (!(candidate instanceof ArrayNode array)) return;
+        for (JsonNode item : array) {
+            if (!(item instanceof ObjectNode entity)) continue;
+            if (nestedCommentsField != null) {
+                canonicalizeEntityArray(entity.get(nestedCommentsField), COMMENT_FIELDS, null);
+            }
+            entity.retain(allowedFields);
+        }
     }
 
     private static AuthorizationDecision authorizeUsers(JsonNode current, JsonNode requested, String actorId) {
         Map<String, JsonNode> before = byId(current.get("users"));
         Map<String, JsonNode> after = byId(requested.get("users"));
-        if (before == null || after == null) return AuthorizationDecision.invalid("invalid_users");
+        if (before == null || after == null) return AuthorizationDecision.invalid("invalid_users", "requested");
         if (!before.keySet().equals(after.keySet())) {
             return denied(AuditAction.STATE_UPDATE_REJECTED, "USER", "admin_required");
         }
@@ -132,7 +165,7 @@ public final class StateAuthorizationService {
             JsonNode current, JsonNode requested, String actorId) {
         Map<String, JsonNode> before = byId(current.get("sessions"));
         Map<String, JsonNode> after = byId(requested.get("sessions"));
-        if (before == null || after == null) return AuthorizationDecision.invalid("invalid_sessions");
+        if (before == null || after == null) return AuthorizationDecision.invalid("invalid_sessions", "requested");
 
         for (String id : before.keySet()) {
             if (!after.containsKey(id)) {
@@ -174,7 +207,7 @@ public final class StateAuthorizationService {
             JsonNode current, JsonNode requested, String actorId) {
         Map<String, JsonNode> before = byId(current.get("events"));
         Map<String, JsonNode> after = byId(requested.get("events"));
-        if (before == null || after == null) return AuthorizationDecision.invalid("invalid_events");
+        if (before == null || after == null) return AuthorizationDecision.invalid("invalid_events", "requested");
 
         for (String id : before.keySet()) {
             JsonNode oldEvent = before.get(id);
@@ -449,7 +482,7 @@ public final class StateAuthorizationService {
     private static AuthorizationDecision denied(
             AuditAction action, String resourceType, String reason) {
         return new AuthorizationDecision(false, false, action, resourceType, reason,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     public record AuthorizationDecision(
@@ -462,21 +495,23 @@ public final class StateAuthorizationService {
             String section,
             String resourceId,
             String field,
-            String detail) {
+            String detail,
+            String validationSource) {
         public static AuthorizationDecision permit() {
             return new AuthorizationDecision(true, false, null, null, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
         }
 
-        public static AuthorizationDecision invalid(String reason) {
+        public static AuthorizationDecision invalid(String reason, String validationSource) {
             return new AuthorizationDecision(false, true, AuditAction.STATE_UPDATE_REJECTED,
-                    "APP_STATE", reason, "invalid_json", null, null, null, "invalid JSON payload");
+                    "APP_STATE", reason, "invalid_json", null, null, null, "invalid JSON payload",
+                    validationSource);
         }
 
-        public static AuthorizationDecision invalid(ValidationResult validation) {
+        public static AuthorizationDecision invalid(ValidationResult validation, String validationSource) {
             return new AuthorizationDecision(false, true, AuditAction.STATE_UPDATE_REJECTED,
                     "APP_STATE", "invalid_payload", validation.reasonCode(), validation.section(),
-                    validation.resourceId(), validation.field(), validation.detail());
+                    validation.resourceId(), validation.field(), validation.detail(), validationSource);
         }
     }
 

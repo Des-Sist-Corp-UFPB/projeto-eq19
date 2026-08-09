@@ -121,6 +121,10 @@ public class AuditLogService {
         copySafeString(sanitized, details, "resourceId", 120);
         copySafeString(sanitized, details, "field", 80);
         copySafeString(sanitized, details, "detail", 160);
+        Object validationSource = details.get("validationSource");
+        if ("current".equals(validationSource) || "requested".equals(validationSource)) {
+            sanitized.put("validationSource", validationSource.toString());
+        }
 
         Object initialization = details.get("initialization");
         if (initialization instanceof Boolean bool) {

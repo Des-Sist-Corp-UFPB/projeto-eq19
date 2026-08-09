@@ -586,6 +586,9 @@ public class StateController {
         if (decision.resourceId() != null) details.put("resourceId", decision.resourceId());
         if (decision.field() != null) details.put("field", decision.field());
         if (decision.detail() != null) details.put("detail", decision.detail());
+        if (decision.validationSource() != null) {
+            details.put("validationSource", decision.validationSource());
+        }
         return details;
     }
 
@@ -597,6 +600,9 @@ public class StateController {
         if (decision.section() != null) span.setAttribute("validation.section", decision.section());
         if (decision.resourceId() != null) span.setAttribute("validation.resource_id", decision.resourceId());
         if (decision.field() != null) span.setAttribute("validation.field", decision.field());
+        if (decision.validationSource() != null) {
+            span.setAttribute("validation.source", decision.validationSource());
+        }
         span.addEvent("state.validation.rejected");
     }
 

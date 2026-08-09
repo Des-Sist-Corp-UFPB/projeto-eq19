@@ -179,6 +179,7 @@ class AuditLogServiceTest {
                         Map.entry("resourceId", "g1"),
                         Map.entry("field", "tags"),
                         Map.entry("detail", "field is not supported"),
+                        Map.entry("validationSource", "current"),
                         Map.entry("passwordHash", "hash-secret"),
                         Map.entry("token", "token-secret"),
                         Map.entry("authorization", "Bearer secret"),
@@ -189,10 +190,22 @@ class AuditLogServiceTest {
         assertEquals("boardGames", log.getDetails().path("section").asText());
         assertEquals("g1", log.getDetails().path("resourceId").asText());
         assertEquals("tags", log.getDetails().path("field").asText());
+        assertEquals("current", log.getDetails().path("validationSource").asText());
         assertFalse(log.getDetails().toString().contains("secret"));
         assertFalse(log.getDetails().has("passwordHash"));
         assertFalse(log.getDetails().has("token"));
         assertFalse(log.getDetails().has("authorization"));
         assertFalse(log.getDetails().has("body"));
+    }
+
+    @Test
+    void shouldIgnoreUnsupportedValidationSource() {
+        AuditLogService service = new AuditLogService(
+                mock(HikariDataSource.class), mock(AuditLogRepository.class));
+
+        AuditLog log = service.build(null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1",
+                false, null, null, Map.of("validationSource", "payload-with-secret"));
+
+        assertFalse(log.getDetails().has("validationSource"));
     }
 }

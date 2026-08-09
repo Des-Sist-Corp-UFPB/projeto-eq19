@@ -1068,8 +1068,50 @@ class StateControllerTest {
             assertTrue(details.getValue().contains("\"section\":\"boardGames\""));
             assertTrue(details.getValue().contains("\"resourceId\":\"g1\""));
             assertTrue(details.getValue().contains("\"field\":\"tags\""));
+            assertTrue(details.getValue().contains("\"validationSource\":\"requested\""));
             assertFalse(details.getValue().contains("secret-tag"));
             assertFalse(details.getValue().contains("token-secret"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldPersistCleanRequestedStateWithoutLegacyCurrentTags() throws Exception {
+        String previous = stateWithRelationalSections("[]", "[]", "Bio antigo")
+                .replace("\"name\":\"Jogo 1\"", "\"name\":\"Jogo 1\",\"tags\":[\"legacy\"]");
+        String candidate = legacyCandidate("Bio atualizado")
+                .replace("\"name\":\"Jogo 1\"", "\"name\":\"Jogo 1\",\"complexity\":4");
+        PutFixture fixture = authenticatedPutFixture(previous, "ADMIN");
+        Javalin app = startStateApp(fixture.dataSource());
+        try {
+            HttpResponse<String> response = sendPut(app, "/state", candidate, "Bearer token");
+
+            assertEquals(200, response.statusCode(), response.body());
+            com.fasterxml.jackson.databind.JsonNode saved = capturedSavedPayload(fixture);
+            assertEquals(4, saved.path("boardGames").get(0).path("complexity").asInt());
+            assertFalse(saved.path("boardGames").get(0).has("tags"));
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
+    void shouldAuditStructurallyInvalidCurrentStateWithCurrentSource() throws Exception {
+        String previous = stateWithRelationalSections("[]", "[]", "Bio antigo")
+                .replace("\"id\":\"g2\"", "\"id\":\"g1\"");
+        PutFixture fixture = authenticatedPutFixture(previous, "ADMIN");
+        Javalin app = startStateApp(fixture.dataSource());
+        try {
+            HttpResponse<String> response = sendPut(
+                    app, "/state", legacyCandidate("Bio atualizado"), "Bearer token");
+
+            assertEquals(422, response.statusCode(), response.body());
+            ArgumentCaptor<String> details = ArgumentCaptor.forClass(String.class);
+            verify(fixture.finalStatement()).setString(org.mockito.ArgumentMatchers.eq(6), details.capture());
+            assertTrue(details.getValue().contains("\"reasonCode\":\"duplicate_id\""));
+            assertTrue(details.getValue().contains("\"validationSource\":\"current\""));
+            assertFalse(details.getValue().contains("Bio antigo"));
         } finally {
             app.stop();
         }
@@ -1121,6 +1163,10 @@ class StateControllerTest {
     }
 
     private static PutFixture authenticatedPutFixture(String previous) throws Exception {
+        return authenticatedPutFixture(previous, "USER");
+    }
+
+    private static PutFixture authenticatedPutFixture(String previous, String role) throws Exception {
         HikariDataSource dataSource = mock(HikariDataSource.class);
         Connection snapshotConnection = mock(Connection.class);
         Connection authConnection = mock(Connection.class);
@@ -1142,7 +1188,7 @@ class StateControllerTest {
         when(authResult.next()).thenReturn(true);
         when(authResult.getLong("id")).thenReturn(1L);
         when(authResult.getString("external_id")).thenReturn("u1");
-        when(authResult.getString("role")).thenReturn("USER");
+        when(authResult.getString("role")).thenReturn(role);
         when(finalConnection.prepareStatement(anyString())).thenReturn(finalStatement);
         when(finalStatement.executeUpdate()).thenReturn(1);
         return new PutFixture(dataSource, finalStatement);
