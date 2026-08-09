@@ -8,21 +8,23 @@ import java.util.List;
 public record AiEventAssistantResponse(
         String status,
         AiEventDraftResponse draft,
+        AiEventPartialDraftResponse partialDraft,
         String reasonCode,
         List<String> missingFields,
         String message) {
 
     public static AiEventAssistantResponse draft(AiEventDraftResponse draft) {
-        return new AiEventAssistantResponse("draft", draft, null, null, null);
+        return new AiEventAssistantResponse("draft", draft, null, null, null, null);
     }
 
     public static AiEventAssistantResponse needsClarification(
-            String reasonCode, List<String> missingFields, String message) {
+            String reasonCode, List<String> missingFields, String message,
+            AiEventPartialDraftResponse partialDraft) {
         return new AiEventAssistantResponse(
-                "needs_clarification", null, reasonCode, List.copyOf(missingFields), message);
+                "needs_clarification", null, partialDraft, reasonCode, List.copyOf(missingFields), message);
     }
 
     public static AiEventAssistantResponse unsupported(String reasonCode) {
-        return new AiEventAssistantResponse("unsupported", null, reasonCode, null, null);
+        return new AiEventAssistantResponse("unsupported", null, null, reasonCode, null, null);
     }
 }

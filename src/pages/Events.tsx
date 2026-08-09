@@ -6,9 +6,18 @@ import type { Event } from '../types';
 import { PlusIcon, CalendarIcon, MapPinIcon, ClockIcon, UsersIcon, CrownIcon, TrophyIcon, CloseIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
 import { ApiError, generateEventDraft, refineEventDraft } from '../services/api';
-import type { AiEventDraftResponse } from '../services/api';
+import type { AiEventDraftResponse, AiEventPartialDraftResponse } from '../services/api';
 
 const unsupportedAiMessage = 'A IA desta tela é usada apenas para ajudar a criar eventos. Descreva o jogo, data, horário, local ou outras informações do evento.';
+
+export const tomorrowAsLocalIsoDate = (now = new Date()) => {
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const day = String(tomorrow.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const eventErrorMessage = (error: unknown) => {
   if (!(error instanceof ApiError)) return 'Não foi possível concluir a operação agora.';
@@ -37,9 +46,9 @@ export const Events: React.FC = () => {
 
   // Schedule Event Form State
   const [gameId, setGameId] = useState('');
-  const [date, setDate] = useState('2026-06-12');
-  const [time, setTime] = useState('18:00');
-  const [location, setLocation] = useState('Vivência do Bloco C');
+  const [date, setDate] = useState(tomorrowAsLocalIsoDate);
+  const [time, setTime] = useState('12:00');
+  const [location, setLocation] = useState('');
   const [maxParticipants, setMaxParticipants] = useState(4);
   const [description, setDescription] = useState('');
   const [aiPrompt, setAiPrompt] = useState('');
@@ -158,9 +167,9 @@ export const Events: React.FC = () => {
 
   const resetScheduleForm = () => {
     setGameId('');
-    setDate('2026-06-12');
-    setTime('18:00');
-    setLocation('Vivência do Bloco C');
+    setDate(tomorrowAsLocalIsoDate());
+    setTime('12:00');
+    setLocation('');
     setMaxParticipants(4);
     setDescription('');
     setAiPrompt('');
@@ -168,6 +177,11 @@ export const Events: React.FC = () => {
     setAiWarnings([]);
     setRefinementInstruction('');
     setHasAiDraft(false);
+  };
+
+  const openNewScheduleForm = () => {
+    resetScheduleForm();
+    setIsScheduleModalOpen(true);
   };
 
   const applyAiDraft = (draft: AiEventDraftResponse) => {
@@ -180,6 +194,16 @@ export const Events: React.FC = () => {
     setAiWarnings(draft.warnings);
   };
 
+  const applyAiPartialDraft = (draft: AiEventPartialDraftResponse) => {
+    if (draft.gameId !== undefined) setGameId(draft.gameId);
+    if (draft.date !== undefined) setDate(draft.date);
+    if (draft.time !== undefined) setTime(draft.time);
+    if (draft.location !== undefined) setLocation(draft.location);
+    if (draft.maxParticipants !== undefined) setMaxParticipants(draft.maxParticipants);
+    if (draft.description !== undefined) setDescription(draft.description);
+    if (draft.warnings !== undefined) setAiWarnings(draft.warnings);
+  };
+
   const handleGenerateDraft = async () => {
     if (aiLoading || aiPrompt.trim().length < 5) return;
     setAiLoading(true);
@@ -190,8 +214,11 @@ export const Events: React.FC = () => {
       if (response.status === 'draft') {
         applyAiDraft(response.draft);
         setHasAiDraft(true);
+      } else if (response.status === 'needs_clarification') {
+        applyAiPartialDraft(response.partialDraft);
+        setAiError(response.message);
       } else {
-        setAiError(response.status === 'needs_clarification' ? response.message : unsupportedAiMessage);
+        setAiError(unsupportedAiMessage);
       }
     } catch (error) {
       let message = 'Não foi possível gerar o rascunho agora. Seus dados atuais foram mantidos.';
@@ -219,8 +246,11 @@ export const Events: React.FC = () => {
       if (response.status === 'draft') {
         applyAiDraft(response.draft);
         setRefinementInstruction('');
+      } else if (response.status === 'needs_clarification') {
+        applyAiPartialDraft(response.partialDraft);
+        setAiError(response.message);
       } else {
-        setAiError(response.status === 'needs_clarification' ? response.message : unsupportedAiMessage);
+        setAiError(unsupportedAiMessage);
       }
     } catch (error) {
       let message = 'Não foi possível refinar o rascunho agora. Seus dados atuais foram mantidos.';
@@ -300,7 +330,7 @@ export const Events: React.FC = () => {
           </div>
         </div>
         {currentUser && (
-          <button className="btn btn-primary" onClick={() => setIsScheduleModalOpen(true)}>
+          <button className="btn btn-primary" onClick={openNewScheduleForm}>
             <PlusIcon size={18} /> Agendar Novo Encontro
           </button>
         )}
@@ -407,7 +437,7 @@ export const Events: React.FC = () => {
                 }
               </p>
               {currentUser && (
-                <button className="btn btn-outline btn-sm mt-md" onClick={() => setIsScheduleModalOpen(true)}>
+                <button className="btn btn-outline btn-sm mt-md" onClick={openNewScheduleForm}>
                   Agendar Primeiro Encontro
                 </button>
               )}
@@ -547,9 +577,6 @@ export const Events: React.FC = () => {
                   {aiLoading ? 'Gerando rascunho...' : 'Preencher formulário com IA'}
                 </button>
                 <small style={{ color: 'var(--color-text-muted)' }}>Revise as informações antes de agendar</small>
-                <small style={{ color: 'var(--color-text-muted)' }}>
-                  Para preservar a cota da equipe, gere um rascunho e ajuste os campos manualmente antes de salvar.
-                </small>
                 <div aria-live="polite" aria-atomic="true">
                   {aiLoading && <span className="sr-only">Gerando rascunho do evento</span>}
                   {aiError && <div role="alert" style={{ color: 'var(--color-danger, #b42318)' }}>{aiError}</div>}

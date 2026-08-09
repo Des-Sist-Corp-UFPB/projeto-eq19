@@ -386,7 +386,7 @@ const heroGraphicBgStyle: React.CSSProperties = {
   boxShadow: 'var(--shadow-lg)',
   border: '1px solid rgba(255, 255, 255, 0.35)',
   backgroundImage:
-    'linear-gradient(145deg, rgba(24, 30, 58, 0.72), rgba(79, 70, 229, 0.28)), url("https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=900&q=80")',
+    'linear-gradient(145deg, rgba(24, 30, 58, 0.72), rgba(79, 70, 229, 0.28)), url("/images/inicio.jpg")',
   backgroundSize: 'cover',
   backgroundPosition: 'center',
   display: 'flex',

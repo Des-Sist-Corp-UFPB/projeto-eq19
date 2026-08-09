@@ -63,6 +63,8 @@ export interface AiEventDraftResponse {
   warnings: string[];
 }
 
+export type AiEventPartialDraftResponse = Partial<AiEventDraftResponse>;
+
 export type AiEventAssistantResponse =
   | { status: 'draft'; draft: AiEventDraftResponse }
   | {
@@ -70,6 +72,7 @@ export type AiEventAssistantResponse =
       reasonCode: 'missing_required_information';
       missingFields: string[];
       message: string;
+      partialDraft: AiEventPartialDraftResponse;
     }
   | { status: 'unsupported'; reasonCode: 'not_event_creation_request' };
 

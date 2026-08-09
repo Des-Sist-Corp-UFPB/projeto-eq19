@@ -7,6 +7,7 @@ import br.com.tabula.ai.AiUsage;
 import br.com.tabula.dto.AiEventDraftResponse;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -39,7 +40,15 @@ class AiEventDraftServiceTest {
         AiEventDraftResponse draft = service(client, validJson()).generate("  Mesa sábado  ").draft();
         assertEquals("g2", draft.gameId());
         assertEquals(4, draft.maxParticipants());
-        verify(client).chat(contains("Candidatos="), eq("Mesa sábado"));
+        ArgumentCaptor<String> systemPrompt = ArgumentCaptor.forClass(String.class);
+        verify(client).chat(systemPrompt.capture(), eq("Mesa sábado"));
+        assertAll(
+                () -> assertTrue(systemPrompt.getValue().contains("Não exija verbos")),
+                () -> assertTrue(systemPrompt.getValue().contains("use exatamente maxPlayers")),
+                () -> assertTrue(systemPrompt.getValue().contains("Hoje=2026-07-30")),
+                () -> assertTrue(systemPrompt.getValue().contains("fuso=America/Sao_Paulo")),
+                () -> assertTrue(systemPrompt.getValue().contains("somente status e draft")),
+                () -> assertTrue(systemPrompt.getValue().contains("sem nulls extras")));
     }
 
     @Test void acceptsOneJsonObjectInsideMarkdownOrSurroundingText() throws Exception {
@@ -73,25 +82,57 @@ class AiEventDraftServiceTest {
     }
 
     @Test void classifiesSupportedIncompleteAndOutOfScopeRequestsInOneProviderCall() throws Exception {
-        assertStatus("Crie um evento de Xadrez amanhã às 19h", validXadrezJson(), "draft");
         assertStatus("Xadrez amanhã 19h biblioteca", validXadrezJson(), "draft");
-        String clarification = """
+        assertStatus("Magic sábado às 18h no bloco C", validJson(), "draft");
+        assertStatus("Pokémon sexta às 15h na biblioteca", validPokemonJson(), "draft");
+        String missingMany = """
                 {"status":"needs_clarification","reasonCode":"missing_required_information",
-                "missingFields":["date","time","location"],"message":"Informe data, horário e local."}
+                "missingFields":["date","time","location"],"message":"Informe data, horário e local.",
+                "partialDraft":{"gameId":"g2","gameName":"Magic: The Gathering","maxParticipants":6,
+                "description":"Evento de Magic: The Gathering.","warnings":[]}}
                 """;
-        assertStatus("Quero criar um evento de Magic", clarification, "needs_clarification");
+        String missingLocation = """
+                {"status":"needs_clarification","reasonCode":"missing_required_information",
+                "missingFields":["location"],"message":"Onde será o evento?",
+                "partialDraft":{"gameId":"g3","gameName":"Pokémon","date":"2026-08-01","time":"15:00",
+                "maxParticipants":4,"description":"Evento de Pokémon.","warnings":[]}}
+                """;
+        var pokemon = serviceResponse("Pokémon sexta às 3 da tarde", missingLocation);
+        assertEquals("needs_clarification", pokemon.status());
+        assertEquals(List.of("location"), pokemon.missingFields());
+        assertEquals("g3", pokemon.partialDraft().gameId());
+        assertEquals("2026-08-01", pokemon.partialDraft().date());
+        assertEquals("15:00", pokemon.partialDraft().time());
+        assertNull(pokemon.partialDraft().location());
+        assertStatus("Quero criar um evento de Magic", missingMany, "needs_clarification");
         String unsupported = """
                 {"status":"unsupported","reasonCode":"not_event_creation_request"}
                 """;
-        assertStatus("Qual o horário do SBT hoje?", unsupported, "unsupported");
-        assertStatus("Qual a previsão do tempo amanhã?", unsupported, "unsupported");
-        assertStatus("Quais eventos têm hoje?", unsupported, "unsupported");
-        assertStatus("Cria qualquer coisa para hoje", clarification, "needs_clarification");
+        assertStatus("Tem evento de Pokémon sexta?", unsupported, "unsupported");
+        assertStatus("Como jogar Xadrez?", unsupported, "unsupported");
+        assertStatus("Qual jogo você recomenda?", unsupported, "unsupported");
     }
 
     @Test void rejectsUnknownFieldsInDraftAndInvalidClassificationShape() throws Exception {
         assertInvalid(validJson().replace("\"warnings\":[]", "\"warnings\":[],\"extra\":true"));
         assertInvalid("{\"status\":\"unsupported\",\"reasonCode\":\"not_event_creation_request\",\"draft\":null}");
+    }
+
+    @Test void rejectsUnknownOrContradictoryPartialDraftFields() throws Exception {
+        String valid = """
+                {"status":"needs_clarification","reasonCode":"missing_required_information",
+                "missingFields":["location"],"message":"Informe o local.",
+                "partialDraft":{"gameId":"g3","gameName":"Pokémon","date":"2026-08-01","time":"15:00"}}
+                """;
+        assertReason(valid.replace("\"time\":\"15:00\"", "\"time\":\"15:00\",\"extra\":true"),
+                "invalid_response_schema", "partial_draft_validation");
+        assertReason(valid.replace("\"time\":\"15:00\"", "\"time\":\"15:00\",\"location\":\"Biblioteca\""),
+                "inconsistent_partial_draft", "partial_draft_validation");
+        assertReason(valid.replace("\"g3\"", "\"inventado\""),
+                "game_not_in_catalog", "partial_draft_validation");
+        assertReason(valid.replace("\"message\":\"Informe o local.\"",
+                        "\"message\":\"Informe o local.\",\"extra\":true"),
+                "invalid_response_schema", "response_contract");
     }
 
     @Test void outOfScopeRefinementReturnsNoDraftAndDoesNotMutateCurrentDraft() throws Exception {
@@ -201,6 +242,15 @@ class AiEventDraftServiceTest {
         verify(client, times(1)).chat(anyString(), anyString());
     }
 
+    private static br.com.tabula.dto.AiEventAssistantResponse serviceResponse(
+            String prompt, String modelResponse) throws Exception {
+        AiChatClient client = mock(AiChatClient.class);
+        when(client.chat(anyString(), anyString())).thenReturn(modelResponse);
+        var response = service(client, modelResponse).generate(prompt);
+        verify(client, times(1)).chat(anyString(), anyString());
+        return response;
+    }
+
     private static AiEventDraftService service(AiChatClient client, String ignored) throws Exception {
         HikariDataSource dataSource = mock(HikariDataSource.class);
         Connection connection = mock(Connection.class);
@@ -209,14 +259,14 @@ class AiEventDraftServiceTest {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(contains("FROM jogos"))).thenReturn(statement);
         when(statement.executeQuery()).thenReturn(result);
-        when(result.next()).thenReturn(true, true, false);
-        when(result.getString("external_id")).thenReturn("g2", "g1");
-        when(result.getString("nome")).thenReturn("Magic: The Gathering", "Xadrez");
-        when(result.getString("categoria")).thenReturn("Cartas", "Estratégia");
-        when(result.getInt("min_players")).thenReturn(2, 2);
-        when(result.getInt("max_players")).thenReturn(6, 2);
-        when(result.getInt("avg_play_time")).thenReturn(60, 45);
-        when(result.getDouble("complexity")).thenReturn(3.2, 2.5);
+        when(result.next()).thenReturn(true, true, true, false);
+        when(result.getString("external_id")).thenReturn("g2", "g1", "g3");
+        when(result.getString("nome")).thenReturn("Magic: The Gathering", "Xadrez", "Pokémon");
+        when(result.getString("categoria")).thenReturn("Cartas", "Estratégia", "Cartas");
+        when(result.getInt("min_players")).thenReturn(2, 2, 2);
+        when(result.getInt("max_players")).thenReturn(6, 2, 4);
+        when(result.getInt("avg_play_time")).thenReturn(60, 45, 40);
+        when(result.getDouble("complexity")).thenReturn(3.2, 2.5, 2.0);
         return new AiEventDraftService(client, dataSource, ZONE, CLOCK);
     }
 
@@ -233,6 +283,14 @@ class AiEventDraftServiceTest {
                 {"status":"draft","draft":{"gameId":"g1","gameName":"Xadrez","date":"2026-08-01",
                 "time":"19:00","location":"Biblioteca","maxParticipants":2,
                 "description":"Partida de Xadrez.","warnings":[]}}
+                """;
+    }
+
+    private static String validPokemonJson() {
+        return """
+                {"status":"draft","draft":{"gameId":"g3","gameName":"Pokémon","date":"2026-08-01",
+                "time":"15:00","location":"Biblioteca","maxParticipants":4,
+                "description":"Evento de Pokémon.","warnings":[]}}
                 """;
     }
 }

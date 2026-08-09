@@ -4,6 +4,7 @@ import br.com.tabula.ai.AiProviderException;
 import br.com.tabula.ai.AiUsage;
 import br.com.tabula.dto.AiEventDraftResponse;
 import br.com.tabula.dto.AiEventAssistantResponse;
+import br.com.tabula.dto.AiEventPartialDraftResponse;
 import br.com.tabula.model.AuthenticatedPrincipal;
 import br.com.tabula.model.AuditAction;
 import br.com.tabula.service.AiDraftValidationException;
@@ -71,7 +72,9 @@ class AiEventControllerTest {
         when(service.generateWithUsage(any()))
                 .thenReturn(new AiEventDraftService.GenerationResult(
                         AiEventAssistantResponse.needsClarification("missing_required_information",
-                                List.of("date", "location"), "Informe data e local."), AiUsage.empty()))
+                                List.of("date", "location"), "Informe data e local.",
+                                new AiEventPartialDraftResponse("g2", "Magic", null, "18:00", null,
+                                        4, "Evento de Magic.", List.of())), AiUsage.empty()))
                 .thenReturn(new AiEventDraftService.GenerationResult(
                         AiEventAssistantResponse.unsupported("not_event_creation_request"), AiUsage.empty()));
         start(authenticated(), service, true);
@@ -81,6 +84,7 @@ class AiEventControllerTest {
 
         assertEquals(200, clarification.statusCode());
         assertTrue(clarification.body().contains("\"status\":\"needs_clarification\""));
+        assertTrue(clarification.body().contains("\"partialDraft\""));
         assertFalse(clarification.body().contains("\"draft\""));
         assertEquals(200, unsupported.statusCode());
         assertTrue(unsupported.body().contains("\"status\":\"unsupported\""));

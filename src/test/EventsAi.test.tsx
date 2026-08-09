@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Events } from '../pages/Events';
+import { Events, tomorrowAsLocalIsoDate } from '../pages/Events';
 import { renderWithProviders } from './renderWithProviders';
 import { ApiError } from '../services/api';
 import * as api from '../services/api';
@@ -22,6 +22,7 @@ describe('Events AI draft assistant', () => {
   const assistantDraft = (draft: api.AiEventDraftResponse): api.AiEventAssistantResponse => ({ status: 'draft', draft });
 
   beforeEach(() => {
+    vi.useRealTimers();
     localStorage.clear();
     sessionStorage.clear();
     sessionStorage.setItem('tabula_auth_token', 'session-token');
@@ -30,6 +31,20 @@ describe('Events AI draft assistant', () => {
     vi.mocked(api.saveServerState).mockResolvedValue();
     vi.mocked(api.generateEventDraft).mockReset();
     vi.mocked(api.refineEventDraft).mockReset();
+  });
+
+  it('opens a new form with tomorrow, noon, no location preset and no quota warning', async () => {
+    expect(tomorrowAsLocalIsoDate(new Date(2026, 7, 9, 23, 30, 0))).toBe('2026-08-10');
+    const expectedTomorrow = tomorrowAsLocalIsoDate();
+    const user = userEvent.setup();
+    renderWithProviders(<Events />);
+
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+
+    expect(screen.getByDisplayValue(expectedTomorrow)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('12:00')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Local de Encontro/i)).toHaveValue('');
+    expect(screen.queryByText(/preservar a cota da equipe/i)).not.toBeInTheDocument();
   });
 
   it('disables empty prompt, blocks duplicate calls and fills editable fields without saving', async () => {
@@ -112,6 +127,7 @@ describe('Events AI draft assistant', () => {
       reasonCode: 'missing_required_information',
       missingFields: ['date', 'time', 'location'],
       message: 'Informe data, horário e local.',
+      partialDraft: { gameId: 'g2', gameName: 'Magic: The Gathering' },
     });
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     renderWithProviders(<Events />);
@@ -127,6 +143,36 @@ describe('Events AI draft assistant', () => {
     fetchSpy.mockRestore();
   });
 
+  it('applies a partial draft field by field and lets the user complete the missing location', async () => {
+    vi.mocked(api.generateEventDraft).mockResolvedValue({
+      status: 'needs_clarification',
+      reasonCode: 'missing_required_information',
+      missingFields: ['location'],
+      message: 'Falta informar o local.',
+      partialDraft: { gameId: 'g2', gameName: 'Magic: The Gathering', date: '2026-08-14', time: '15:00' },
+    });
+    renderWithProviders(<Events />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    const description = screen.getByPlaceholderText(/Vamos jogar Terraforming Mars/i);
+    await user.type(description, 'Texto preenchido manualmente');
+    await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Magic sexta às 15h');
+    await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
+
+    expect(await screen.findByText('Falta informar o local.')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Magic: The Gathering/i }).parentElement).toHaveValue('g2');
+    expect(screen.getByDisplayValue('2026-08-14')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('15:00')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Local de Encontro/i)).toHaveValue('');
+    expect(description).toHaveValue('Texto preenchido manualmente');
+
+    await user.type(screen.getByLabelText(/Local de Encontro/i), 'Biblioteca');
+    expect(screen.getByLabelText(/Local de Encontro/i)).toHaveValue('Biblioteca');
+    await user.clear(description);
+    await user.type(description, 'Descrição final editável');
+    expect(description).toHaveValue('Descrição final editável');
+  });
+
   it('rejects general questions without creating a draft or calling POST events', async () => {
     vi.mocked(api.generateEventDraft).mockResolvedValue({
       status: 'unsupported', reasonCode: 'not_event_creation_request',
@@ -135,11 +181,13 @@ describe('Events AI draft assistant', () => {
     renderWithProviders(<Events />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.type(screen.getByLabelText(/Local de Encontro/i), 'Local manual');
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Qual o horário do SBT hoje?');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
 
     expect(await screen.findByText(/A IA desta tela é usada apenas para ajudar a criar eventos/i)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /Refinar com IA/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Local de Encontro/i)).toHaveValue('Local manual');
     expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('/events'),
       expect.objectContaining({ method: 'POST' }));
     fetchSpy.mockRestore();
