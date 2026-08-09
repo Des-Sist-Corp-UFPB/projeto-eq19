@@ -126,8 +126,10 @@ describe('API helpers and database utilities', () => {
 
     const stateWithLegacyLogs = {
       ...getDefaultDatabaseState(),
+      users: getDefaultDatabaseState().users.map((user, index) => index === 0 ? { ...user, bio: 'Perfil atualizado' } : user),
+      boardGames: getDefaultDatabaseState().boardGames.map(game => ({ ...game, tags: ['legacy'] })),
       logs: [{ id: 'legacy-log' }],
-    };
+    } as DatabaseState & { logs: unknown[] };
 
     await actualApi.saveServerState(stateWithLegacyLogs);
 
@@ -138,11 +140,12 @@ describe('API helpers and database utilities', () => {
     expect(options.method).toBe('PUT');
     expect(payload).toEqual({
       users: stateWithLegacyLogs.users,
-      boardGames: stateWithLegacyLogs.boardGames,
+      boardGames: getDefaultDatabaseState().boardGames,
     });
     expect(payload).not.toHaveProperty('logs');
     expect(payload).not.toHaveProperty('events');
     expect(payload).not.toHaveProperty('sessions');
+    expect(payload.boardGames.every((game: Record<string, unknown>) => !('tags' in game))).toBe(true);
   });
 
   it('normalizes cover URLs and sanitizes legacy database state', () => {
@@ -153,12 +156,14 @@ describe('API helpers and database utilities', () => {
     const baseState = getDefaultDatabaseState();
     const legacyState = {
       ...baseState,
+      boardGames: baseState.boardGames.map(game => ({ ...game, tags: ['legacy'] })),
       logs: [{ id: 'legacy-log' }],
     } as DatabaseState & { logs: unknown[] };
 
     const sanitized = sanitizeDatabaseState(legacyState);
     expect(sanitized.boardGames[0].coverUrl).toBe('/images/chess_cover.jpg');
     expect(sanitized.boardGames[0].name).toBe('Xadrez');
+    expect(sanitized.boardGames[0]).not.toHaveProperty('tags');
     expect(sanitized).not.toHaveProperty('logs');
   });
 });

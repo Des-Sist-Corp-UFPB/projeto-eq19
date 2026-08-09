@@ -15,13 +15,22 @@ export const normalizeGameCoverUrl = (name: string, coverUrl?: string): string =
   return '/images/tabletop-placeholder.svg';
 };
 
+const normalizeBoardGame = (game: DatabaseState['boardGames'][number]): DatabaseState['boardGames'][number] => ({
+  id: game.id,
+  name: game.name,
+  description: game.description,
+  coverUrl: normalizeGameCoverUrl(game.name, game.coverUrl),
+  category: game.category,
+  minPlayers: game.minPlayers,
+  maxPlayers: game.maxPlayers,
+  avgPlayTime: game.avgPlayTime,
+  complexity: game.complexity,
+});
+
 export const getDefaultDatabaseState = (): DatabaseState => {
   const defaultState: DatabaseState = {
     users: INITIAL_USERS,
-    boardGames: INITIAL_GAMES.map(game => ({
-      ...game,
-      coverUrl: normalizeGameCoverUrl(game.name, game.coverUrl),
-    })),
+    boardGames: INITIAL_GAMES.map(normalizeBoardGame),
     sessions: INITIAL_SESSIONS,
     events: INITIAL_EVENTS
   };
@@ -40,10 +49,7 @@ export const sanitizeDatabaseState = (state: DatabaseState): DatabaseState => {
     ? [adminSeed, ...state.users]
     : state.users;
 
-  const boardGames = state.boardGames.map(game => ({
-    ...game,
-    coverUrl: normalizeGameCoverUrl(game.name, game.coverUrl),
-  }));
+  const boardGames = state.boardGames.map(normalizeBoardGame);
 
   return syncDatabaseCalculations({
     users,

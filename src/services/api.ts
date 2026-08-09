@@ -137,7 +137,17 @@ export async function getServerState(): Promise<DatabaseState | null> {
 export async function saveServerState(state: DatabaseState, includeEvents = false): Promise<void> {
   const payload: Omit<DatabaseState, 'events' | 'sessions'> & { events?: Event[] } = {
     users: state.users,
-    boardGames: state.boardGames,
+    boardGames: state.boardGames.map(game => ({
+      id: game.id,
+      name: game.name,
+      description: game.description,
+      coverUrl: game.coverUrl,
+      category: game.category,
+      minPlayers: game.minPlayers,
+      maxPlayers: game.maxPlayers,
+      avgPlayTime: game.avgPlayTime,
+      complexity: game.complexity,
+    })),
   };
   if (includeEvents) payload.events = state.events;
 

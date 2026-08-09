@@ -7,6 +7,7 @@ import { DatabaseProvider } from '../context/DatabaseContext';
 import { ToastProvider } from '../context/ToastContext';
 import * as api from '../services/api';
 import { AUTH_TOKEN_KEY } from '../services/api';
+import { getDefaultDatabaseState } from '../db/database';
 
 function AuthHarness() {
   const auth = useAuth();
@@ -117,6 +118,38 @@ describe('AuthContext', () => {
     expect(localStorage.getItem('tabula_auth_session')).toBeNull();
 
     expect(screen.getByTestId('admin')).toHaveTextContent('false');
+  });
+
+  it('selects an existing user on login without persisting app state', async () => {
+    const user = userEvent.setup();
+    const existingState = getDefaultDatabaseState();
+    const existingUser = existingState.users[0];
+    vi.mocked(api.getServerState).mockResolvedValue(existingState);
+    vi.mocked(api.getEvents).mockResolvedValue(existingState.events);
+    vi.mocked(api.getSessions).mockResolvedValue(existingState.sessions);
+    vi.mocked(api.loginBackend).mockResolvedValue({
+      ok: true,
+      message: 'Login realizado',
+      token: 'existing-token',
+      user: {
+        ...existingUser,
+        name: 'Nome simplificado da resposta de autenticação',
+        joinedAt: '2026-08-09T00:00:00.000Z',
+      },
+    });
+
+    renderAuth();
+    await waitFor(() => expect(api.getServerState).toHaveBeenCalledTimes(1));
+    await new Promise(resolve => window.setTimeout(resolve, 0));
+    vi.mocked(api.saveServerState).mockClear();
+
+    await user.click(screen.getByRole('button', { name: /login/i }));
+
+    await waitFor(() => expect(sessionStorage.getItem(AUTH_TOKEN_KEY)).toBe('existing-token'));
+    expect(sessionStorage.getItem('tabula_auth_session')).toBe(existingUser.id);
+    expect(screen.getByTestId('user')).toHaveTextContent(existingUser.name);
+    await new Promise(resolve => window.setTimeout(resolve, 400));
+    expect(api.saveServerState).not.toHaveBeenCalled();
   });
 
   it('handles login failures from the API and keeps the user signed out', async () => {

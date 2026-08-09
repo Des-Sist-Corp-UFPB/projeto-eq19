@@ -36,7 +36,7 @@ const authErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { state, addUser, editUser } = useDatabase();
+  const { state, addUser } = useDatabase();
   const { showToast } = useToast();
   const [sessionUserId, setSessionUserId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -66,10 +66,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSessionUserId(userId);
   };
 
-  const mergeUserIntoState = (serverUser: User) => {
+  const selectOrAddUser = (serverUser: User) => {
     const existing = state.users.find(user => user.id === serverUser.id || user.email.toLowerCase() === serverUser.email.toLowerCase());
     if (existing) {
-      editUser(existing.id, { ...serverUser, id: existing.id });
       return existing.id;
     }
 
@@ -87,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const response = await loginBackend(normalizedEmail, password);
-      const userId = mergeUserIntoState(response.user);
+      const userId = selectOrAddUser(response.user);
       persistSession(userId, response.token, remember);
       showToast(`Bem-vindo, ${response.user.name.split(' ')[0]}!`, 'success');
       return { ok: true, message: response.message || 'Login realizado com sucesso.' };
@@ -127,7 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await registerUserBackend(name.trim(), normalizedEmail, password);
       if (response.token && response.user) {
-        const userId = mergeUserIntoState(response.user);
+        const userId = selectOrAddUser(response.user);
         persistSession(userId, response.token, true);
         showToast('Conta criada com sucesso no servidor.', 'success');
       } else {
