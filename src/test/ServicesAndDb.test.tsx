@@ -96,6 +96,25 @@ describe('API helpers and database utilities', () => {
     }));
   });
 
+  it('requests a relational session detail with authentication and an encoded id', async () => {
+    const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
+    const detail = { ...getDefaultDatabaseState().sessions[0], id: 'session/id' };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(detail),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(AUTH_TOKEN_KEY, 'session-token');
+
+    await expect(actualApi.getSession('session/id')).resolves.toEqual(detail);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/sessions/session%2Fid', expect.objectContaining({
+      method: 'GET',
+      headers: expect.objectContaining({ Authorization: 'Bearer session-token' }),
+    }));
+  });
+
   it('never includes legacy logs in the complete PUT /state payload', async () => {
     const actualApi = await vi.importActual<typeof import('../services/api')>('../services/api');
     const fetchMock = vi.fn().mockResolvedValue({

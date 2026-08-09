@@ -1,22 +1,73 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDatabase } from '../context/DatabaseContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { MapPinIcon, CrownIcon, MessageSquareIcon, InstagramIcon, UsersIcon } from '../components/Icons';
 import { UserAvatar } from '../components/UserAvatar';
+import { ApiError } from '../services/api';
+import type { Session } from '../types';
+
+type LoadState =
+  | { status: 'loading'; id?: string }
+  | { status: 'success'; id: string; session: Session }
+  | { status: 'not-found'; id?: string }
+  | { status: 'error'; id: string; message: string };
 
 export const SessionDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { state, addComment } = useDatabase();
+  const { state, getSessionById, addComment } = useDatabase();
   const { currentUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [commentText, setCommentText] = useState('');
+  const [loadState, setLoadState] = useState<LoadState>({ status: 'loading', id });
 
-  const session = state.sessions.find(s => s.id === id);
-  if (!session) {
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!id) {
+      return () => { cancelled = true; };
+    }
+
+    void getSessionById(id)
+      .then(session => {
+        if (!cancelled) setLoadState({ status: 'success', id, session });
+      })
+      .catch(error => {
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 404) {
+          setLoadState({ status: 'not-found', id });
+          return;
+        }
+        if (error instanceof ApiError && error.status === 401) {
+          setLoadState({ status: 'error', id, message: 'Sua sessão expirou. Entre novamente.' });
+          return;
+        }
+        if (error instanceof ApiError && error.status === 403) {
+          setLoadState({ status: 'error', id, message: 'Você não tem permissão para visualizar esta partida.' });
+          return;
+        }
+        setLoadState({ status: 'error', id, message: 'Não foi possível carregar a partida. Tente novamente.' });
+      });
+
+    return () => { cancelled = true; };
+  }, [getSessionById, id]);
+
+  if (!id) {
+    return (
+      <div className="container text-center" style={{ padding: '64px' }}>
+        <h2>Partida não encontrada</h2>
+      </div>
+    );
+  }
+
+  if (loadState.status === 'loading' || loadState.id !== id) {
+    return <div className="container text-center" style={{ padding: '64px' }}>Carregando partida...</div>;
+  }
+
+  if (loadState.status === 'not-found') {
     return (
       <div className="container text-center" style={{ padding: '64px' }}>
         <h2>Partida não encontrada</h2>
@@ -25,6 +76,18 @@ export const SessionDetails: React.FC = () => {
       </div>
     );
   }
+
+  if (loadState.status === 'error') {
+    return (
+      <div className="container text-center" style={{ padding: '64px' }} role="alert">
+        <h2>Não foi possível carregar a partida</h2>
+        <p style={{ color: 'var(--color-text-muted)', marginTop: '8px' }}>{loadState.message}</p>
+        <button className="btn btn-primary mt-lg" onClick={() => navigate('/sessions')}>Voltar ao Histórico</button>
+      </div>
+    );
+  }
+
+  const session = state.sessions.find(candidate => candidate.id === loadState.session.id) ?? loadState.session;
 
   const game = state.boardGames.find(g => g.id === session.gameId);
   const organizer = state.users.find(u => u.id === session.organizerId);

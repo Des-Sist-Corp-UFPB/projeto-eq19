@@ -31,6 +31,7 @@ vi.mock('../services/api', async () => {
     getEvents: vi.fn(),
     getEvent: vi.fn(),
     getSessions: vi.fn().mockResolvedValue([]),
+    getSession: vi.fn(),
     createSession: vi.fn(),
     deleteSessionRequest: vi.fn().mockResolvedValue(undefined),
   };

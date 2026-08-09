@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
 import type { DatabaseState, BoardGame, Session, Event, Comment, User, UserRole } from '../types';
 import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
 import {
@@ -7,6 +7,7 @@ import {
   createEvent,
   deleteSessionRequest,
   getEvents,
+  getSession,
   getSessions,
   getServerState,
   joinEventRequest,
@@ -35,6 +36,7 @@ interface DatabaseContextType {
   deleteGame: (gameId: string) => void;
   addSession: (session: Omit<Session, 'id' | 'comments'>, initialComment?: string) => Promise<Session>;
   deleteSession: (sessionId: string) => Promise<void>;
+  getSessionById: (sessionId: string) => Promise<Session>;
   addComment: (sessionId: string, userId: string, content: string) => void;
   addEvent: (event: Omit<Event, 'id' | 'participantIds' | 'waitingListIds' | 'status' | 'organizerId'>, organizerId: string) => Promise<Event>;
   joinEvent: (eventId: string, userId: string) => Promise<boolean>;
@@ -60,6 +62,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const serverLoadedRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
   const lastSavedJsonRef = useRef<string | null>(null);
+  const fetchedSessionsRef = useRef(new Map<string, Session>());
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +84,17 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // carries the authoritative relational event projection.
         }
         if (cancelled) return;
-        setState(nextState);
+        setState(() => {
+          const fetchedSessions = [...fetchedSessionsRef.current.values()];
+          if (fetchedSessions.length === 0) return nextState;
+          return syncDatabaseCalculations({
+            ...nextState,
+            sessions: [
+              ...fetchedSessions,
+              ...nextState.sessions.filter(session => !fetchedSessionsRef.current.has(session.id)),
+            ],
+          });
+        });
         if (!serverState) {
           await saveServerState(nextState, true);
         }
@@ -190,6 +203,16 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       sessions: prev.sessions.filter(s => s.id !== sessionId),
     }));
   };
+
+  const getSessionById = useCallback(async (sessionId: string) => {
+    const fetched = await getSession(sessionId);
+    fetchedSessionsRef.current.set(fetched.id, fetched);
+    setState(prev => syncDatabaseCalculations({
+      ...prev,
+      sessions: [fetched, ...prev.sessions.filter(session => session.id !== fetched.id)],
+    }));
+    return fetched;
+  }, []);
 
   const addComment = (sessionId: string, userId: string, content: string) => {
     const user = state.users.find(u => u.id === userId);
@@ -356,6 +379,7 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteGame,
         addSession,
         deleteSession,
+        getSessionById,
         addComment,
         addEvent,
         joinEvent,

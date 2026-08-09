@@ -156,6 +156,10 @@ export async function getSessions(): Promise<Session[]> {
   return requestJson<Session[]>('/sessions', { method: 'GET', headers: { Accept: 'application/json' } });
 }
 
+export async function getSession(id: string): Promise<Session> {
+  return requestJson<Session>(`/sessions/${encodeURIComponent(id)}`, { method: 'GET' });
+}
+
 export async function createSession(session: SessionWriteRequest): Promise<Session> {
   return requestJson<Session>('/sessions', { method: 'POST', body: JSON.stringify(session) });
 }
