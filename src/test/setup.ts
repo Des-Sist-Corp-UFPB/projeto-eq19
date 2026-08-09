@@ -1,12 +1,13 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { getTestDatabaseState } from './testState';
 
 vi.mock('../services/api', async () => {
   const actual = await vi.importActual<typeof import('../services/api')>('../services/api');
   return {
     ...actual,
-    getServerState: vi.fn().mockResolvedValue(null),
+    getServerState: vi.fn().mockImplementation(async () => getTestDatabaseState()),
     loginBackend: vi.fn(),
     registerUserBackend: vi.fn(),
     resetPasswordBackend: vi.fn(),
@@ -23,8 +24,37 @@ vi.mock('../services/api', async () => {
       status: 'active' as const,
     })),
     updateEvent: vi.fn(),
-    joinEventRequest: vi.fn(),
-    leaveEventRequest: vi.fn(),
+    joinEventRequest: vi.fn(async (eventId: string) => ({
+      event: {
+        id: eventId,
+        gameId: 'g1',
+        date: '2026-06-12',
+        time: '18:00',
+        location: 'Laboratório de Design',
+        maxParticipants: 5,
+        participantIds: ['u1', 'u2'],
+        waitingListIds: [],
+        description: 'Encontro de teste',
+        organizerId: 'u1',
+        status: 'active' as const,
+      },
+      waitlisted: false,
+    })),
+    leaveEventRequest: vi.fn(async (eventId: string) => ({
+      event: {
+        id: eventId,
+        gameId: 'g1',
+        date: '2026-06-12',
+        time: '18:00',
+        location: 'Laboratório de Design',
+        maxParticipants: 5,
+        participantIds: ['u1'],
+        waitingListIds: [],
+        description: 'Encontro de teste',
+        organizerId: 'u1',
+        status: 'active' as const,
+      },
+    })),
     cancelEventRequest: vi.fn(),
     completeEventRequest: vi.fn(),
     getEvents: vi.fn(),

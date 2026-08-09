@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it} from 'vitest';
 import { DatabaseProvider, useDatabase } from '../context/DatabaseContext';
 import { ToastProvider } from '../context/ToastContext';
 
@@ -24,11 +24,10 @@ describe('DatabaseProvider', () => {
       </ToastProvider>
     );
 
-    expect(screen.getByText('6')).toBeInTheDocument();
-    await vi.waitFor(() => {
-      screen.getByRole('button', { name: /Add user/i }).click();
-    });
+    expect(await screen.findByText('6')).toBeInTheDocument();
 
-    expect(screen.getByText('7')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Add user/i }));
+
+    expect(await screen.findByText('7')).toBeInTheDocument();
   });
 });

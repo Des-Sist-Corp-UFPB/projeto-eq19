@@ -105,9 +105,9 @@ class AuditLogPostgreSqlPrivilegesTest {
                 INSERT INTO audit_logs (
                     usuario_id, ator_id_externo, acao, tipo_recurso, recurso_id, detalhes, sucesso
                 )
-                VALUES (%d, '%s', 'STATE_UPDATED', 'APP_STATE', '1', '{}'::jsonb, TRUE)
+                VALUES (%d, '%s', 'PROFILE_UPDATED', 'PROFILE', '%s', '{}'::jsonb, TRUE)
                 RETURNING id
-                """.formatted(userId, externalId))) {
+                """.formatted(userId, externalId, externalId))) {
             resultSet.next();
             return resultSet.getLong(1);
         }

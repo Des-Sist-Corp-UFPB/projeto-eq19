@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../context/AuthContext';
 import { DatabaseProvider, useDatabase } from '../context/DatabaseContext';
 import { ToastProvider } from '../context/ToastContext';
-import { getDefaultDatabaseState } from '../db/database';
+import { getTestDatabaseState } from './testState';
 import { SessionDetails } from '../pages/SessionDetails';
 import * as api from '../services/api';
 import type { DatabaseState, Session } from '../types';
 
 const SESSION_ID = 's_5082d1a2-9178-4d9c-929d-e0664b1327db';
-const baseState = getDefaultDatabaseState();
+const baseState = getTestDatabaseState();
 const emptySessionState: DatabaseState = { ...baseState, sessions: [] };
 const session: Session = {
   id: SESSION_ID,

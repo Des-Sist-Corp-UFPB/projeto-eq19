@@ -8,6 +8,8 @@ import br.com.tabula.service.AuthenticatedUserService;
 import br.com.tabula.service.CommentService;
 import br.com.tabula.service.CommentService.CommentException;
 import br.com.tabula.service.CommentService.RequestMetadata;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -17,6 +19,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class CommentController {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private CommentController() {}
 
     public static void register(Javalin app, HikariDataSource dataSource) {
@@ -27,9 +31,7 @@ public final class CommentController {
         app.get("/sessions/{sessionId}/comments", ctx -> authenticated(ctx, auth, service, principal ->
                 ctx.json(service.list(ctx.pathParam("sessionId")).stream().map(CommentResponse::from).toList())));
         app.post("/sessions/{sessionId}/comments", ctx -> authenticated(ctx, auth, service, principal -> {
-            CommentRequest request;
-            try { request = ctx.bodyAsClass(CommentRequest.class); }
-            catch (Exception ex) { throw CommentException.invalid("invalid_payload"); }
+            CommentRequest request = parseRequest(ctx);
             CommentData created = service.create(principal, ctx.pathParam("sessionId"),
                     request.content(), metadata(ctx));
             ctx.status(201).json(CommentResponse.from(created));
@@ -65,9 +67,24 @@ public final class CommentController {
         }
     }
 
+    private static CommentRequest parseRequest(Context ctx) throws CommentException {
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(ctx.body());
+            if (root == null || !root.isObject()) {
+                throw CommentException.invalid("invalid_payload");
+            }
+            JsonNode contentNode = root.get("content");
+            if (contentNode == null || !contentNode.isTextual()) {
+                throw CommentException.invalid("invalid_payload");
+            }
+            return new CommentRequest(contentNode.asText());
+        } catch (Exception ex) {
+            throw CommentException.invalid("invalid_payload");
+        }
+    }
+
     private static RequestMetadata metadata(Context ctx) { return new RequestMetadata(ctx.ip(), ctx.userAgent()); }
-    // Identity-shaped fields are accepted only for backwards-compatible parsing and deliberately ignored.
-    private record CommentRequest(String content, String authorId, String userId, String username, String role) {}
+    private record CommentRequest(String content) {}
     private record CommentResponse(String id, String userId, String userName, String userAvatar,
                                    String content, String createdAt) {
         static CommentResponse from(CommentData value) {

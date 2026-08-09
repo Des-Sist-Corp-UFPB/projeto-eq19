@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useState, useLayoutEffect, useRef } from 'react';
 import type { DatabaseState, BoardGame, Session, Event, User, UserRole } from '../types';
 import { getDefaultDatabaseState, sanitizeDatabaseState, syncDatabaseCalculations, normalizeGameCoverUrl } from '../db/database';
 import {
@@ -68,19 +68,20 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { showToast } = useToast();
   const fetchedSessionsRef = useRef(new Map<string, Session>());
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let cancelled = false;
 
     const loadFromServer = async () => {
       try {
         const serverState = await getServerState();
-        let nextState = serverState ? sanitizeDatabaseState(serverState) : getDefaultDatabaseState();
+        if (!serverState) throw new Error('Relational state endpoint returned no data');
+        let nextState = sanitizeDatabaseState(serverState);
         try {
           const [relationalEvents, relationalSessions] = await Promise.all([getEvents(), getSessions()]);
-          if (Array.isArray(relationalEvents)) {
+          if (Array.isArray(relationalEvents) && relationalEvents.length > 0) {
             nextState = { ...nextState, events: relationalEvents };
           }
-          if (Array.isArray(relationalSessions)) {
+          if (Array.isArray(relationalSessions) && relationalSessions.length > 0) {
             nextState = { ...nextState, sessions: relationalSessions };
           }
         } catch {

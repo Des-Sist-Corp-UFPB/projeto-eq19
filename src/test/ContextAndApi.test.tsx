@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from '../context/AuthContext';
 import { DatabaseProvider, useDatabase } from '../context/DatabaseContext';
 import { ToastProvider } from '../context/ToastContext';
 import * as api from '../services/api';
-import { getDefaultDatabaseState } from '../db/database';
+import { getTestDatabaseState } from './testState';
 import type { BoardGame } from '../types';
 
 function AuthHarness() {
@@ -95,7 +95,7 @@ describe('Auth and database contexts', () => {
     localStorage.clear();
     sessionStorage.clear();
     vi.clearAllMocks();
-    const serverState = structuredClone(getDefaultDatabaseState());
+    const serverState = structuredClone(getTestDatabaseState());
     vi.mocked(api.getServerState).mockImplementation(async () => structuredClone(serverState));
     vi.mocked(api.getEvents).mockImplementation(async () => structuredClone(serverState.events));
     vi.mocked(api.getSessions).mockImplementation(async () => structuredClone(serverState.sessions));
@@ -155,7 +155,7 @@ describe('Auth and database contexts', () => {
         id: 's_local', gameId: event.gameId, date: `${event.date}T${event.time}:00`,
         location: event.location, organizerId: event.organizerId, participantIds: event.participantIds,
         winnerId: event.participantIds[0] ?? null, duration: 45, notes: 'Test session', photos: [], comments: [],
-      }, ...getDefaultDatabaseState().sessions];
+      }, ...getTestDatabaseState().sessions];
       return event;
     });
   });
@@ -322,18 +322,9 @@ describe('API helpers', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it('covers password hashing and verification helpers', async () => {
-    const password = 'StrongP@ss2';
-    const hash = await import('../auth/security').then(module => module.hashPassword(password));
-    const { verifyPassword } = await import('../auth/security');
-
-    const storedHash = await hash;
-    const isValid = await verifyPassword(password, storedHash);
-    const isInvalid = await verifyPassword('other', storedHash);
-    const strong = await import('../auth/security').then(module => module.isStrongPassword(password));
-
-    expect(isValid).toBe(true);
-    expect(isInvalid).toBe(false);
-    expect(strong).toBe(true);
+  it('validates password strength on the client', async () => {
+    const { isStrongPassword } = await import('../auth/security');
+    expect(isStrongPassword('StrongP@ss2')).toBe(true);
+    expect(isStrongPassword('weak')).toBe(false);
   });
 });

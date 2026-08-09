@@ -7,7 +7,7 @@ import { DatabaseProvider } from '../context/DatabaseContext';
 import { ToastProvider } from '../context/ToastContext';
 import * as api from '../services/api';
 import { AUTH_TOKEN_KEY } from '../services/api';
-import { getDefaultDatabaseState } from '../db/database';
+import { getTestDatabaseState } from './testState';
 
 function AuthHarness() {
   const auth = useAuth();
@@ -122,7 +122,7 @@ describe('AuthContext', () => {
 
   it('selects an existing user on login without persisting app state', async () => {
     const user = userEvent.setup();
-    const existingState = getDefaultDatabaseState();
+    const existingState = getTestDatabaseState();
     const existingUser = existingState.users[0];
     vi.mocked(api.getServerState).mockResolvedValue(existingState);
     vi.mocked(api.getEvents).mockResolvedValue(existingState.events);

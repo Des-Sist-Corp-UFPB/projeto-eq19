@@ -29,11 +29,13 @@ class FinalRelationalStatePostgreSqlTest {
             .withDatabaseName("tabula_final_state_test").withUsername("tabula").withPassword("tabula");
 
     @Test
-    void upgradeFromV13DropsOnlyLegacyStateAndKeepsRelationalDomainsOperational() throws Exception {
+    void upgradeFromV14DropsOnlyLegacyLogsAndKeepsRelationalDomainsOperational() throws Exception {
+        String schema = "upgrade_v14";
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .target("13").load().migrate();
+                .schemas(schema).target("14").load().migrate();
         try (Connection connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = connection.createStatement()) {
+            connection.setSchema(schema);
             statement.executeUpdate("INSERT INTO usuarios(external_id,nome,email,senha_hash,role,email_verificado,curso,bio,avatar_url) VALUES('final-user','Final User','final@test','hash','ADMIN',true,'Course','Bio','/avatar.png')");
             statement.executeUpdate("INSERT INTO jogos(external_id,nome,descricao,cover_url,categoria,min_players,max_players,avg_play_time,complexity) VALUES('final-game','Final Game','Description','/cover.png','Strategy',2,4,30,2.5)");
             statement.executeUpdate("INSERT INTO eventos(external_id,jogo_id,data_hora,local,descricao,max_participantes,status,organizador_id) SELECT 'final-event',j.id,CURRENT_TIMESTAMP,'Room','Event',4,'active',u.id FROM jogos j,usuarios u WHERE j.external_id='final-game' AND u.external_id='final-user'");
@@ -42,16 +44,19 @@ class FinalRelationalStatePostgreSqlTest {
             statement.executeUpdate("INSERT INTO partida_participantes(partida_id,usuario_id) SELECT p.id,u.id FROM partidas p,usuarios u WHERE p.external_id='final-session' AND u.external_id='final-user'");
             statement.executeUpdate("INSERT INTO comentarios(external_id,partida_id,usuario_id,conteudo) SELECT 'final-comment',p.id,u.id,'Comment' FROM partidas p,usuarios u WHERE p.external_id='final-session' AND u.external_id='final-user'");
             statement.executeUpdate("INSERT INTO favoritos(usuario_id,jogo_id) SELECT u.id,j.id FROM usuarios u,jogos j WHERE u.external_id='final-user' AND j.external_id='final-game'");
-            statement.executeUpdate("INSERT INTO app_state(id,data) VALUES(1,'{\"users\":[],\"boardGames\":[]}'::jsonb)");
+            statement.executeUpdate("INSERT INTO logs(external_id,nome_usuario,acao) VALUES('legacy-log','Legacy','OLD')");
         }
 
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()).load().migrate();
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()).schemas(schema).load().migrate();
         HikariConfig config = new HikariConfig(); config.setJdbcUrl(POSTGRES.getJdbcUrl());
-        config.setUsername(POSTGRES.getUsername()); config.setPassword(POSTGRES.getPassword());
+        config.setUsername(POSTGRES.getUsername()); config.setPassword(POSTGRES.getPassword()); config.setSchema(schema);
         try (HikariDataSource dataSource = new HikariDataSource(config);
              Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            try (ResultSet rows = statement.executeQuery("SELECT to_regclass('public.app_state')")) {
+            try (ResultSet rows = statement.executeQuery("SELECT to_regclass('logs')")) {
                 assertTrue(rows.next()); assertNull(rows.getString(1));
+            }
+            try (ResultSet rows = statement.executeQuery("SELECT to_regclass('audit_logs')")) {
+                assertTrue(rows.next()); assertNotNull(rows.getString(1));
             }
             assertEquals(1, count(statement, "usuarios", "external_id='final-user'"));
             assertEquals(1, count(statement, "jogos", "external_id='final-game'"));
@@ -95,6 +100,21 @@ class FinalRelationalStatePostgreSqlTest {
                 assertEquals(204, call(app, "DELETE", "/users/delete-user", null, "final-user-token").statusCode());
                 assertEquals(0, count(statement, "usuarios", "external_id='delete-user'"));
             } finally { app.stop(); }
+        }
+    }
+
+    @Test
+    void freshDatabaseMigratesFromV1ThroughV15() throws Exception {
+        String schema = "fresh_v15";
+        Flyway flyway = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .schemas(schema).load();
+        assertEquals(15, flyway.migrate().migrationsExecuted);
+        try (Connection connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             Statement statement = connection.createStatement()) {
+            connection.setSchema(schema);
+            try (ResultSet rows = statement.executeQuery("SELECT to_regclass('logs'),to_regclass('audit_logs')")) {
+                assertTrue(rows.next()); assertNull(rows.getString(1)); assertNotNull(rows.getString(2));
+            }
         }
     }
 

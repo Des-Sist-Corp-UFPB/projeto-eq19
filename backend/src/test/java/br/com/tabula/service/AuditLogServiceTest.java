@@ -40,9 +40,9 @@ class AuditLogServiceTest {
         service.record(
                 connection,
                 actor,
-                AuditAction.STATE_UPDATED,
-                "APP_STATE",
-                "1",
+                AuditAction.PROFILE_UPDATED,
+                "PROFILE",
+                "u_17",
                 true,
                 "203.0.113.8",
                 "test-agent",
@@ -60,7 +60,7 @@ class AuditLogServiceTest {
         AuditLog log = captor.getValue();
         assertEquals(17L, log.getUserDatabaseId());
         assertEquals("u_17", log.getActorExternalId());
-        assertEquals("STATE_UPDATED", log.getAction());
+        assertEquals("PROFILE_UPDATED", log.getAction());
         assertEquals("203.0.113.8", log.getIpAddress());
         assertEquals(2, log.getDetails().get("changedSections").size());
         assertEquals("users", log.getDetails().get("changedSections").get(0).asText());
@@ -179,7 +179,7 @@ class AuditLogServiceTest {
     void shouldStoreStructuredValidationMetadataWithoutSensitiveValues() {
         AuditLogService service = new AuditLogService(
                 mock(HikariDataSource.class), mock(AuditLogRepository.class));
-        AuditLog log = service.build(null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1",
+        AuditLog log = service.build(null, AuditAction.PROFILE_OPERATION_REJECTED, "PROFILE", "u_1",
                 false, null, null, Map.ofEntries(
                         Map.entry("reason", "invalid_payload"),
                         Map.entry("reasonCode", "unknown_field"),
@@ -211,7 +211,7 @@ class AuditLogServiceTest {
         AuditLogService service = new AuditLogService(
                 mock(HikariDataSource.class), mock(AuditLogRepository.class));
 
-        AuditLog log = service.build(null, AuditAction.STATE_UPDATE_REJECTED, "APP_STATE", "1",
+        AuditLog log = service.build(null, AuditAction.PROFILE_OPERATION_REJECTED, "PROFILE", "u_1",
                 false, null, null, Map.of("validationSource", "payload-with-secret"));
 
         assertFalse(log.getDetails().has("validationSource"));

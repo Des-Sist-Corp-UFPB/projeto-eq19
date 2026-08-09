@@ -1,7 +1,4 @@
 import type { DatabaseState } from '../types';
-import { INITIAL_USERS, INITIAL_GAMES, INITIAL_SESSIONS, INITIAL_EVENTS } from './initialData';
-
-const LEGACY_GAME_NAMES = ['Catan', 'Ticket to Ride', 'Carcassonne', 'Dixit', 'Terraforming Mars'];
 
 const LOCAL_COVER_MAP: Record<string, string> = {
   'Xadrez': '/images/chess_cover.jpg',
@@ -28,31 +25,19 @@ const normalizeBoardGame = (game: DatabaseState['boardGames'][number]): Database
 });
 
 export const getDefaultDatabaseState = (): DatabaseState => {
-  const defaultState: DatabaseState = {
-    users: INITIAL_USERS,
-    boardGames: INITIAL_GAMES.map(normalizeBoardGame),
-    sessions: INITIAL_SESSIONS,
-    events: INITIAL_EVENTS
-  };
-
-  return syncDatabaseCalculations(defaultState);
+  return { users: [], boardGames: [], sessions: [], events: [] };
 };
 
 export const sanitizeDatabaseState = (state: DatabaseState): DatabaseState => {
-  const hasLegacyCatalog = state.boardGames?.some(game => LEGACY_GAME_NAMES.includes(game.name));
-  if (!state.users || !state.boardGames || !state.sessions || !state.events || hasLegacyCatalog) {
-    return getDefaultDatabaseState();
+  if (!state || !Array.isArray(state.users) || !Array.isArray(state.boardGames)
+      || !Array.isArray(state.sessions) || !Array.isArray(state.events)) {
+    throw new TypeError('Invalid relational database state');
   }
-
-  const adminSeed = INITIAL_USERS.find(user => user.id === 'u_admin');
-  const users = adminSeed && !state.users.some(user => user.id === adminSeed.id)
-    ? [adminSeed, ...state.users]
-    : state.users;
 
   const boardGames = state.boardGames.map(normalizeBoardGame);
 
   return syncDatabaseCalculations({
-    users,
+    users: state.users,
     boardGames,
     sessions: state.sessions,
     events: state.events,

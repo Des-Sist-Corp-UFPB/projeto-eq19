@@ -44,7 +44,7 @@ class RelationalStateReadServiceTest {
         assertTrue(root.has("boardGames") && root.get("boardGames").isArray() && root.get("boardGames").isEmpty());
         assertTrue(root.has("sessions") && root.get("sessions").isArray() && root.get("sessions").isEmpty());
         assertTrue(root.has("events") && root.get("events").isArray() && root.get("events").isEmpty());
-        assertTrue(root.has("logs") && root.get("logs").isArray() && root.get("logs").isEmpty());
+        assertTrue(!root.has("logs"));
     }
 
     @Test
@@ -117,14 +117,6 @@ class RelationalStateReadServiceTest {
                 when(rs.getString("win_ext")).thenReturn("u_1");
                 when(rs.getInt("duracao_minutos")).thenReturn(60);
                 when(rs.getString("notas")).thenReturn("notes1");
-            } else if (norm.contains("FROM logs")) {
-                // logs
-                when(rs.next()).thenReturn(true, false);
-                when(rs.getString("external_id")).thenReturn("l_1");
-                when(rs.getString("user_ext")).thenReturn("u_1");
-                when(rs.getString("nome_usuario")).thenReturn("User One");
-                when(rs.getString("acao")).thenReturn("Sync Action");
-                when(rs.getTimestamp("criado_em")).thenReturn(mockTime);
             } else if (norm.contains("FROM usuarios")) {
                 // users
                 when(rs.next()).thenReturn(true, false);
@@ -164,7 +156,7 @@ class RelationalStateReadServiceTest {
         assertEquals(1, root.get("boardGames").size(), root.toPrettyString());
         assertEquals(1, root.get("sessions").size(), root.toPrettyString());
         assertEquals(1, root.get("events").size(), root.toPrettyString());
-        assertEquals(1, root.get("logs").size(), root.toPrettyString());
+        assertTrue(!root.has("logs"));
 
         assertEquals("u_1", root.get("users").get(0).get("id").asText());
         assertEquals("admin", root.get("users").get(0).get("role").asText());
@@ -182,8 +174,6 @@ class RelationalStateReadServiceTest {
         assertEquals("20:00", root.get("events").get(0).get("time").asText());
         assertEquals("u_1", root.get("events").get(0).get("participantIds").get(0).asText());
         assertEquals("u_1", root.get("events").get(0).get("waitingListIds").get(0).asText());
-
-        assertEquals("l_1", root.get("logs").get(0).get("id").asText());
     }
 
     @Test

@@ -62,8 +62,8 @@ class AuditLogControllerTest {
         HikariDataSource dataSource = dataSourceForRole("ADMIN", true, preparedSql);
         Javalin app = start(dataSource);
         try {
-            String path = "/audit-logs?page=2&pageSize=999&action=STATE_UPDATED"
-                    + "&userId=u_7&resourceType=APP_STATE&resourceId=1&success=true"
+            String path = "/audit-logs?page=2&pageSize=999&action=PROFILE_UPDATED"
+                    + "&userId=u_7&resourceType=PROFILE&resourceId=u_7&success=true"
                     + "&startDate=2026-01-01T00:00:00Z&endDate=2026-12-31T23:59:59Z";
             HttpResponse<String> response = send(app, path, "Bearer admin-token");
 
@@ -72,7 +72,7 @@ class AuditLogControllerTest {
             assertEquals(2, body.get("page").asInt());
             assertEquals(100, body.get("pageSize").asInt());
             assertEquals(1, body.get("total").asLong());
-            assertEquals("STATE_UPDATED", body.get("items").get(0).get("action").asText());
+            assertEquals("PROFILE_UPDATED", body.get("items").get(0).get("action").asText());
             assertEquals("u_7", body.get("items").get(0).get("userId").asText());
             assertTrue(preparedSql.stream().anyMatch(sql ->
                     sql.contains("ORDER BY criado_em DESC, id DESC LIMIT ? OFFSET ?")));
@@ -120,9 +120,9 @@ class AuditLogControllerTest {
         when(pageResult.getLong("usuario_id")).thenReturn(7L);
         when(pageResult.wasNull()).thenReturn(false);
         when(pageResult.getString("ator_id_externo")).thenReturn("u_7");
-        when(pageResult.getString("acao")).thenReturn("STATE_UPDATED");
-        when(pageResult.getString("tipo_recurso")).thenReturn("APP_STATE");
-        when(pageResult.getString("recurso_id")).thenReturn("1");
+        when(pageResult.getString("acao")).thenReturn("PROFILE_UPDATED");
+        when(pageResult.getString("tipo_recurso")).thenReturn("PROFILE");
+        when(pageResult.getString("recurso_id")).thenReturn("u_7");
         when(pageResult.getString("detalhes")).thenReturn("{\"changedSections\":[\"users\"]}");
         when(pageResult.getString("endereco_ip")).thenReturn("127.0.0.1");
         when(pageResult.getString("user_agent")).thenReturn("agent");

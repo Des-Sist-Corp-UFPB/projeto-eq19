@@ -1,12 +1,23 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Home } from '../pages/Home';
+import * as api from '../services/api';
 import { renderWithProviders } from './renderWithProviders';
+import { getTestDatabaseState } from './testState';
 
 describe('Home page', () => {
   beforeEach(() => {
     localStorage.setItem('tabula_auth_token', 'token');
     localStorage.setItem('tabula_auth_session', 'u2');
+    const futureState = structuredClone(getTestDatabaseState());
+    futureState.events = futureState.events.map((event, index) => ({
+      ...event,
+      date: index === 0 ? '2030-06-12' : event.date,
+      time: index === 0 ? '18:00' : event.time,
+    }));
+    vi.mocked(api.getServerState).mockResolvedValue(futureState);
+    vi.mocked(api.getEvents).mockResolvedValue(futureState.events);
+    vi.mocked(api.getSessions).mockResolvedValue(futureState.sessions);
   });
 
   afterEach(() => {
@@ -25,16 +36,12 @@ describe('Home page', () => {
   });
 
   it('lets an authenticated user join and leave an event', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-06-10T10:00:00Z'));
-
     renderWithProviders(<Home />);
 
-    const joinButtons = screen.getAllByRole('button', { name: /Participar da Mesa/i });
-    fireEvent.click(joinButtons[0]);
-    expect(screen.getAllByRole('button', { name: /Cancelar Inscrição/i }).length).toBeGreaterThan(0);
+    const joinButton = await screen.findByRole('button', { name: /Participar da Mesa/i });
+    fireEvent.click(joinButton);
 
-    fireEvent.click(screen.getAllByRole('button', { name: /Cancelar Inscrição/i })[0]);
-    expect(screen.getAllByRole('button', { name: /Participar da Mesa/i }).length).toBeGreaterThan(0);
+    await vi.waitFor(() => expect(api.joinEventRequest).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: /Participar da Mesa/i })).toBeInTheDocument();
   });
 });

@@ -6,7 +6,7 @@ import { tomorrowAsLocalIsoDate } from '../pages/eventsDate';
 import { renderWithProviders } from './renderWithProviders';
 import { ApiError } from '../services/api';
 import * as api from '../services/api';
-import { getDefaultDatabaseState } from '../db/database';
+import { getTestDatabaseState } from './testState';
 
 vi.mock('../services/api', async importOriginal => {
   const original = await importOriginal<typeof import('../services/api')>();
@@ -27,7 +27,7 @@ describe('Events AI draft assistant', () => {
     sessionStorage.clear();
     sessionStorage.setItem('tabula_auth_token', 'session-token');
     sessionStorage.setItem('tabula_auth_session', 'u1');
-    vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
+    vi.mocked(api.getServerState).mockResolvedValue(getTestDatabaseState());
     vi.mocked(api.generateEventDraft).mockReset();
     vi.mocked(api.refineEventDraft).mockReset();
   });
@@ -38,7 +38,7 @@ describe('Events AI draft assistant', () => {
     const user = userEvent.setup();
     renderWithProviders(<Events />);
 
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
 
     expect(screen.getByDisplayValue(expectedTomorrow)).toBeInTheDocument();
     expect(screen.getByDisplayValue('12:00')).toBeInTheDocument();
@@ -51,7 +51,7 @@ describe('Events AI draft assistant', () => {
     vi.mocked(api.generateEventDraft).mockReturnValue(new Promise(resolve => { resolveDraft = resolve; }));
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
 
     const generate = screen.getByRole('button', { name: /Preencher formulário com IA/i });
     expect(generate).toBeDisabled();
@@ -79,7 +79,7 @@ describe('Events AI draft assistant', () => {
     );
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     const prompt = screen.getByLabelText(/Descreva o encontro/i);
     const location = screen.getByLabelText(/Local de Encontro/i);
     await user.clear(location);
@@ -97,7 +97,7 @@ describe('Events AI draft assistant', () => {
     );
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     expect(await screen.findByText(/temporariamente indisponível/i)).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('Events AI draft assistant', () => {
     );
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Xadrez na sexta');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     expect(await screen.findByText(/limite temporário de gerações com IA/i)).toBeInTheDocument();
@@ -128,7 +128,7 @@ describe('Events AI draft assistant', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Quero criar um evento de Magic');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
 
@@ -152,7 +152,7 @@ describe('Events AI draft assistant', () => {
     });
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     const description = screen.getByPlaceholderText(/Vamos jogar Terraforming Mars/i);
     await user.type(description, 'Texto preenchido manualmente');
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Magic sexta às 15h');
@@ -179,7 +179,7 @@ describe('Events AI draft assistant', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Local de Encontro/i), 'Local manual');
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Qual o horário do SBT hoje?');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
@@ -202,7 +202,7 @@ describe('Events AI draft assistant', () => {
     });
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     const instruction = await screen.findByLabelText(/Alteração desejada/i);
@@ -225,7 +225,7 @@ describe('Events AI draft assistant', () => {
     );
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     await screen.findByRole('heading', { name: /Refinar com IA/i });
@@ -256,7 +256,7 @@ describe('Events AI draft assistant', () => {
       }));
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     const location = await screen.findByLabelText(/Local de Encontro/i);
@@ -293,7 +293,7 @@ describe('Events AI draft assistant', () => {
     vi.mocked(api.refineEventDraft).mockRejectedValue(new ApiError(status, 'internal'));
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
     await user.type(screen.getByLabelText(/Descreva o encontro/i), 'Mesa de Magic sábado');
     await user.click(screen.getByRole('button', { name: /Preencher formulário com IA/i }));
     const instruction = await screen.findByLabelText(/Alteração desejada/i);

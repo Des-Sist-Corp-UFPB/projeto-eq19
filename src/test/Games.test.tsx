@@ -3,12 +3,28 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Games } from '../pages/Games';
 import { renderWithProviders } from './renderWithProviders';
+import { getTestDatabaseState } from './testState';
+import * as api from '../services/api';
+
+vi.mock('../services/api', async importOriginal => {
+  const original = await importOriginal<typeof import('../services/api')>();
+  return {
+    ...original,
+    getServerState: vi.fn(),
+    createGame: vi.fn(async game => ({ id: 'g_created', ...game })),
+    updateGame: vi.fn(async game => game),
+    deleteGameRequest: vi.fn(async () => undefined),
+    addFavoriteRequest: vi.fn(async () => ({ gameId: 'g1' })),
+    removeFavoriteRequest: vi.fn(async () => undefined),
+  };
+});
 
 describe('Games page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem('tabula_auth_token', 'token');
     localStorage.setItem('tabula_auth_session', 'u1');
+    vi.mocked(api.getServerState).mockResolvedValue(getTestDatabaseState());
   });
 
   it('renders the favorite control for the authenticated user', async () => {
@@ -33,9 +49,9 @@ describe('Games page', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderWithProviders(<Games />, { route: '/games?id=g1' });
 
-    expect(screen.getByRole('heading', { name: /Xadrez/i, level: 3 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Xadrez/i, level: 3 })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Adicionar Novo Jogo/i }));
+    await user.click(await screen.findByRole('button', { name: /Adicionar Novo Jogo/i }));
     const modal = screen.getByRole('heading', { name: /Adicionar Novo Jogo ao Acervo/i }).closest('.modal-content');
     if (!modal) throw new Error('Modal not found');
     const addInputs = within(modal).getAllByRole('textbox');

@@ -62,9 +62,9 @@ class AuditLogRepositoryTest {
         when(resultSet.getLong("usuario_id")).thenReturn(9L);
         when(resultSet.wasNull()).thenReturn(false);
         when(resultSet.getString("ator_id_externo")).thenReturn("u_9");
-        when(resultSet.getString("acao")).thenReturn("STATE_UPDATED");
-        when(resultSet.getString("tipo_recurso")).thenReturn("APP_STATE");
-        when(resultSet.getString("recurso_id")).thenReturn("1");
+        when(resultSet.getString("acao")).thenReturn("PROFILE_UPDATED");
+        when(resultSet.getString("tipo_recurso")).thenReturn("PROFILE");
+        when(resultSet.getString("recurso_id")).thenReturn("u_9");
         when(resultSet.getString("detalhes")).thenReturn("{\"changedSections\":[\"users\"]}");
         when(resultSet.getString("endereco_ip")).thenReturn("127.0.0.1");
         when(resultSet.getString("user_agent")).thenReturn("agent");
@@ -73,7 +73,7 @@ class AuditLogRepositoryTest {
         when(resultSet.getTimestamp("criado_em")).thenReturn(Timestamp.from(Instant.parse("2026-01-02T03:04:05Z")));
         AuditLogRepository repository = new AuditLogRepository(dataSource);
         AuditLogFilter filter = new AuditLogFilter(
-                2, 25, "STATE_UPDATED", "u_9", "APP_STATE", "1",
+                2, 25, "PROFILE_UPDATED", "u_9", "PROFILE", "u_9",
                 true, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-31T23:59:59Z")
         );
 

@@ -32,7 +32,6 @@ public class RelationalStateReadService {
         ArrayNode boardGamesArray = root.putArray("boardGames");
         ArrayNode sessionsArray = root.putArray("sessions");
         ArrayNode eventsArray = root.putArray("events");
-        ArrayNode logsArray = root.putArray("logs");
 
         try (Connection conn = dataSource.getConnection()) {
             conn.setReadOnly(true);
@@ -348,37 +347,9 @@ public class RelationalStateReadService {
                 }
             }
 
-            // 10. Reconstruct logs
-            String logsSql = """
-                    SELECT l.external_id, u.external_id AS user_ext, l.nome_usuario, l.acao, l.criado_em
-                    FROM logs l
-                    LEFT JOIN usuarios u ON l.usuario_id = u.id
-                    WHERE l.external_id IS NOT NULL
-                    """;
-            try (PreparedStatement stmt = conn.prepareStatement(logsSql);
-                 ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    ObjectNode logNode = MAPPER.createObjectNode();
-                    logNode.put("id", rs.getString("external_id"));
-                    
-                    String userExt = rs.getString("user_ext");
-                    logNode.put("userId", userExt != null ? userExt : "system");
-                    
-                    String userName = rs.getString("nome_usuario");
-                    logNode.put("userName", userName != null ? userName : "Sistema");
-                    
-                    String act = rs.getString("acao");
-                    logNode.put("action", act != null ? act : "");
-                    
-                    logNode.put("timestamp", formatTimestamp(rs.getTimestamp("criado_em")));
-
-                    logsArray.add(logNode);
-                }
-            }
         }
 
-        // Verify all 5 top-level arrays are present
-        if (!root.has("users") || !root.has("boardGames") || !root.has("sessions") || !root.has("events") || !root.has("logs")) {
+        if (!root.has("users") || !root.has("boardGames") || !root.has("sessions") || !root.has("events")) {
             throw new IllegalStateException("Reconstructed JSON is missing one or more required top-level arrays.");
         }
 

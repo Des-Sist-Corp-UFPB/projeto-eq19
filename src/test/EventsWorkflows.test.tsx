@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Events } from '../pages/Events';
 import { renderWithProviders } from './renderWithProviders';
-import { getDefaultDatabaseState } from '../db/database';
+import { getTestDatabaseState } from './testState';
 import * as api from '../services/api';
 
 vi.mock('../services/api', async importOriginal => {
@@ -28,9 +28,9 @@ describe('Events workflows', () => {
     sessionStorage.clear();
     sessionStorage.setItem('tabula_auth_token', 'session-token');
     sessionStorage.setItem('tabula_auth_session', 'u1');
-    vi.mocked(api.getServerState).mockResolvedValue(getDefaultDatabaseState());
-    let events = structuredClone(getDefaultDatabaseState().events);
-    let sessions = structuredClone(getDefaultDatabaseState().sessions);
+    vi.mocked(api.getServerState).mockResolvedValue(getTestDatabaseState());
+    let events = structuredClone(getTestDatabaseState().events);
+    let sessions = structuredClone(getTestDatabaseState().sessions);
     vi.mocked(api.getEvents).mockImplementation(async () => structuredClone(events));
     vi.mocked(api.getSessions).mockImplementation(async () => structuredClone(sessions));
     vi.mocked(api.createEvent).mockImplementation(async input => {
@@ -95,9 +95,9 @@ describe('Events workflows', () => {
     renderWithProviders(<Events />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: /Entrar na Fila de Espera/i }));
+    await user.click(await screen.findByRole('button', { name: /Entrar na Fila de Espera/i }));
     expect(await screen.findByText(/adicionado à lista de espera/i)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Sair da Espera/i }));
+    await user.click(await screen.findByRole('button', { name: /Sair da Espera/i }));
     expect(await screen.findByText(/Participação cancelada/i)).toBeInTheDocument();
 
     const leaveButtons = screen.getAllByRole('button', { name: /Sair da Mesa/i });
@@ -110,7 +110,7 @@ describe('Events workflows', () => {
   it('creates an event only after manual submission and resets the form', async () => {
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Agendar Novo Encontro/i }));
+    await user.click(await screen.findByRole('button', { name: /Agendar Novo Encontro/i }));
 
     const form = screen.getByRole('heading', { name: /Agendar Encontro de Jogo/i }).closest('.modal-content')!
       .querySelector('form')!;
@@ -134,7 +134,8 @@ describe('Events workflows', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     renderWithProviders(<Events />);
     const user = userEvent.setup();
-    await user.click(screen.getAllByRole('button', { name: /Concluir Evento/i })[0]);
+    const concludeButtons = await screen.findAllByRole('button', { name: /Concluir Evento/i });
+    await user.click(concludeButtons[0]);
 
     const modal = screen.getByRole('heading', { name: /Concluir Encontro de Jogo/i }).closest('.modal-content')!;
     const form = modal.querySelector('form')!;
