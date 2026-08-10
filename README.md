@@ -256,10 +256,10 @@ Resultado da execução atual:
 - Erros: 0
 - Ignorados: 0
 - Instruções: 88%
-- Linhas: aproximadamente 89,7%
-- Branches: 66%
-- Methods: aproximadamente 93,0%
-- Classes: aproximadamente 97,4%
+- Linhas: 89,58%
+- Branches: 67%
+- Methods: 93,03%
+- Classes: 97,37%
 - Classes analisadas: 114
 - Resultado: BUILD SUCCESS
 - JaCoCo confirmou: "All coverage checks have been met."
@@ -288,13 +288,13 @@ Resultado da execução atual:
 
 - Arquivos de teste: 15
 - Arquivos aprovados: 15
-- Testes: 63
-- Testes aprovados: 63
+- Testes: 67
+- Testes aprovados: 67
 - Falhas: 0
-- Statements: 86,12%
-- Branches: 77,35%
-- Functions: 76,79%
-- Lines: 88,30%
+- Statements: 86,37%
+- Branches: 77,98%
+- Functions: 77,38%
+- Lines: 88,39%
 - Threshold global de statements: 85%
 - Resultado: cobertura aprovada
 
