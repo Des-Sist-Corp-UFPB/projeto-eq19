@@ -355,7 +355,8 @@ export async function createGame(game: GameInput): Promise<import('../types').Bo
   return requestJson('/games', { method: 'POST', body: JSON.stringify(game) });
 }
 export async function updateGame(game: import('../types').BoardGame): Promise<import('../types').BoardGame> {
-  return requestJson(`/games/${encodeURIComponent(game.id)}`, { method: 'PUT', body: JSON.stringify(game) });
+  const payload: GameInput = { name: game.name, description: game.description, coverUrl: game.coverUrl, category: game.category, minPlayers: game.minPlayers, maxPlayers: game.maxPlayers, avgPlayTime: game.avgPlayTime, complexity: game.complexity };
+  return requestJson(`/games/${encodeURIComponent(game.id)}`, { method: 'PUT', body: JSON.stringify(payload) });
 }
 export async function deleteGameRequest(id: string): Promise<void> {
   return requestJson(`/games/${encodeURIComponent(id)}`, { method: 'DELETE' });
