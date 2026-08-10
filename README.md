@@ -4,7 +4,7 @@ Tabula é uma aplicação real para comunidade de jogos de mesa. O projeto permi
 
 ## Vídeo
 
-Link para o vídeo: 
+Link para o vídeo: https://youtu.be/PN_BBGWrKBs
 
 ## Produção
 
